@@ -1,6 +1,6 @@
 # AI-HANDOFF – Villagers: Repurposed (modid `villagerplus`, Jar `villagers-repurposed-<version>.jar`)
 
-**Aktuelle Übergabe, 30.10.2026.** GitHub-Repository: https://github.com/LvisXVI/Villager-Repurposed (privat, Branch `main`). Aktueller Code und die folgenden Nachweise gehen älteren Abschnitten vor.
+**Aktuelle Übergabe, 30.10.2026.** GitHub-Repository: https://github.com/cvvluis/Villager-Repurposed (privat, Branch `main`). Aktueller Code und die folgenden Nachweise gehen älteren Abschnitten vor.
 
 ## Lauf 31.10.2026 – Phase 4 CTOV-Kornspeicher
 
@@ -405,7 +405,7 @@ Karte/Balken/Tabs (Textausgabe), Expeditionen inkl. Verletzte und Beute, Lagersc
 - Vanilla-Wegfindung scheitert in Stollen/Baustellen → feste Routen + Teleport mit Boden-/Flüssigkeitsprüfung.
 - Ohne Spieler ticken ungeladene Chunks nicht – deshalb `Anchor`. Vollgestopfte Dorfkiste blockierte früher alles (Lieferungen, Handwerk) – nie wieder Items still verwerfen.
 - RCON/PowerShell: `item replace`/`data get block` für Doppelkisten – Dorfkiste liegt in zwei Hälften zu je 27 Slots.
-- Commits: keine Co-Authored-By/„Generated with“-Zeilen (Nutzerwunsch). Am 30.10.2026 wurde das private GitHub-Repository `LvisXVI/Villager-Repurposed` auf Branch `main` angelegt.
+- Commits: keine Co-Authored-By/„Generated with“-Zeilen (Nutzerwunsch). Am 30.10.2026 wurde das private GitHub-Repository `cvvluis/Villager-Repurposed` auf Branch `main` angelegt.
 
 ## Codex-Fortsetzung 30.10.2026 – Kornspeicher-Meilenstein
 - Ursache: Bei fehlenden Baustoffen brach `Builder.continuePlan` Kornspeicher-/Werkzeugkammeraufträge ab, sobald fünf Bewohner die Schule freischalteten; der Folgeplan Schule preemptete damit seine Voraussetzungen. Jetzt bleiben aktiver Auftrag und Lieferwunschliste bestehen. Lagerbau bei voller Dorfkiste bleibt vorrangig.
