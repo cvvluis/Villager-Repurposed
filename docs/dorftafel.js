@@ -171,26 +171,27 @@
   }
 
   /* ---------- Villagers: 62 Features ---------- */
-  function villager(parent) {
-    var V = window.DT_V; if (!V) return;
+  function villager(parent, V) {
+    if (!V) return;
     var D = V.D, F = V.F, L = V.L, by = {}, rel = {}, filt = 'all', q = '', focusD = null, sel = null, view = 'ring';
     F.forEach(function (f) { by[f[0]] = f; });
     L.forEach(function (l) { (rel[l[0]] = rel[l[0]] || []).push(l[1]); (rel[l[1]] = rel[l[1]] || []).push(l[0]); });
-    function dk(id) { return id[0] === 'R' ? 'A' : id[0]; }
+    function dk(id) { return (V.map && V.map[id]) || (id[0] === 'R' ? 'A' : id[0]); }
+    var LB = V.labels || { d: 'Umgesetzt', p: 'Teilweise, Baustelle', dd: 'UMGESETZT', pp: 'BAUSTELLE' };
     var dn = {}; D.forEach(function (d) { dn[d[0]] = d[1]; });
     var byD = {}; D.forEach(function (d) { byD[d[0]] = F.filter(function (f) { return dk(f[0]) === d[0]; }); });
     var nDone = F.filter(function (f) { return f[2] === 'd'; }).length;
 
     var top = el('div', { class: 'dt-vtop' }, parent);
     var ringBox = el('div', { class: 'dt-ring' }, top);
-    var rs = sv('svg', { viewBox: '-60 -60 120 120', role: 'img', 'aria-label': nDone + ' von ' + F.length + ' Anforderungen umgesetzt', 'shape-rendering': 'crispEdges' }, ringBox);
+    var rs = sv('svg', { viewBox: '-60 -60 120 120', role: 'img', 'aria-label': nDone + ' von ' + F.length + ' ' + (V.unit || 'Anforderungen') + ' umgesetzt', 'shape-rendering': 'crispEdges' }, ringBox);
     F.forEach(function (f, i) {
       var a = (i / F.length) * Math.PI * 2 - Math.PI / 2, x = 46 * Math.cos(a), y = 46 * Math.sin(a), done = i < nDone;
       var srt = F.slice().sort(function (p, q2) { return (p[2] === 'd' ? 0 : 1) - (q2[2] === 'd' ? 0 : 1); })[i][2] === 'd';
       sv('rect', { x: x - 3.4, y: y - 3.4, width: 6.8, height: 6.8, fill: srt ? 'var(--ok)' : 'var(--w2)', stroke: '#1d130a', 'stroke-width': 1 }, rs);
     });
     var t1 = sv('text', { x: 0, y: 6, 'text-anchor': 'middle', class: 'dt-big' }, rs); t1.textContent = nDone + '/' + F.length;
-    var t2 = sv('text', { x: 0, y: 22, 'text-anchor': 'middle', class: 'dt-sm' }, rs); t2.textContent = 'UMGESETZT';
+    var t2 = sv('text', { x: 0, y: 22, 'text-anchor': 'middle', class: 'dt-sm' }, rs); t2.textContent = (V.centerLabel || 'UMGESETZT');
     var bars = el('div', { class: 'dt-bars' }, top);
     D.forEach(function (d) {
       var it = byD[d[0]], n = it.filter(function (f) { return f[2] === 'd'; }).length;
@@ -203,10 +204,10 @@
 
     var tools = el('div', { class: 'dt-tools' }, parent);
     var g1 = el('div', { class: 'dt-seg', role: 'group', 'aria-label': 'Status' }, tools), fb = {};
-    [['all', 'Alle'], ['d', 'Umgesetzt'], ['p', 'Teilweise']].forEach(function (x) { var b = el('button', { type: 'button', 'aria-pressed': x[0] === 'all' ? 'true' : 'false' }, g1, x[1]); fb[x[0]] = b; b.onclick = function () { filt = x[0]; for (var k in fb) fb[k].setAttribute('aria-pressed', k === filt); render(); }; });
+    [['all', 'Alle'], ['d', V.fd || 'Umgesetzt'], ['p', V.fp || 'Teilweise']].forEach(function (x) { var b = el('button', { type: 'button', 'aria-pressed': x[0] === 'all' ? 'true' : 'false' }, g1, x[1]); fb[x[0]] = b; b.onclick = function () { filt = x[0]; for (var k in fb) fb[k].setAttribute('aria-pressed', k === filt); render(); }; });
     var g2 = el('div', { class: 'dt-seg', role: 'group', 'aria-label': 'Ansicht' }, tools), vb = {};
     [['ring', 'Ring'], ['list', 'Liste']].forEach(function (x) { var b = el('button', { type: 'button', 'aria-pressed': x[0] === 'ring' ? 'true' : 'false' }, g2, x[1]); vb[x[0]] = b; b.onclick = function () { view = x[0]; for (var k in vb) vb[k].setAttribute('aria-pressed', k === view); build(); }; });
-    var inp = el('input', { type: 'search', placeholder: 'Feature suchen: Mine, Karawane, J04', 'aria-label': 'Features suchen' }, tools);
+    var inp = el('input', { type: 'search', placeholder: V.placeholder || 'Feature suchen: Mine, Karawane, J04', 'aria-label': 'Features suchen' }, tools);
     inp.oninput = function () { q = inp.value.toLowerCase(); render(); };
 
     var lay = el('div', { class: 'dt-grid' }, parent);
@@ -231,12 +232,12 @@
     function build() {
       chart.innerHTML = ''; nodes = {}; chords = [];
       if (view === 'ring') {
-        var s = sv('svg', { viewBox: '-330 -330 660 660', role: 'group', 'aria-label': 'Feature-Graph', 'shape-rendering': 'crispEdges' }, chart);
+        var s = sv('svg', { viewBox: '-355 -335 710 670', role: 'group', 'aria-label': 'Feature-Graph', 'shape-rendering': 'crispEdges' }, chart);
         var per = (360 - 8 * D.length) / F.length, a0 = 4, ang = {}, RN = 250;
         D.forEach(function (d) {
           var it = byD[d[0]], st = a0; it.forEach(function (f, i) { ang[f[0]] = a0 + (i + .5) * per; }); a0 += it.length * per;
           var mid = (st + a0) / 2, rad = mid * Math.PI / 180, lx = 300 * Math.sin(rad), ly = -300 * Math.cos(rad);
-          var t = sv('text', { x: lx, y: ly, 'text-anchor': 'middle', class: 'dt-dist' }, s); t.textContent = d[1].split(' ')[0].toUpperCase();
+          var t = sv('text', { x: lx, y: ly, 'text-anchor': 'middle', class: 'dt-dist' }, s); t.textContent = (d[2] || d[1].split(' ')[0]).toUpperCase();
           a0 += 8;
         });
         sv('circle', { r: RN, fill: 'none', stroke: '#0e0a06', 'stroke-opacity': .85, 'stroke-width': 40 }, s);
@@ -250,9 +251,9 @@
         var cg = sv('g', { 'text-anchor': 'middle' }, s); cg.setAttribute('class', 'dt-center'); nodes._c = cg;
         F.forEach(function (f) {
           var p = P(RN, ang[f[0]]), g = sv('g', { class: 'dt-nd', tabindex: 0, role: 'button', 'aria-label': f[0] + ' ' + f[1] + ', ' + (f[2] === 'd' ? 'umgesetzt' : 'teilweise') }, s);
-          block(g, f[2] === 'd', p[0], p[1]);
+          block(g, f[2] === 'd', p[0], p[1]); g.style.animationDelay = (F.indexOf(f) * 22) + 'ms'; g.classList.add('dt-in');
           var rt = ang[f[0]] < 180, tp = P(RN + 30, ang[f[0]]);
-          var t = sv('text', { x: tp[0], y: tp[1] + 4, 'text-anchor': rt ? 'start' : 'end', class: 'dt-nl' }, g); t.textContent = f[0];
+          var t = sv('text', { x: tp[0], y: tp[1] + 4, 'text-anchor': rt ? 'start' : 'end', class: 'dt-nl' }, g); t.textContent = V.hideId ? f[1] : f[0];
           g.addEventListener('click', function () { pick(f[0]); }); g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(f[0]); } });
           g.addEventListener('mouseenter', function () { hov = f[0]; render(); }); g.addEventListener('mouseleave', function () { hov = null; render(); });
           nodes[f[0]] = { g: g };
@@ -283,67 +284,142 @@
       var cg = nodes._c; if (cg) {
         cg.innerHTML = '';
         function tx(y, cls, s) { var t = sv('text', { y: y, class: cls }, cg); t.textContent = s; }
-        if (act) { var f = by[act]; tx(-8, 'dt-cid', act); tx(20, 'dt-cnm', f[1].length > 22 ? f[1].slice(0, 21) + '…' : f[1]); tx(44, 'dt-csb', f[2] === 'd' ? 'UMGESETZT' : 'BAUSTELLE'); }
-        else { tx(14, 'dt-cbg', nDone + '/' + F.length); tx(40, 'dt-csb', 'UMGESETZT'); }
+        if (act) { var f = by[act]; tx(-8, 'dt-cid', V.hideId ? dn[dk(act)] : act); tx(20, 'dt-cnm', f[1].length > 22 ? f[1].slice(0, 21) + '…' : f[1]); tx(44, 'dt-csb', f[2] === 'd' ? LB.dd : LB.pp); }
+        else { tx(14, 'dt-cbg', nDone + '/' + F.length); tx(40, 'dt-csb', V.centerLabel || 'UMGESETZT'); }
       }
     }
     function pick(id) {
       sel = id; var f = by[id], r = rel[id] || [], done = f[2] === 'd';
-      card.innerHTML = '<p class="k">' + id + ' · ' + esc(dn[dk(id)]) + '</p><h3>' + esc(f[1]) + '</h3><span class="dt-tag ' + (done ? 'd' : 'w') + '">' + (done ? 'Umgesetzt' : 'Teilweise, Baustelle') + '</span>' +
-        '<p>' + esc(f[3]) + '</p>' +
-        '<p class="dt-open"><b>' + (done ? 'Hinweis' : 'Offen') + ':</b> ' + esc(done ? ((V.HINT[id]) || 'Natürliche CTOV-Abnahme noch offen.') : ((V.GAP[id]) || 'Natürliche CTOV-Abnahme noch offen.')) + '</p>' +
-        '<p class="k">Hängt zusammen mit</p><p class="dt-rels">' + (r.length ? r.map(function (k) { return '<button type="button" data-id="' + k + '">' + k + ' ' + esc(by[k][1]) + '</button>'; }).join('') : 'keine abgeleitete Verbindung') + '</p>';
+      var open = (V.plain || (V.map && V.map[id] && V.map[id] !== 'V')) ? '' : '<p class="dt-open"><b>' + (done ? 'Hinweis' : 'Offen') + ':</b> ' + esc(done ? ((V.HINT && V.HINT[id]) || 'Natürliche CTOV-Abnahme noch offen.') : ((V.GAP && V.GAP[id]) || 'Natürliche CTOV-Abnahme noch offen.')) + '</p>';
+      var relh = L.length ? '<p class="k">Hängt zusammen mit</p><p class="dt-rels">' + (r.length ? r.map(function (k) { return '<button type="button" data-id="' + k + '">' + (V.hideId ? '' : k + ' ') + esc(by[k][1]) + '</button>'; }).join('') : 'keine abgeleitete Verbindung') + '</p>' : '';
+      var jump = V.jump && V.jump[id] ? '<p><button type="button" class="dt-go">Zum Abschnitt springen</button></p>' : '';
+      card.innerHTML = '<p class="k">' + (V.hideId ? '' : id + ' · ') + esc(dn[dk(id)]) + '</p><h3>' + esc(f[1]) + '</h3><span class="dt-tag ' + (done ? 'd' : 'w') + '">' + (done ? LB.d : LB.p) + '</span>' +
+        '<p>' + esc(f[3]) + '</p>' + open + relh + jump;
+      var gb = card.querySelector('.dt-go'); if (gb) gb.onclick = function () { var row = V.jump[id]; row.scrollIntoView({ behavior: 'smooth', block: 'center' }); row.classList.add('dt-flash'); setTimeout(function () { row.classList.remove('dt-flash'); }, 1600); };
       card.querySelectorAll('[data-id]').forEach(function (b) { b.onclick = function () { pick(b.dataset.id); }; });
       render();
     }
     build();
-    el('p', { class: 'dt-note' }, parent, 'Die Verbindungen sind aus dem Spec abgeleitet und keine Code-Abhängigkeiten. Alle bisherigen Prüfungen (501 Checks) liefen auf synthetischen Dev-Server-Fixtures; natürliche CTOV-, Client- und Performance-Abnahme stehen noch aus. Stand 04.11.2026.');
-    card.innerHTML = '<p class="k">Auswahl</p><h3>Feature antippen</h3><p>Ein Klick auf einen Block zeigt Beschreibung, Status, offene Punkte und die verbundenen Features. Die Balken oben filtern nach Bezirk.</p>';
+    el('p', { class: 'dt-note' }, parent, V.note || 'Die Verbindungen sind aus dem Spec abgeleitet und keine Code-Abhängigkeiten. Alle bisherigen Prüfungen (501 Checks) liefen auf synthetischen Dev-Server-Fixtures; natürliche CTOV-, Client- und Performance-Abnahme stehen noch aus. Stand 04.11.2026.');
+    card.innerHTML = '<p class="k">Auswahl</p><h3>Block antippen</h3><p>Ein Klick auf einen Block zeigt Beschreibung und Status' + (L.length ? ', offene Punkte und die verbundenen Features' : '') + '. Die Balken oben filtern nach Bereich.</p>';
     render();
   }
 
-  /* ---------- Feature-Explorer aus den vorhandenen Seitenabschnitten ---------- */
-  function explorer(parent) {
-    var feats = [];
+  /* ---------- Feature-Ring aus den Abschnitten einer Projektseite ---------- */
+  function pageRing(parent, name, color) {
+    var F = [], jump = {}, n = 0, D = [], seen = {};
+    function add(dKey, dName, title, desc, st, row) {
+      if (!seen[dKey]) { seen[dKey] = 1; D.push([dKey, dName, dName.split(' ')[0]]); }
+      var id = dKey + ('0' + (++n)).slice(-2); F.push([id, title, st, desc]); jump[id] = row; return id;
+    }
     document.querySelectorAll('.feature-row').forEach(function (r) {
-      var h = r.querySelector('h3'), p = r.querySelector('p'); if (h) feats.push({ n: h.textContent.trim(), d: p ? p.textContent.trim() : '', st: 'f', row: r });
+      var h = r.querySelector('h3'), p = r.querySelector('p'), sec = r.closest('.content-section'), hh = sec && sec.querySelector('h2');
+      if (h) add('A', 'Funktionen', h.textContent.trim().replace(/\.$/, ''), p ? p.textContent.trim() : '', 'd', r);
     });
     var sc = document.querySelectorAll('.status-columns > div');
-    sc.forEach(function (col, ci) { col.querySelectorAll('li').forEach(function (li) { feats.push({ n: li.textContent.trim().slice(0, 60), d: li.textContent.trim(), st: ci === 0 ? 'd' : 'w', row: col }); }); });
-    if (!feats.length) return;
-    var hasStatus = feats.some(function (f) { return f.st !== 'f'; }), sel = 0, filt = 'all';
-    var box = el('div', { class: 'dt-expl' }, parent);
-    el('h3', { class: 'dt-h3' }, box, 'Funktionen im Überblick');
-    var tools = el('div', { class: 'dt-tools' }, box);
-    if (hasStatus) {
-      var g = el('div', { class: 'dt-seg', role: 'group', 'aria-label': 'Status' }, tools), btns = {};
-      [['all', 'Alle'], ['d', 'Verfügbar'], ['w', 'Geplant']].forEach(function (x) { var b = el('button', { type: 'button', 'aria-pressed': x[0] === 'all' ? 'true' : 'false' }, g, x[1]); btns[x[0]] = b; b.onclick = function () { filt = x[0]; for (var k in btns) btns[k].setAttribute('aria-pressed', k === filt); draw(); }; });
-    }
-    var lay = el('div', { class: 'dt-grid' }, box), grid = el('div', { class: 'dt-blocks' }, lay), card = detailCard(lay);
-    function draw() {
-      grid.innerHTML = '';
-      feats.forEach(function (f, i) {
-        if (filt !== 'all' && f.st !== filt) return;
-        var b = el('button', { type: 'button', class: 'dt-blk ' + f.st + (i === sel ? ' sel' : '') }, grid);
-        b.innerHTML = '<i></i><span>' + esc(f.n) + '</span>';
-        b.onclick = function () { sel = i; draw(); show(); };
+    sc.forEach(function (col, ci) {
+      col.querySelectorAll('li').forEach(function (li) { var t = li.textContent.trim(); add(ci === 0 ? 'B' : 'C', ci === 0 ? 'Verfügbar' : 'Geplant', t.length > 48 ? t.slice(0, 47) + '…' : t, t, ci === 0 ? 'd' : 'p', col); });
+    });
+    if (F.length < 3) return false;
+    var map = {}; F.forEach(function (x) { map[x[0]] = x[0][0]; });
+    var hasPlan = F.some(function (x) { return x[2] === 'p'; });
+    villager(parent, { D: D, F: F, L: [], map: map, jump: jump, plain: true, hideId: true, unit: 'Funktionen', centerLabel: 'FUNKTIONEN',
+      labels: { d: hasPlan ? 'Verfügbar' : 'Umgesetzt', p: 'Geplant', dd: hasPlan ? 'VERFÜGBAR' : 'DA', pp: 'GEPLANT' },
+      fd: hasPlan ? 'Verfügbar' : 'Alle', fp: 'Geplant', placeholder: 'Funktion suchen',
+      note: name + ': Die Funktionen stammen aus den Abschnitten dieser Seite. Ein Klick springt zur passenden Stelle.' });
+    return true;
+  }
+
+  /* ---------- Portfolio: Ring aller Projekte ---------- */
+  function portfolioRing(parent, P) {
+    var V = P.ring; if (!V) return;
+    var f = {}; V.F.forEach(function (x) { f[x[0]] = x; });
+    villager(parent, V);
+  }
+
+  /* ---------- Animationen ---------- */
+  function animate() {
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) return;
+    document.documentElement.classList.add('dt-anim');
+    /* Einblenden beim Scrollen */
+    var sel = '.product-lead, .project-entry, .feature-row, .feature-card, .status-columns > div, .theme-list > div, .doc-links a, .source-panel, .download-main, .release-spec > div, .screenshot, .demo-video, .shared-world, .section-heading, .about-note, .closing, .gallery > *, .dt-stats > div, .dt-chart, .dt-detail, .capabilities li, .compat-list';
+    var els = Array.prototype.slice.call(document.querySelectorAll(sel));
+    if ('IntersectionObserver' in window) {
+      var io = new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('dt-shown'); io.unobserve(e.target); } });
+      }, { threshold: .12, rootMargin: '0px 0px -6% 0px' });
+      els.forEach(function (e, i) {
+        var r = e.getBoundingClientRect();
+        if (r.top < window.innerHeight * .95) { e.classList.add('dt-shown'); return; }
+        e.classList.add('dt-rev'); e.style.setProperty('--rd', ((i % 4) * 70) + 'ms'); io.observe(e);
       });
     }
-    function show() {
-      var f = feats[sel];
-      card.innerHTML = '<p class="k">' + (f.st === 'd' ? 'Verfügbar' : f.st === 'w' ? 'Geplant' : 'Funktion') + '</p><h3>' + esc(f.n) + '</h3><p>' + esc(f.d) + '</p><p><button type="button" class="dt-go">Zum Abschnitt springen</button></p>';
-      card.querySelector('.dt-go').onclick = function () { f.row.scrollIntoView({ behavior: 'smooth', block: 'center' }); f.row.classList.add('dt-flash'); setTimeout(function () { f.row.classList.remove('dt-flash'); }, 1600); };
+    /* Zähler hochzählen */
+    var cio = 'IntersectionObserver' in window ? new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (!e.isIntersecting) return; cio.unobserve(e.target);
+        var el2 = e.target, end = parseInt(el2.getAttribute('data-n'), 10), t0 = performance.now();
+        (function step(t) { var k = Math.min(1, (t - t0) / 900); el2.textContent = Math.round(end * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(step); })(t0);
+      });
+    }, { threshold: .5 }) : null;
+    if (cio) document.querySelectorAll('.dt-stats b').forEach(function (b) {
+      var v = b.textContent.trim(); if (/^\d+$/.test(v)) { b.setAttribute('data-n', v); b.textContent = '0'; cio.observe(b); }
+    });
+    /* Banner-Parallax, Fortschrittsleiste, Titel-Neigung */
+    var ban = document.querySelector('.dt-banner svg'), prog = el('div', { class: 'dt-progress', 'aria-hidden': 'true' }, document.body), tick = false;
+    function onScroll() {
+      if (tick) return; tick = true;
+      requestAnimationFrame(function () {
+        var y = window.scrollY || 0, h = document.documentElement.scrollHeight - window.innerHeight;
+        prog.style.transform = 'scaleX(' + (h > 0 ? Math.min(1, y / h) : 0) + ')';
+        if (ban) ban.style.transform = 'translateY(' + Math.min(26, y * .08) + 'px) scale(1.06)';
+        tick = false;
+      });
     }
-    draw(); show();
+    window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
+    /* Glühwürmchen */
+    var ff = el('div', { class: 'dt-fireflies', 'aria-hidden': 'true' }, document.body);
+    for (var i = 0; i < 16; i++) {
+      var s = el('i', null, ff);
+      s.style.left = (Math.random() * 100) + '%'; s.style.top = (20 + Math.random() * 80) + '%';
+      s.style.animationDuration = (9 + Math.random() * 12) + 's, ' + (2 + Math.random() * 3) + 's';
+      s.style.animationDelay = (-Math.random() * 12) + 's, ' + (-Math.random() * 3) + 's';
+    }
+    /* Knöpfe: Klick-Funken */
+    document.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('.button, .chip, .dt-seg button, .section-nav a'); if (!b) return;
+      for (var k = 0; k < 6; k++) {
+        var p = el('i', { class: 'dt-spark', 'aria-hidden': 'true' }, document.body), a = (k / 6) * Math.PI * 2 + Math.random();
+        p.style.left = e.clientX + 'px'; p.style.top = e.clientY + 'px';
+        p.style.setProperty('--dx', (Math.cos(a) * (18 + Math.random() * 18)) + 'px'); p.style.setProperty('--dy', (Math.sin(a) * (18 + Math.random() * 18)) + 'px');
+        (function (q) { setTimeout(function () { q.remove(); }, 650); })(p);
+      }
+    });
+    /* Überschriften tippen */
+    document.querySelectorAll('.dt-section h2').forEach(function (h) {
+      var full = h.textContent; h.setAttribute('aria-label', full); h.textContent = '';
+      var obs = new IntersectionObserver(function (es) {
+        if (!es[0].isIntersecting) return; obs.disconnect(); var i2 = 0;
+        var t = setInterval(function () { h.textContent = full.slice(0, ++i2); if (i2 >= full.length) clearInterval(t); }, 32);
+      }, { threshold: .6 }); obs.observe(h);
+    });
   }
 
   function init() {
     banner();
     var P = window.DT_PAGE; if (!P) return;
     var s = section();
-    if (P.type === 'villager') { s.h2.textContent = 'Wie weit ist das Dorf?'; villager(s.body); }
-    else if (P.type === 'portfolio') { s.h2.textContent = 'Was in den Projekten passiert.'; lanes(s.body, P.all); }
-    else if (P.type === 'releases') { s.h2.textContent = P.name + ': Release für Release.'; releaseChart(s.body, P.releases, P.name); explorer(s.body); }
+    if (P.type === 'villager') { s.h2.textContent = 'Wie weit ist das Dorf?'; villager(s.body, window.DT_V); }
+    else if (P.type === 'portfolio') {
+      s.h2.textContent = 'Das Dorf aus allen Projekten.'; portfolioRing(s.body, P);
+      var h3 = el('h3', { class: 'dt-h3 dt-sub' }, s.body, 'Releases im Zeitverlauf'); lanes(s.body, P.all);
+    }
+    else if (P.type === 'releases') {
+      s.h2.textContent = P.name + ': Release für Release.'; releaseChart(s.body, P.releases, P.name);
+      var box = el('div', { class: 'dt-expl' }, s.body); el('h3', { class: 'dt-h3' }, box, 'Der Funktionsring'); pageRing(box, P.name);
+    }
+    animate();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
