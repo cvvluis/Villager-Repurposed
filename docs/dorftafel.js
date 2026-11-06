@@ -277,10 +277,8 @@
       var act = hov || sel, r = act ? (rel[act] || []) : [];
       F.forEach(function (f) {
         var n = nodes[f[0]]; if (!n) return;
-        var faded = !ok(f);
-        // Blocks never dim on plain hover (only an explicit click selection dims unrelated ones, lightly).
-        var rs = sel ? (rel[sel] || []) : [], inSel = !sel || f[0] === sel || rs.indexOf(f[0]) > -1;
-        n.g.classList.toggle('faded', faded); n.g.classList.toggle('dim', !faded && !inSel && rs.length > 0); n.g.classList.toggle('sel', f[0] === sel);
+        var inRel = !act || f[0] === act || r.indexOf(f[0]) > -1, faded = !(ok(f) && inRel);
+        n.g.classList.toggle('faded', faded); n.g.classList.toggle('sel', f[0] === sel);
       });
       chords.forEach(function (c) { var on = act && (c.a === act || c.b === act); c.el.classList.toggle('on', !!on); });
       var cg = nodes._c; if (cg) {
@@ -302,7 +300,7 @@
       render();
     }
     build();
-    el('p', { class: 'dt-note' }, parent, V.note || 'Die Verbindungen sind aus dem Spec abgeleitet und keine Code-Abhängigkeiten. Alle bisherigen automatischen Prüfungen (23 Gruppen) liefen in einer Dev-Welt; natürliche CTOV-, Client- und Performance-Abnahme stehen noch aus. Stand 06.11.2026.');
+    el('p', { class: 'dt-note' }, parent, V.note || 'Die Verbindungen sind aus dem Spec abgeleitet und keine Code-Abhängigkeiten. Alle bisherigen Prüfungen (501 Checks) liefen auf synthetischen Dev-Server-Fixtures; natürliche CTOV-, Client- und Performance-Abnahme stehen noch aus. Stand 04.11.2026.');
     card.innerHTML = '<p class="k">Auswahl</p><h3>Block antippen</h3><p>Ein Klick auf einen Block zeigt Beschreibung und Status' + (L.length ? ', offene Punkte und die verbundenen Features' : '') + '. Die Balken oben filtern nach Bereich.</p>';
     render();
   }
@@ -408,7 +406,65 @@
     });
   }
 
+  /* ---------- Launch-Animation ---------- */
+  function skyline(parent) {
+    var W = 192, H = 40, seed = 5;
+    function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+    var s = sv('svg', { viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'xMidYMax slice', 'shape-rendering': 'crispEdges', class: 'dl-sky' }, parent);
+    function R(x, y, w, h, c, cls) { var r = sv('rect', { x: x, y: y, width: w, height: h, fill: c }, s); if (cls) r.setAttribute('class', cls); return r; }
+    for (var i = 0; i < 40; i++) R(Math.floor(rnd() * W), Math.floor(rnd() * 18), 1, 1, '#fff4d4', 'dl-star');
+    var x = -2;
+    while (x < W) {
+      var w = 11 + Math.floor(rnd() * 8), h = 10 + Math.floor(rnd() * 12), top = H - 3 - h;
+      R(x, top, w, h, '#0d0906');
+      for (var r2 = 0; r2 < 5; r2++) R(x - 1 + r2, top - r2 - 1, w + 2 - 2 * r2, 1, '#080504');
+      var cols = Math.max(1, Math.floor((w - 2) / 4));
+      for (var c = 0; c < cols; c++) for (var row = 0; row < Math.floor(h / 6); row++) {
+        if (rnd() > .4) { var win = R(x + 2 + c * 4, top + 3 + row * 6, 2, 3, 'var(--accent)', 'dl-w'); win.style.animationDelay = (900 + (x + c * 4) * 9 + row * 120) + 'ms'; }
+      }
+      x += w + 2 + Math.floor(rnd() * 4);
+    }
+    R(0, H - 3, W, 3, '#080504');
+  }
+  function launch() {
+    var root = document.documentElement;
+    if (!root.classList.contains('dt-launch')) return;
+    try { sessionStorage.setItem('dt-seen:' + location.pathname, '1'); } catch (e) {}
+    var parts = document.title.split(/\s[\u2014\u2013-]\s/), name = parts[0] || 'cvluis', sub = parts[1] || 'Minecraft Java';
+    var ov = el('div', { id: 'dt-launch', 'aria-hidden': 'true' }, document.body);
+    el('div', { class: 'dl-half l' }, ov); el('div', { class: 'dl-half r' }, ov);
+    var st = el('div', { class: 'dl-stage' }, ov);
+    skyline(st);
+    var blk = el('div', { class: 'dl-block' }, st);
+    for (var d = 0; d < 8; d++) { var p = el('i', { class: 'dl-dust' }, blk); p.style.setProperty('--dx', ((d - 3.5) * 24) + 'px'); p.style.setProperty('--dy', (-(6 + (d % 3) * 9)) + 'px'); }
+    var h = el('div', { class: 'dl-title' + (/^cvluis/i.test(name) ? ' sans' : '') }, st);
+    name.split('').forEach(function (ch, i) { var s = el('span', null, h, ch === ' ' ? '\u00a0' : ch); s.style.animationDelay = (700 + i * 55) + 'ms'; });
+    el('div', { class: 'dl-sub' }, st, sub);
+    var bar = el('div', { class: 'dl-bar' }, st), cells = [];
+    for (var k = 0; k < 14; k++) cells.push(el('i', null, bar));
+    var stat = el('div', { class: 'dl-stat' }, st, 'Lade Dorf \u2026');
+    var skip = el('button', { type: 'button', class: 'dl-skip' }, ov, '\u00dcberspringen \u203a');
+    root.classList.remove('dt-pre');
+    var msgs = { 0: 'Lade Dorf \u2026', 3: 'Z\u00fcnde Laternen \u2026', 6: 'Baue H\u00e4user \u2026', 9: 'L\u00e4ute die Glocke \u2026' };
+    var n = 0, over = false, iv = null, tm = [];
+    function go() {
+      if (over) return; over = true; clearInterval(iv); tm.forEach(clearTimeout);
+      cells.forEach(function (c) { c.classList.add('on'); }); stat.textContent = 'Bereit.';
+      ov.classList.add('go'); root.classList.remove('dt-launch');
+      document.removeEventListener('keydown', onKey);
+      setTimeout(function () { ov.remove(); }, 1300);
+    }
+    function onKey(e) { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }
+    function step() {
+      if (n < cells.length) { cells[n].classList.add('on'); if (msgs[n]) stat.textContent = msgs[n]; n++; }
+      else { clearInterval(iv); stat.textContent = 'Bereit.'; tm.push(setTimeout(go, 380)); }
+    }
+    tm.push(setTimeout(function () { iv = setInterval(step, 100); }, 800));
+    ov.addEventListener('click', go); skip.addEventListener('click', go); document.addEventListener('keydown', onKey);
+  }
+
   function init() {
+    launch();
     banner();
     var P = window.DT_PAGE; if (!P) return;
     var s = section();
