@@ -274,7 +274,7 @@ html body h1 { text-shadow: 4px 4px 0 #2a1a0c, 0 0 28px var(--glow); }
 @keyframes dt-pop { from { opacity: 0; transform: scale(.1) rotate(-30deg); } }
 .dt-nd:not(.faded) rect[fill="var(--ok)"] { animation: dt-pulse 3.2s steps(4) infinite; }
 @keyframes dt-pulse { 50% { filter: brightness(1.35); } }
-.dt-nd:hover { animation: dt-wob .4s steps(4); }
+.dt-nd:hover { filter: brightness(1.25); }
 @keyframes dt-wob { 25% { transform: translateY(-3px); } 75% { transform: translateY(2px); } }
 .dt-ring svg { overflow: visible; }
 .dt-stats > div { animation: dt-bob 5s ease-in-out infinite; }
