@@ -277,8 +277,9 @@
       var act = hov || sel, r = act ? (rel[act] || []) : [];
       F.forEach(function (f) {
         var n = nodes[f[0]]; if (!n) return;
-        var inRel = !act || f[0] === act || r.indexOf(f[0]) > -1, faded = !(ok(f) && inRel);
-        n.g.classList.toggle('faded', faded); n.g.classList.toggle('sel', f[0] === sel);
+        var inRel = !act || f[0] === act || r.indexOf(f[0]) > -1, faded = !ok(f);
+        // Hover/selection only dims unrelated blocks lightly, and only when the feature has connections at all.
+        n.g.classList.toggle('faded', faded); n.g.classList.toggle('dim', !faded && !inRel && r.length > 0); n.g.classList.toggle('sel', f[0] === sel);
       });
       chords.forEach(function (c) { var on = act && (c.a === act || c.b === act); c.el.classList.toggle('on', !!on); });
       var cg = nodes._c; if (cg) {
@@ -300,7 +301,7 @@
       render();
     }
     build();
-    el('p', { class: 'dt-note' }, parent, V.note || 'Die Verbindungen sind aus dem Spec abgeleitet und keine Code-Abhängigkeiten. Alle bisherigen Prüfungen (501 Checks) liefen auf synthetischen Dev-Server-Fixtures; natürliche CTOV-, Client- und Performance-Abnahme stehen noch aus. Stand 04.11.2026.');
+    el('p', { class: 'dt-note' }, parent, V.note || 'Die Verbindungen sind aus dem Spec abgeleitet und keine Code-Abhängigkeiten. Alle bisherigen automatischen Prüfungen (23 Gruppen) liefen in einer Dev-Welt; natürliche CTOV-, Client- und Performance-Abnahme stehen noch aus. Stand 06.11.2026.');
     card.innerHTML = '<p class="k">Auswahl</p><h3>Block antippen</h3><p>Ein Klick auf einen Block zeigt Beschreibung und Status' + (L.length ? ', offene Punkte und die verbundenen Features' : '') + '. Die Balken oben filtern nach Bereich.</p>';
     render();
   }
