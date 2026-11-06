@@ -220,7 +220,7 @@ main { width: min(1100px, 100%); margin: 0 auto; padding: 0 clamp(22px, 4vw, 58p
 .dt-thread.on { opacity: 1; stroke: var(--red, #d9483a); stroke-width: 3; }
 .dt-nd .halo { opacity: 0; } .dt-nd:hover .halo, .dt-nd.sel .halo, .dt-nd:focus-visible .halo { opacity: 1; }
 .dt-nd.sel .halo { stroke: var(--red, #d9483a); }
-.dt-nd, .dt-li { transition: opacity .2s; } .faded { opacity: .14; }
+.dt-nd, .dt-li { transition: opacity .2s; } .faded { opacity: .14; } .dt-nd.dim, .dt-li.dim { opacity: .6; }
 .dt-cid { font: 700 18px var(--mono, var(--px)); fill: var(--accent); } .dt-cnm { font: 700 16px var(--mono, var(--px)); fill: #fff4d4; }
 .dt-cbg { font: 700 44px var(--mono, var(--px)); fill: #fff4d4; } .dt-csb { font: 600 12px var(--mono, var(--px)); fill: var(--muted, #e0cfa4); letter-spacing: .08em; }
 .dt-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px 18px; }
@@ -274,7 +274,7 @@ html body h1 { text-shadow: 4px 4px 0 #2a1a0c, 0 0 28px var(--glow); }
 @keyframes dt-pop { from { opacity: 0; transform: scale(.1) rotate(-30deg); } }
 .dt-nd:not(.faded) rect[fill="var(--ok)"] { animation: dt-pulse 3.2s steps(4) infinite; }
 @keyframes dt-pulse { 50% { filter: brightness(1.35); } }
-.dt-nd:hover { animation: dt-wob .4s steps(4); }
+.dt-nd:hover { filter: brightness(1.25); }
 @keyframes dt-wob { 25% { transform: translateY(-3px); } 75% { transform: translateY(2px); } }
 .dt-ring svg { overflow: visible; }
 .dt-stats > div { animation: dt-bob 5s ease-in-out infinite; }
