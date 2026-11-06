@@ -30,3 +30,17 @@ AGENTS.override.md
 
 # Conflict snapshot retained by the workspace tooling
 /src/main/java/de/villagerplus/village/Sites (# Edit conflict *.java
+
+# Internal working documents (kept locally, not published)
+/AGENTS.md
+/CLAUDE.md
+/AI-HANDOFF.md
+/FEATURES.md
+/PLAN*.md
+/SPEC.md
+/offen.md
+/.cursorignore.txt
+/skills-lock.json
+/docs/*.md
+/docs/chronicles/
+/docs/plans/
