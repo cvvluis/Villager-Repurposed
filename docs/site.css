@@ -354,3 +354,10 @@ html.dt-launch #dt-launch, html.dt-launch #dt-launch * { animation-play-state: r
 @media (max-width: 640px) { .dl-block { width: 68px; height: 68px; } .dl-bar i { width: 13px; height: 13px; } .dl-skip { right: 10px; bottom: 10px; } }
 #dt-launch.go .dl-skip { opacity: 0; transition: opacity .15s; }
 .dl-title.sans { font-family: var(--sans, Nunito, sans-serif); font-weight: 800; letter-spacing: .04em; }
+
+/* ===== Sprachschalter ===== */
+.dt-lang { display: inline-flex; margin-left: 6px; }
+.dt-lang button { font: 600 12px var(--mono, var(--px, monospace)); color: #fff; background: var(--stone, #7f7f84); border: 3px solid #111; padding: 2px 8px; cursor: pointer; text-shadow: 2px 2px 0 #3c3c40; box-shadow: inset -3px -3px 0 #4a4a50, inset 3px 3px 0 #b8b8bf; }
+.dt-lang button + button { margin-left: -3px; }
+.dt-lang button:hover { background: #8c8c96; }
+.dt-lang button[aria-pressed="true"] { background: var(--pb); border-color: var(--pb-e, #0b3d1e); text-shadow: 2px 2px 0 var(--pb-d); box-shadow: inset -3px -3px 0 var(--pb-d), inset 3px 3px 0 var(--pb-l); }

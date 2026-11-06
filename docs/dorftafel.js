@@ -463,11 +463,92 @@
     ov.addEventListener('click', go); skip.addEventListener('click', go); document.addEventListener('keydown', onKey);
   }
 
+  /* ---------- Sprache: Englisch Standard, Deutsch umschaltbar ---------- */
+  var LANG = (function () {
+    try {
+      var q = /[?&]lang=(de|en)/.exec(location.search);
+      if (q) { localStorage.setItem('dt-lang', q[1]); return q[1]; }
+      var s = localStorage.getItem('dt-lang'); if (s === 'de' || s === 'en') return s;
+    } catch (e) {}
+    return 'en';
+  })();
+  var LC = null;
+  function norm(s) { return s.replace(/\s+/g, ' ').trim(); }
+  function buildLC() { LC = {}; var d = window.DT_DICT || {}; for (var k in d) LC[norm(k).toLowerCase()] = d[k]; }
+  function cased(src, out) { return (src.length > 2 && src === src.toUpperCase() && src !== src.toLowerCase()) ? out.toUpperCase() : out; }
+  function look(n) {
+    if (!LC) buildLC();
+    var k = n.toLowerCase(), has = Object.prototype.hasOwnProperty;
+    if (has.call(LC, k)) return cased(n, LC[k]);
+    if (!/\.$/.test(n) && has.call(LC, k + '.')) return cased(n, LC[k + '.'].replace(/\.$/, ''));
+    if (/\u2026$/.test(n) && n.length > 30) {
+      var pre = k.slice(0, -1);
+      for (var key in LC) { if (key.indexOf(pre) === 0) { var full = LC[key]; return full.length > 48 ? full.slice(0, 47) + '\u2026' : full; } }
+    }
+    return null;
+  }
+  var RULES = [
+    [/^(\d+) von (\d+) (.+) umgesetzt$/, function (m) { return m[1] + ' of ' + m[2] + ' ' + (look(m[3]) || m[3]) + ' done'; }],
+    [/^Ein Block steht f\u00fcr (\d+) Commits?\. Auswahl per Klick oder Pfeiltasten\.$/, function (m) { return 'One block stands for ' + m[1] + (m[1] === '1' ? ' commit' : ' commits') + '. Select by click or arrow keys.'; }],
+    [/^(.+): Release f\u00fcr Release\.$/, function (m) { return m[1] + ': release by release.'; }],
+    [/^Releases von (.+)$/, function (m) { return 'Releases of ' + m[1]; }],
+    [/^(.+): Die Funktionen stammen aus den Abschnitten dieser Seite\. Ein Klick springt zur passenden Stelle\.$/, function (m) { return m[1] + ': The features come from the sections of this page. A click jumps to the matching spot.'; }],
+    [/^([A-Z](?:\.[A-Z])?\d{2}) \u00b7 (.+)$/, function (m) { return m[1] + ' \u00b7 ' + (look(m[2]) || m[2]); }],
+    [/^(\S+) (.+), (umgesetzt|teilweise)$/, function (m) { return m[1] + ' ' + (look(m[2]) || m[2]) + ', ' + (m[3] === 'umgesetzt' ? 'done' : 'partial'); }],
+    [/^([A-Z](?:\.[A-Z])?\d{2}) (.+)$/, function (m) { var t = look(m[2]); return t ? m[1] + ' ' + t : null; }]
+  ];
+  function tr(s) {
+    var n = norm(s); if (!n || !/[A-Za-z\u00c4\u00d6\u00dc\u00e4\u00f6\u00fc\u00df]/.test(n)) return s;
+    var out = look(n);
+    if (out == null) { for (var i = 0; i < RULES.length; i++) { var m = RULES[i][0].exec(n); if (m) { out = RULES[i][1](m); if (out != null) break; } } }
+    if (out == null) return s;
+    return s.match(/^\s*/)[0] + out + s.match(/\s*$/)[0];
+  }
+  var ATTRS = ['alt', 'aria-label', 'title', 'placeholder'];
+  function fixText(nd) {
+    var p = nd.parentNode; if (!p || /^(SCRIPT|STYLE|CODE|PRE|TEXTAREA)$/.test(p.nodeName)) return;
+    var t = tr(nd.nodeValue); if (t !== nd.nodeValue) nd.nodeValue = t;
+  }
+  function fixAttr(e, a) { var v = e.getAttribute(a); if (!v) return; var t = tr(v); if (t !== v) e.setAttribute(a, t); }
+  function walk(root) {
+    var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null), n, list = [];
+    while ((n = w.nextNode())) list.push(n);
+    list.forEach(fixText);
+    var els = root.nodeType === 1 ? [root].concat(Array.prototype.slice.call(root.querySelectorAll('[alt],[aria-label],[title],[placeholder]'))) : [];
+    els.forEach(function (e) { ATTRS.forEach(function (a) { if (e.hasAttribute && e.hasAttribute(a)) fixAttr(e, a); }); });
+  }
+  function i18n() {
+    document.documentElement.lang = LANG;
+    if (LANG !== 'en') return;
+    document.title = tr(document.title);
+    document.querySelectorAll('meta[name="description"],meta[property^="og:"],meta[name^="twitter:"]').forEach(function (m) { var c = m.getAttribute('content'); if (c) { var t = tr(c); if (t !== c) m.setAttribute('content', t); } });
+    walk(document.body);
+    new MutationObserver(function (ms) {
+      ms.forEach(function (m) {
+        if (m.type === 'characterData') fixText(m.target);
+        else if (m.type === 'attributes') fixAttr(m.target, m.attributeName);
+        else m.addedNodes.forEach(function (nd) { if (nd.nodeType === 3) fixText(nd); else if (nd.nodeType === 1) walk(nd); });
+      });
+    }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ATTRS });
+  }
+  function langSwitch() {
+    var nav = document.querySelector('.topbar nav') || document.querySelector('.topbar'); if (!nav) return;
+    var w = el('span', { class: 'dt-lang', role: 'group', 'aria-label': 'Language' }, nav);
+    [['en', 'EN', 'English'], ['de', 'DE', 'Deutsch']].forEach(function (x) {
+      var b = el('button', { type: 'button', 'aria-pressed': String(LANG === x[0]), lang: x[0], title: x[2] }, w, x[1]);
+      b.onclick = function () { if (LANG === x[0]) return; try { localStorage.setItem('dt-lang', x[0]); } catch (e) {} location.reload(); };
+    });
+  }
+
   function init() {
+    i18n();
+    langSwitch();
     launch();
+    document.documentElement.classList.remove('dt-pre');
     banner();
     var P = window.DT_PAGE; if (!P) return;
     var s = section();
+    if (location.hash === '#fortschritt') setTimeout(function () { s.sec.scrollIntoView(); }, 50);
     if (P.type === 'villager') { s.h2.textContent = 'Wie weit ist das Dorf?'; villager(s.body, window.DT_V); }
     else if (P.type === 'portfolio') {
       s.h2.textContent = 'Das Dorf aus allen Projekten.'; portfolioRing(s.body, P);
