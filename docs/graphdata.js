@@ -65,7 +65,7 @@ var F=[
 ];
 var GAP={
 G01:"Kein garantierter Mindestabstand zwischen CTOV-Häusern, bestehende Dörfer werden nicht umgebaut. Abstände, Vorgärten und Wege im Spiel prüfen.",
-G02:"Ein kleines natürliches Dorf mit 2–3 Bewohnern muss die Pflichtbauten mit echter Versorgung bis zum Abschluss und über einen Neustart durchlaufen.",
+G02:"Ein kleines natürliches Dorf mit 2–3 Bewohnern muss die Pflichtbauten mit echter Versorgung bis zum Abschluss und über einen Neustart durchlaufen. Stand im Testlauf (6.11.): Holzbeschaffung und Gerüst-Ersatz laufen, dem Kornspeicher fehlen noch Steinziegel aus dem Bergbau.",
 G03:"Natürlicher CTOV-Lieferlauf mehrerer Berufe mit echtem Materialbedarf.",
 G04:"Natürliche Einlagerung, Kochen und Versorgung im CTOV-Dorf.",
 G05:"Natürlicher Schmiedezyklus mit echtem Bestand und Neustart.",
