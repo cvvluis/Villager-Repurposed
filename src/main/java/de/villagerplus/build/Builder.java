@@ -182,6 +182,7 @@ public final class Builder {
 	private static final int[] SITE_REJECT = new int[10];
 	private static final java.util.Map<String, Integer> GRADE_REJECT = new java.util.TreeMap<>();
 	/** Diagnostic civic search: [Plan-Pruefungen, Parzelle, Zone, Konflikt, Weg, bestanden] since the last log line. */
+	private static final java.util.Map<Long, Long> CIVIC_DIAG_AT = new java.util.HashMap<>();
 	private static final java.util.Map<Long, int[][]> CIVIC_REJECT_BY_VILLAGE = new java.util.HashMap<>();
 
 	/** Candidate preflight uses the exact generated house and its approach yard, including safe-clearable plants. */
@@ -3194,25 +3195,26 @@ public final class Builder {
 				if (page.complete()) persistCivicSiteSearch(ref, search);
 				c.st().buildCheckAt = search.retryAt > c.now() ? search.retryAt : c.now() + CIVIC_SITE_RETRY_TICKS;
 				if (type.equals(Blueprints.STORAGE) && completedCycle) STORAGE_BLOCKED.put(ref.bell().asLong(), c.now() + 24000L);
-				if (c.now() - lastDiag > 1200) {
-					lastDiag = c.now();
-					LOGGER.info("Villagers: Repurposed: Bauplatzsuche fuer '{}' fortgesetzt (Variante {}, {}, Kandidat {}/{}, besuchte Spalten {}, halbe Kante {}, Hoehe {}), noch kein passender Standort",
-						type, search.variantIndex + 1, search.terraced ? "terrassiertes Gelaende" : search.tolerant ? "unebenes Gelaende" : "ebener Bauplatz",
-						search.nextCandidate, Sites.systematicCandidateCount(min, max), search.visitedColumns().size(), half, headroom);
+				if (c.now() - CIVIC_DIAG_AT.getOrDefault(ref.bell().asLong(), Long.MIN_VALUE / 2) > 1200) {
+					CIVIC_DIAG_AT.put(ref.bell().asLong(), c.now());
+					LOGGER.info("Villagers: Repurposed: Bauplatzsuche fuer '{}' (Glocke {}) fortgesetzt (Variante {}, {}, Kandidat {}/{}, besuchte Spalten {}, halbe Kante {}, Hoehe {}), noch kein passender Standort (Bezugshoehe {}, Glocke y {}, Strassenanker {})",
+						type, ref.bell().toShortString(), search.variantIndex + 1, search.terraced ? "terrassiertes Gelaende" : search.tolerant ? "unebenes Gelaende" : "ebener Bauplatz",
+						search.nextCandidate, Sites.systematicCandidateCount(min, max), search.visitedColumns().size(), half, headroom,
+						civicAnchor.getY(), ref.bell().getY(), civicAnchor.toShortString());
 					if (design != null) {
 						StringBuilder extents = new StringBuilder();
 						for (Direction facing : Direction.Plane.HORIZONTAL) {
 							extents.append(facing.getName()).append(java.util.Arrays.toString(civicPlanExtents(c, ref, selectedType, selectedVariant, selectedDesign, style, civicAnchor, facing))).append(' ');
 						}
-						LOGGER.info("Villagers: Repurposed: Bauplatzsuche '{}' Plan-Ausdehnung [minX, maxX, minZ, maxZ] je Tuerrichtung (Suchquadrat +-{}): {}", type, half, extents);
+						LOGGER.info("Villagers: Repurposed: Bauplatzsuche '{}' (Glocke {}) Plan-Ausdehnung [minX, maxX, minZ, maxZ] je Tuerrichtung (Suchquadrat +-{}): {}", type, ref.bell().toShortString(), half, extents);
 					}
 					// Per pass since the last report: column reasons, then the full-plan checks of the columns that survived.
 					String[] passNames = {"eben", "tolerant", "terrassiert"};
 					int[][] passes = CIVIC_REJECT_BY_VILLAGE.get(ref.bell().asLong());
 					for (int pass = 0; pass < passes.length; pass++) {
 						if (java.util.Arrays.stream(passes[pass]).sum() == 0) continue;
-						LOGGER.info("Villagers: Repurposed: Bauplatz-Ablehnung '{}' Pass {}: Spalten {} {} Plan [geprueft, Parzelle, Zone, Konflikt, Weg, bestanden] {}",
-							type, passNames[pass], Sites.SCAN_REJECT_LEGEND, java.util.Arrays.toString(java.util.Arrays.copyOfRange(passes[pass], 0, 16)),
+						LOGGER.info("Villagers: Repurposed: Bauplatz-Ablehnung '{}' (Glocke {}) Pass {}: Spalten {} {} Plan [geprueft, Parzelle, Zone, Konflikt, Weg, bestanden] {}",
+							type, ref.bell().toShortString(), passNames[pass], Sites.SCAN_REJECT_LEGEND, java.util.Arrays.toString(java.util.Arrays.copyOfRange(passes[pass], 0, 16)),
 							java.util.Arrays.toString(java.util.Arrays.copyOfRange(passes[pass], 16, 22)));
 						java.util.Arrays.fill(passes[pass], 0);
 					}
