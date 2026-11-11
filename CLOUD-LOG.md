@@ -20,3 +20,24 @@ Ausnahmen: Expedition (Holz), Bergleute (miningUntil+400, insideMine), Karawane 
 Geprueft: Scratch (reine Zustandslogik) 10 Pruefungen PASS; kompiliert. NICHT in-world geprueft (EULA), Fixture `strandrescue` nicht ausgefuehrt,
 Bundles housesearch/roles/mining/miningcycle/woodcuttinggroup nicht gelaufen, kein Naturlauf.
 Naechster Schritt: nach EULA `bash tools/cloud/autotest.sh strandrescue` und housesearch.
+
+## P7 - Audit (strenger Maßstab: Code + registrierter In-world-Check; Lese-Agent, NICHT von mir nachgeprüft, Hinweis statt Beweis)
+### G (Agent-Bericht, Stichproben offen)
+| ID | Status | Kernbeleg | Lücke |
+|---|---|---|---|
+| G01 | TEIL | HOUSE_MARGIN=12 (houseplot), JigsawHouseSpacingMixin/g01spacing, HouseYardChecks | kein Check einer generierten Siedlung; Bäume nur Setzling im Vorgarten |
+| G02 | OK | Builder.nextSpecial, milestones | DevelopmentChecks nur im Monolith-Pfad |
+| G03 | OK | StockPolicyChecks (stockpolicy) | - |
+| G04 | OK | StockPolicyChecks/FoodChecks | rohes Fleisch nicht explizit geprüft |
+| G05 | OK | StockPolicyChecks, EquipmentMaintenanceChecks | Reparaturmaterial im Zentraldepot, nicht in der Kammer |
+| G06 | OK | SchoolChecks (school) | - |
+| G07 | OK | KitchenFurnisherChecks | Topf/Brett optional (Fallback Barrel) |
+| G08 | OK | StationShedChecks | positiver Auslöser nicht geprüft |
+| G09 | TEIL | HouseDesignCatalog, TemplateLibraryChecks | keine CTOV-Asset-Palette; 3 Template-Familien |
+| G10 | OK | CivicCenter/Plaza/MarketPlanningChecks | - |
+| G11 | TEIL | Demolition/BuildingRelocation + Checks | nur spielerausgelöst, keine autonome Erkennung |
+| G12 | TEIL | MiningSafetyChecks | Teleport-Fallback in Mining.approachMineStep |
+| G13 | OK | MineLifecycleChecks | - |
+| G14 | TEIL | NetworkDiscoveryChecks | geladene Nachbarn ohne Handelskontakt verlinkt; Eigenname ohne Check |
+| G15 | OK | WallConstructionChecks, developmentwall | keine Wand ab 192 Blöcken; kein Langzeit-Check |
+Hinweis: RailMetropolisChecks ohne Aufrufer; Gruppen ctov*, tafelgross, templatebuild u. a. nicht in AutoTest-Sammelarrays.
