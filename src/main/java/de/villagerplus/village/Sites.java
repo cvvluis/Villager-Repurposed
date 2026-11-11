@@ -70,8 +70,13 @@ public final class Sites {
 	 * 2 village level, 3 market reservation, 4 rect unloaded, 5 rim too high, 6 uneven (height spread), 7 ground,
 	 * 8 headroom, 9 existing building within margin. okRect and tolerantBase share the indices 3..9.
 	 */
-	public static final int[] SCAN_REJECT = new int[10];
-	public static final String SCAN_REJECT_LEGEND = "[Spalten, ungeladen, Hoehenlage, Markt, Rand-ungeladen, Randhoehe, uneben, Untergrund, Kopffreiheit, Gebaeude]";
+	public static final int[] SCAN_REJECT = new int[13];
+	public static final String SCAN_REJECT_LEGEND = "[Spalten, ungeladen, Hoehenlage, Markt, Rand-ungeladen, Randhoehe, uneben, Untergrund, Kopffreiheit, Gebaeude, davon Randhoehe/uneben durch Baumstamm, uneben mit Spreizung 2, Spreizung >2]";
+
+	/** Diagnostic: true when the column top (as the MOTION_BLOCKING_NO_LEAVES height sees it) is a tree trunk. */
+	private static boolean trunkTop(ServerLevel level, int x, int h, int z) {
+		return level.getBlockState(new BlockPos(x, h - 1, z)).is(BlockTags.OVERWORLD_NATURAL_LOGS);
+	}
 
 	/** One bounded portion of the deterministic site scan. */
 	public record SearchPage(BlockPos site, int nextCandidate, boolean complete) { }
@@ -374,12 +379,14 @@ public final class Sites {
 				if (!inner) {
 					if (h > c.getY() + 1) {
 						SCAN_REJECT[5]++;
+						if (trunkTop(level, x, h, z)) SCAN_REJECT[10]++;
 						return false;
 					}
 					continue;
 				}
 				if (h != c.getY()) {
 					SCAN_REJECT[6]++;
+					if (trunkTop(level, x, h, z)) SCAN_REJECT[10]++;
 					return false;
 				}
 				BlockPos ground = new BlockPos(x, c.getY() - 1, z);
@@ -897,6 +904,14 @@ public final class Sites {
 		int base = sorted[sorted.length - 1];
 		if (base - sorted[0] > 1) {
 			SCAN_REJECT[6]++;
+			SCAN_REJECT[base - sorted[0] == 2 ? 11 : 12]++;
+			for (int k = 0, m = 0; k < w && m < 1; k++) for (int j = 0; j < d; j++) {
+				if (heights[k * d + j] == base) {
+					if (trunkTop(level, c.getX() + minX + k, base, c.getZ() + minZ + j)) SCAN_REJECT[10]++;
+					m++;
+					break;
+				}
+			}
 			return Integer.MIN_VALUE;
 		}
 		n = 0;
