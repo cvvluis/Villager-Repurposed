@@ -68,10 +68,10 @@ public final class Sites {
 	/**
 	 * Diagnostic: why scanned site columns were rejected since the last log line. Indices: 0 scanned columns, 1 unloaded,
 	 * 2 village level, 3 market reservation, 4 rect unloaded, 5 rim too high, 6 uneven (height spread), 7 ground,
-	 * 8 headroom, 9 existing building within margin. okRect and tolerantBase share the indices 3..9.
+	 * 8 headroom, 9 existing building within margin, 11-15 relief class of 5/6 rejects. okRect and tolerantBase share the indices 3..9.
 	 */
-	public static final int[] SCAN_REJECT = new int[13]; // slot 10 unused
-	public static final String SCAN_REJECT_LEGEND = "[Spalten, ungeladen, Hoehenlage, Markt, Rand-ungeladen, Randhoehe, uneben, Untergrund, Kopffreiheit, Gebaeude, Randhoehe/uneben nur wegen Baumstaemmen (Boden unter Staemmen ebener), Randhoehe/uneben echtes Gelaende]";
+	public static final int[] SCAN_REJECT = new int[16]; // slot 10 unused
+	public static final String SCAN_REJECT_LEGEND = "[Spalten, ungeladen, Hoehenlage, Markt, Rand-ungeladen, Randhoehe, uneben, Untergrund, Kopffreiheit, Gebaeude, Randhoehe/uneben nur wegen Baumstaemmen, echte Spreizung 2, 3, 4-5, >5]";
 
 	/** Diagnostic: true when the column top (as the MOTION_BLOCKING_NO_LEAVES height sees it) is a tree trunk. */
 	private static int groundHeight(ServerLevel level, int x, int h, int z) {
@@ -89,7 +89,8 @@ public final class Sites {
 			lo = Math.min(lo, g);
 			hi = Math.max(hi, g);
 		}
-		SCAN_REJECT[hi - lo <= 1 ? 11 : 12]++;
+		int spread = hi - lo;
+		SCAN_REJECT[spread <= 1 ? 11 : spread == 2 ? 12 : spread == 3 ? 13 : spread <= 5 ? 14 : 15]++;
 	}
 
 	/** One bounded portion of the deterministic site scan. */

@@ -3167,25 +3167,25 @@ public final class Builder {
 			int selectedVariant = variant;
 			Architect.Design selectedDesign = design;
 			BlockPos civicAnchor = civicSiteAnchor(level, ref);
-			// Slots 0-12: column scan reasons (Sites.SCAN_REJECT delta of this search only), 13-18: plan checks.
-			int[] civicReject = CIVIC_REJECT_BY_VILLAGE.computeIfAbsent(ref.bell().asLong(), k -> new int[2][19])[search.tolerant ? 1 : 0];
+			// Slots 0-15: column scan reasons (Sites.SCAN_REJECT delta of this search only), 16-21: plan checks.
+			int[] civicReject = CIVIC_REJECT_BY_VILLAGE.computeIfAbsent(ref.bell().asLong(), k -> new int[2][22])[search.tolerant ? 1 : 0];
 			int[] otherReject = CIVIC_REJECT_BY_VILLAGE.get(ref.bell().asLong())[search.tolerant ? 0 : 1];
 			int[] scanBefore = Sites.SCAN_REJECT.clone();
 			java.util.function.Predicate<BlockPos> fits = p -> {
 				List<Step> candidateSteps = sitingSteps(c, ref, selectedType, selectedVariant, selectedDesign, style, p, civicAnchor);
-				civicReject[13]++;
-				if (rejectedPlot(ref, p)) { civicReject[14]++; return false; }
-				if (!ZoneAwareSites.allowsPlan(ref, selectedType, candidateSteps)) { civicReject[15]++; return false; }
-				if (planSiteConflicts(ref, candidateSteps, p)) { civicReject[16]++; return false; }
-				if (!routeConnected(c, ref, p)) { civicReject[17]++; return false; }
-				civicReject[18]++;
+				civicReject[16]++;
+				if (rejectedPlot(ref, p)) { civicReject[17]++; return false; }
+				if (!ZoneAwareSites.allowsPlan(ref, selectedType, candidateSteps)) { civicReject[18]++; return false; }
+				if (planSiteConflicts(ref, candidateSteps, p)) { civicReject[19]++; return false; }
+				if (!routeConnected(c, ref, p)) { civicReject[20]++; return false; }
+				civicReject[21]++;
 				return true;
 			};
 			Sites.margin = 2;
 			Sites.SearchPage page = Sites.findSystematicPage(level, ref.bell(), min, max,
 				-half, half, -half, half, headroom + (search.tolerant ? 1 : 0), search.tolerant, search.nextCandidate,
 				CIVIC_SITE_CANDIDATE_BUDGET, search.phaseSeed, search.visitedColumns(), fits, civicAnchor.getY());
-			for (int i = 0; i < 13; i++) civicReject[i] += Sites.SCAN_REJECT[i] - scanBefore[i];
+			for (int i = 0; i < 16; i++) civicReject[i] += Sites.SCAN_REJECT[i] - scanBefore[i];
 			search.nextCandidate = page.nextCandidate();
 			persistCivicSiteSearch(ref, search);
 			Sites.margin = 3;
@@ -3200,13 +3200,13 @@ public final class Builder {
 					LOGGER.info("Villagers: Repurposed: Bauplatzsuche fuer '{}' fortgesetzt (Variante {}, {}, Kandidat {}/{}, besuchte Spalten {}, halbe Kante {}, Hoehe {}), noch kein passender Standort; Ablehnung Spalten {} {} Plan [geprueft, Parzelle, Zone, Konflikt, Weg, bestanden] {}",
 						type, search.variantIndex + 1, search.tolerant ? "unebenes Gelaende" : "ebener Bauplatz",
 						search.nextCandidate, Sites.systematicCandidateCount(min, max), search.visitedColumns().size(), half, headroom,
-						Sites.SCAN_REJECT_LEGEND, java.util.Arrays.toString(java.util.Arrays.copyOfRange(civicReject, 0, 13)),
-						java.util.Arrays.toString(java.util.Arrays.copyOfRange(civicReject, 13, 19)));
+						Sites.SCAN_REJECT_LEGEND, java.util.Arrays.toString(java.util.Arrays.copyOfRange(civicReject, 0, 16)),
+						java.util.Arrays.toString(java.util.Arrays.copyOfRange(civicReject, 16, 22)));
 					java.util.Arrays.fill(civicReject, 0);
 					LOGGER.info("Villagers: Repurposed: Bauplatzsuche '{}' Gegenpass ({}) seit letzter Meldung: Spalten {} Plan {}", type,
 						search.tolerant ? "ebener Bauplatz" : "unebenes Gelaende",
-						java.util.Arrays.toString(java.util.Arrays.copyOfRange(otherReject, 0, 13)),
-						java.util.Arrays.toString(java.util.Arrays.copyOfRange(otherReject, 13, 19)));
+						java.util.Arrays.toString(java.util.Arrays.copyOfRange(otherReject, 0, 16)),
+						java.util.Arrays.toString(java.util.Arrays.copyOfRange(otherReject, 16, 22)));
 					java.util.Arrays.fill(otherReject, 0);
 				}
 				return false;
