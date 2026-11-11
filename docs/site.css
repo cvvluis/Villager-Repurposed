@@ -361,3 +361,11 @@ html.dt-launch #dt-launch, html.dt-launch #dt-launch * { animation-play-state: r
 .dt-lang button + button { margin-left: -3px; }
 .dt-lang button:hover { background: #8c8c96; }
 .dt-lang button[aria-pressed="true"] { background: var(--pb); border-color: var(--pb-e, #0b3d1e); text-shadow: 2px 2px 0 var(--pb-d); box-shadow: inset -3px -3px 0 var(--pb-d), inset 3px 3px 0 var(--pb-l); }
+
+/* Approved Villagers: Repurposed logo */
+.project-brand { display: inline-flex; align-items: center; gap: 9px; }
+.project-brand img { width: 34px; height: 34px; object-fit: contain; }
+.mod-logo { display: block; width: min(360px, 100%); height: auto; margin: 0 0 26px; }
+.footer-project { display: block; flex: 0 0 60px; }
+.footer-project img { width: 60px; height: auto; object-fit: contain; }
+@media (max-width: 700px) { .project-brand { flex-wrap: wrap; } .mod-logo { width: min(260px, 100%); } }

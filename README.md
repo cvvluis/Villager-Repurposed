@@ -3,7 +3,7 @@
 
 [Project website](https://cvvluis.github.io/Villager-Repurposed/) · [GitHub repository](https://github.com/cvvluis/Villager-Repurposed) · [Luis's portfolio](https://cvvluis.github.io/)
 
-![Villagers: Repurposed — a village that grows with its people](docs/assets/village-banner.svg)
+<p align="center"><img src="docs/assets/villagers-repurposed-logo.png" alt="Villagers: Repurposed" width="420" /></p>
 
 **Fabric · Minecraft 26.2 · Java 25**
 
