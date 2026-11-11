@@ -53,3 +53,37 @@ florist/oceanographer/engineer/iceman/enderian/netherian laufen als Traeger; ACH
 gleicher Taetigkeit (z. B. hunter->butcher, miner->mason): Designentscheidung des Nutzers, bewusst NICHT geaendert; (4) Towns and Towers:
 Dorf-Tag village enthaelt towns_and_towers:village_*, Ozeandorf (Schiffe) ungetestet, kein Headless-Modus; (5) bartender (Village Taverns)
 ungemappt; (6) EMF/ETF/Fresh Animations: nur Client pruefbar (Overlay-Renderer E04RoleRenderer), Actually 3D Stuff: kein 26.2-Release.
+### J/U/A/R/E (Agent-Bericht, unverifiziert)
+| ID | Status | Luecke |
+|---|---|---|
+| J01 | OK | - |
+| J02 | OK | FD/Chef's-Pfade nur im Dev-Pack |
+| J03 | TEIL | Schlachtung (hurtServer/Drops) ohne Check |
+| J04 | OK | - |
+| J05 | OK | - |
+| J06 | OK | Kiesverbrauch durch Strasse/Schiene ungeprueft |
+| J07 | TEIL | keine Depot-Sortierung im Code; FreightLoading.work ohne Check |
+| J08 | OK | - |
+| J09 | OK | - |
+| J10 | OK | LamplighterJob selbst ungeprueft (nur Lighting.*) |
+| J11 | OK | Anwendung auf Patienten nicht bestaetigt |
+| J12 | TEIL | Lookout und Expedition.tick ohne Check |
+| U01 | TEIL | dorftafel_gross ohne 3D-Laternen/Pinnwand; Rendering ungeprueft |
+| U02 | OK | Kopf/Button nur manuell (ClientChecks) |
+| U03 | TEIL | nur ClientChecks (manuell, nicht registriert) |
+| U04 | TEIL | Zuweisen (AssignJob) ohne Server-Check; Klick manuell |
+| U05 | TEIL | Drag-and-drop nur ClientChecks |
+| U06 | OK | Reiter-UI nur manuell |
+| U07 | OK | Slider-Widgets ungeprueft |
+| U08 | OK | UI-Darstellung ungeprueft |
+| A01 | OK | - |
+| A02 | OK | nur im Sammellauf |
+| A03 | OK | - |
+| A04 | TEIL | kein Survival-/Leerlauf-Nachweis |
+| R01 | TEIL | Hebel fehlen im Code; nur Stichproben |
+| R02 | OK | - |
+| E01 | OK | - |
+| E02 | OK | - |
+| E03 | OK | Reiter-Darstellung nur manuell |
+| E04 | TEIL | Skins nur 4 Rollen; EMF/ETF/FA ungeprueft |
+Hinweis: UI-Schicht haengt an ClientChecks (nicht in Checks090/AutoTest registriert, braucht Client).
