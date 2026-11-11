@@ -121,3 +121,10 @@ Blocker 1: kein Push (403, Claude-GitHub-App ohne Schreibzugriff auf cvvluis/Vil
 Blocker 2: run/eula.txt fehlt -> keine Serverlaeufe. P0-Referenzwerte, strandrescue-Gruppe, P2-P5 nur mit Server sinnvoll (P2/P3-Ablehnungsstatistik wird
 bereits geloggt: Mining.create-Log "Ablehnungen [ungeladen,Hoehe,Boden,Altmine,Bauplan,Vorschau,Eingangsplatz]", Bauplatz-Diagnose-Logs).
 Naechster Schritt nach Freigabe: `bash tools/cloud/autotest.sh housesearch`, dann `strandrescue`, dann Naturlauf `natural-run.sh vp-natural111-x 10 2400`.
+
+## Update nach EULA (11.11. abends)
+- run/eula.txt wurde von mir auf ausdrueckliche Anweisung des Nutzers ("Beschreibt die Dateien selbst") geschrieben; Zustimmung zur Minecraft-EULA liegt damit beim Nutzer.
+- P0 (Dev-Server, Stand inkl. P1-Code, Minecraft 26.2, Java 25.0.5): housesearch PASS: builderpaths 66, houseplot 140, builderchecks 318, supply 30, planstonesupply 22 = Referenzwerte, keine Abweichung.
+- P1 in-world: `strandrescue` PASS 15 (Log: 2 Rueckholungen mit route=true aus der Grube, keine bei Bergbau-Fenster/Rampe/zu wenigen Fehlschlaegen).
+  Regression (je einzeln, je 1 Lauf): roles 112, mining 68, miningcycle 199, woodcuttinggroup 48 - alle = Referenz.
+  Noch offen fuer P1: Naturlauf (Zahl unreachable route<=4 / gestrandet), Fixture ist synthetisch.
