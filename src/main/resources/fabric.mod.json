@@ -25,6 +25,12 @@
 		"cloth-config": "*",
 		"easy_villagers": "*",
 		"villagernames": "*",
-		"guardvillagers": "*"
+		"guardvillagers": "*",
+		"farmersdelight": "*",
+		"chefsdelight": "*",
+		"morevillagers": "*",
+		"sereneseasons": "*",
+		"t_and_t": "*",
+		"village_taverns": "*"
 	}
 }

@@ -41,3 +41,15 @@ Naechster Schritt: nach EULA `bash tools/cloud/autotest.sh strandrescue` und hou
 | G14 | TEIL | NetworkDiscoveryChecks | geladene Nachbarn ohne Handelskontakt verlinkt; Eigenname ohne Check |
 | G15 | OK | WallConstructionChecks, developmentwall | keine Wand ab 192 Blöcken; kein Langzeit-Check |
 Hinweis: RailMetropolisChecks ohne Aufrufer; Gruppen ctov*, tafelgross, templatebuild u. a. nicht in AutoTest-Sammelarrays.
+
+## P6 - Modpack-Vertraege (Analyse-Agent, Ids teils aus den Jars verifiziert; nichts davon in-world geprueft)
+Geaendert: fabric.mod.json `suggests` um farmersdelight, chefsdelight, morevillagers, sereneseasons, t_and_t, village_taverns erweitert (nur Metadaten).
+Ist-Stand: CompatChecks prueft nur "Namespace vorhanden". Tiefste Integration: Farmer's Delight (isModLoaded-Guards, aber direkte
+vectorwing-Imports in DelightKitchenCrafting -> Klassenladerisiko ohne Mod ungeprueft), Village Taverns (Soft-Dep via Registry, TavernChecks),
+CTOV (CtovHeadlessChecks, Lithostitched-Modifier).
+Luecken (nach Wirkung): (1) FD-Typen hinter Adapter-Klasse ziehen und Lauf ohne FD pruefen; (2) Serene Seasons: kein Saisoncode, Tags
+sereneseasons:*_crops und API SeasonHelper.getSeasonState(Level) verifiziert -> Farmer-Saisonplanung moeglich; (3) More Villagers: Jobs
+florist/oceanographer/engineer/iceman/enderian/netherian laufen als Traeger; ACHTUNG Compat.counterpart ersetzt Vanilla-Berufe durch Mod-Berufe
+gleicher Taetigkeit (z. B. hunter->butcher, miner->mason): Designentscheidung des Nutzers, bewusst NICHT geaendert; (4) Towns and Towers:
+Dorf-Tag village enthaelt towns_and_towers:village_*, Ozeandorf (Schiffe) ungetestet, kein Headless-Modus; (5) bartender (Village Taverns)
+ungemappt; (6) EMF/ETF/Fresh Animations: nur Client pruefbar (Overlay-Renderer E04RoleRenderer), Actually 3D Stuff: kein 26.2-Release.
