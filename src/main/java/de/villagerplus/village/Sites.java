@@ -256,6 +256,21 @@ public final class Sites {
 	public static SearchPage findSystematicPage(ServerLevel level, BlockPos around, int minDist, int maxDist,
 		int minX, int maxX, int minZ, int maxZ, int headroom, boolean tolerant, int startCandidate,
 		int candidateBudget, long phaseSeed, Set<Long> visitedColumns, Predicate<BlockPos> fits, int referenceY) {
+		return findSystematicPage(level, around, minDist, maxDist, minX, maxX, minZ, maxZ, headroom, tolerant ? 1 : 0,
+			startCandidate, candidateBudget, phaseSeed, visitedColumns, fits, referenceY);
+	}
+
+	/** Natural height difference a last-resort civic site may span; the lower columns get a supported foundation. */
+	public static final int TERRACED_CIVIC_RELIEF = 3;
+
+	/**
+	 * {@code maxRelief} 0 requires a flat plot, 1 the usual one-block tolerance, up to {@link #TERRACED_CIVIC_RELIEF} a
+	 * terraced plot: the anchor stays at the highest column (nothing is dug into the slope), lower columns are filled.
+	 */
+	public static SearchPage findSystematicPage(ServerLevel level, BlockPos around, int minDist, int maxDist,
+		int minX, int maxX, int minZ, int maxZ, int headroom, int maxRelief, int startCandidate,
+		int candidateBudget, long phaseSeed, Set<Long> visitedColumns, Predicate<BlockPos> fits, int referenceY) {
+		boolean tolerant = maxRelief > 0;
 		int total = systematicCandidateCount(minDist, maxDist);
 		if (total == 0 || candidateBudget <= 0) return new SearchPage(null, Math.max(0, startCandidate), true);
 		int start = Math.max(0, Math.min(total, startCandidate));
@@ -278,7 +293,7 @@ public final class Sites {
 			BlockPos candidate = new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
 			if (!villageLevel(referenceY, candidate.getY())) { SCAN_REJECT[2]++; continue; }
 			if (tolerant) {
-				int base = tolerantBase(level, candidate, minX, maxX, minZ, maxZ, headroom);
+				int base = tolerantBase(level, candidate, minX, maxX, minZ, maxZ, headroom, maxRelief);
 				if (base == Integer.MIN_VALUE) continue;
 				candidate = new BlockPos(x, base, z);
 			} else if (!okRect(level, candidate, minX, maxX, minZ, maxZ, headroom)) {
@@ -897,6 +912,10 @@ public final class Sites {
 	}
 
 	private static int tolerantBase(ServerLevel level, BlockPos c, int minX, int maxX, int minZ, int maxZ, int headroom) {
+		return tolerantBase(level, c, minX, maxX, minZ, maxZ, headroom, 1);
+	}
+
+	private static int tolerantBase(ServerLevel level, BlockPos c, int minX, int maxX, int minZ, int maxZ, int headroom, int maxRelief) {
 		if (Market.reserved(level,c,Math.max(Math.max(Math.abs(minX),Math.abs(maxX)),Math.max(Math.abs(minZ),Math.abs(maxZ))))) { SCAN_REJECT[3]++; return Integer.MIN_VALUE; }
 		int w = maxX - minX + 1;
 		int d = maxZ - minZ + 1;
@@ -917,7 +936,7 @@ public final class Sites {
 		java.util.Arrays.sort(sorted);
 		// Bauhoehe = hoechster Punkt der Flaeche; nur ein Block darf aufgefuellt werden.
 		int base = sorted[sorted.length - 1];
-		if (base - sorted[0] > 1) {
+		if (base - sorted[0] > maxRelief) {
 			SCAN_REJECT[6]++;
 			classifyRelief(level, c, minX, maxX, minZ, maxZ);
 			return Integer.MIN_VALUE;
@@ -926,7 +945,7 @@ public final class Sites {
 		for (int dx = minX; dx <= maxX; dx++) {
 			for (int dz = minZ; dz <= maxZ; dz++) {
 				int h = heights[n++];
-				if (Math.abs(h - base) > 1) {
+				if (Math.abs(h - base) > maxRelief) {
 					SCAN_REJECT[6]++;
 					return Integer.MIN_VALUE;
 				}

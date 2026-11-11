@@ -3168,8 +3168,7 @@ public final class Builder {
 			Architect.Design selectedDesign = design;
 			BlockPos civicAnchor = civicSiteAnchor(level, ref);
 			// Slots 0-15: column scan reasons (Sites.SCAN_REJECT delta of this search only), 16-21: plan checks.
-			int[] civicReject = CIVIC_REJECT_BY_VILLAGE.computeIfAbsent(ref.bell().asLong(), k -> new int[2][22])[search.tolerant ? 1 : 0];
-			int[] otherReject = CIVIC_REJECT_BY_VILLAGE.get(ref.bell().asLong())[search.tolerant ? 0 : 1];
+			int[] civicReject = CIVIC_REJECT_BY_VILLAGE.computeIfAbsent(ref.bell().asLong(), k -> new int[3][22])[search.terraced ? 2 : search.tolerant ? 1 : 0];
 			int[] scanBefore = Sites.SCAN_REJECT.clone();
 			java.util.function.Predicate<BlockPos> fits = p -> {
 				List<Step> candidateSteps = sitingSteps(c, ref, selectedType, selectedVariant, selectedDesign, style, p, civicAnchor);
@@ -3183,7 +3182,7 @@ public final class Builder {
 			};
 			Sites.margin = 2;
 			Sites.SearchPage page = Sites.findSystematicPage(level, ref.bell(), min, max,
-				-half, half, -half, half, headroom + (search.tolerant ? 1 : 0), search.tolerant, search.nextCandidate,
+				-half, half, -half, half, headroom + (search.tolerant ? 1 : 0), search.terraced ? Sites.TERRACED_CIVIC_RELIEF : search.tolerant ? 1 : 0, search.nextCandidate,
 				CIVIC_SITE_CANDIDATE_BUDGET, search.phaseSeed, search.visitedColumns(), fits, civicAnchor.getY());
 			for (int i = 0; i < 16; i++) civicReject[i] += Sites.SCAN_REJECT[i] - scanBefore[i];
 			search.nextCandidate = page.nextCandidate();
@@ -3197,17 +3196,26 @@ public final class Builder {
 				if (type.equals(Blueprints.STORAGE) && completedCycle) STORAGE_BLOCKED.put(ref.bell().asLong(), c.now() + 24000L);
 				if (c.now() - lastDiag > 1200) {
 					lastDiag = c.now();
-					LOGGER.info("Villagers: Repurposed: Bauplatzsuche fuer '{}' fortgesetzt (Variante {}, {}, Kandidat {}/{}, besuchte Spalten {}, halbe Kante {}, Hoehe {}), noch kein passender Standort; Ablehnung Spalten {} {} Plan [geprueft, Parzelle, Zone, Konflikt, Weg, bestanden] {}",
-						type, search.variantIndex + 1, search.tolerant ? "unebenes Gelaende" : "ebener Bauplatz",
-						search.nextCandidate, Sites.systematicCandidateCount(min, max), search.visitedColumns().size(), half, headroom,
-						Sites.SCAN_REJECT_LEGEND, java.util.Arrays.toString(java.util.Arrays.copyOfRange(civicReject, 0, 16)),
-						java.util.Arrays.toString(java.util.Arrays.copyOfRange(civicReject, 16, 22)));
-					java.util.Arrays.fill(civicReject, 0);
-					LOGGER.info("Villagers: Repurposed: Bauplatzsuche '{}' Gegenpass ({}) seit letzter Meldung: Spalten {} Plan {}", type,
-						search.tolerant ? "ebener Bauplatz" : "unebenes Gelaende",
-						java.util.Arrays.toString(java.util.Arrays.copyOfRange(otherReject, 0, 16)),
-						java.util.Arrays.toString(java.util.Arrays.copyOfRange(otherReject, 16, 22)));
-					java.util.Arrays.fill(otherReject, 0);
+					LOGGER.info("Villagers: Repurposed: Bauplatzsuche fuer '{}' fortgesetzt (Variante {}, {}, Kandidat {}/{}, besuchte Spalten {}, halbe Kante {}, Hoehe {}), noch kein passender Standort",
+						type, search.variantIndex + 1, search.terraced ? "terrassiertes Gelaende" : search.tolerant ? "unebenes Gelaende" : "ebener Bauplatz",
+						search.nextCandidate, Sites.systematicCandidateCount(min, max), search.visitedColumns().size(), half, headroom);
+					if (design != null) {
+						StringBuilder extents = new StringBuilder();
+						for (Direction facing : Direction.Plane.HORIZONTAL) {
+							extents.append(facing.getName()).append(java.util.Arrays.toString(civicPlanExtents(c, ref, selectedType, selectedVariant, selectedDesign, style, civicAnchor, facing))).append(' ');
+						}
+						LOGGER.info("Villagers: Repurposed: Bauplatzsuche '{}' Plan-Ausdehnung [minX, maxX, minZ, maxZ] je Tuerrichtung (Suchquadrat +-{}): {}", type, half, extents);
+					}
+					// Per pass since the last report: column reasons, then the full-plan checks of the columns that survived.
+					String[] passNames = {"eben", "tolerant", "terrassiert"};
+					int[][] passes = CIVIC_REJECT_BY_VILLAGE.get(ref.bell().asLong());
+					for (int pass = 0; pass < passes.length; pass++) {
+						if (java.util.Arrays.stream(passes[pass]).sum() == 0) continue;
+						LOGGER.info("Villagers: Repurposed: Bauplatz-Ablehnung '{}' Pass {}: Spalten {} {} Plan [geprueft, Parzelle, Zone, Konflikt, Weg, bestanden] {}",
+							type, passNames[pass], Sites.SCAN_REJECT_LEGEND, java.util.Arrays.toString(java.util.Arrays.copyOfRange(passes[pass], 0, 16)),
+							java.util.Arrays.toString(java.util.Arrays.copyOfRange(passes[pass], 16, 22)));
+						java.util.Arrays.fill(passes[pass], 0);
+					}
 				}
 				return false;
 			}
@@ -3669,6 +3677,22 @@ public final class Builder {
 		}
 		Sites.margin = 3;
 		return site == null ? null : naturalHouseAnchor(level, type, variant, site);
+	}
+
+	/** Diagnostic: actual plan extents [minX, maxX, minZ, maxZ] relative to the anchor for a door facing, from the generated steps. */
+	private static int[] civicPlanExtents(Ctx c, VillageRef ref, String type, int variant, Architect.Design design,
+			VillageStyle style, BlockPos civicAnchor, Direction doorFacing) {
+		// facingTowards(site, anchor) == doorFacing for a site 40 blocks on the opposite side of the anchor.
+		BlockPos probe = civicAnchor.relative(doorFacing.getOpposite(), 40);
+		List<Step> steps = sitingSteps(c, ref, type, variant, design, style, probe, civicAnchor);
+		int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+		for (Step step : steps) {
+			minX = Math.min(minX, step.pos().getX() - probe.getX());
+			maxX = Math.max(maxX, step.pos().getX() - probe.getX());
+			minZ = Math.min(minZ, step.pos().getZ() - probe.getZ());
+			maxZ = Math.max(maxZ, step.pos().getZ() - probe.getZ());
+		}
+		return new int[]{minX, maxX, minZ, maxZ};
 	}
 
 	private static boolean civicSite(String type) {
@@ -5187,9 +5211,12 @@ public final class Builder {
 		final long phaseSeed;
 		final java.util.List<java.util.Set<Long>> flatVisited = new java.util.ArrayList<>();
 		final java.util.List<java.util.Set<Long>> tolerantVisited = new java.util.ArrayList<>();
+		final java.util.List<java.util.Set<Long>> terracedVisited = new java.util.ArrayList<>();
 		int variantIndex;
 		int nextCandidate;
 		boolean tolerant;
+		/** Last-resort pass after every variant failed on flat and one-block-tolerant ground (implies tolerant). */
+		boolean terraced;
 		long retryAt;
 
 		CivicSiteSearch(String type, int[] variants, long phaseSeed) {
@@ -5199,6 +5226,7 @@ public final class Builder {
 			for (int ignored : variants) {
 				flatVisited.add(new java.util.HashSet<>());
 				tolerantVisited.add(new java.util.HashSet<>());
+				terracedVisited.add(new java.util.HashSet<>());
 			}
 		}
 
@@ -5206,12 +5234,13 @@ public final class Builder {
 			this(saved.type(), saved.variants().stream().mapToInt(Integer::intValue).toArray(), saved.phaseSeed());
 			variantIndex = saved.variantIndex();
 			nextCandidate = saved.nextCandidate();
-			tolerant = saved.tolerant();
+			tolerant = saved.tolerant() || saved.terraced();
+			terraced = saved.terraced();
 			retryAt = saved.retryAt();
 		}
 
 		java.util.Set<Long> visitedColumns() {
-			return tolerant ? tolerantVisited.get(variantIndex) : flatVisited.get(variantIndex);
+			return terraced ? terracedVisited.get(variantIndex) : tolerant ? tolerantVisited.get(variantIndex) : flatVisited.get(variantIndex);
 		}
 
 		void deferCandidate(BlockPos plot) {
@@ -5221,18 +5250,31 @@ public final class Builder {
 
 		boolean advancePass(long now) {
 			nextCandidate = 0;
-			if (!tolerant) {
-				tolerant = true;
+			if (!terraced) {
+				if (!tolerant) {
+					tolerant = true;
+					return false;
+				}
+				if (variantIndex + 1 < variants.length) {
+					tolerant = false;
+					variantIndex++;
+					return false;
+				}
+				// Every variant failed on flat and one-block-tolerant ground: sweep them once more on terraced ground.
+				terraced = true;
+				variantIndex = 0;
 				return false;
 			}
-			tolerant = false;
 			if (variantIndex + 1 < variants.length) {
 				variantIndex++;
 				return false;
 			}
+			terraced = false;
+			tolerant = false;
 			variantIndex = 0;
 			flatVisited.forEach(java.util.Set::clear);
 			tolerantVisited.forEach(java.util.Set::clear);
+			terracedVisited.forEach(java.util.Set::clear);
 			retryAt = now + CIVIC_SITE_REPROBE_TICKS;
 			return true;
 		}
@@ -5269,7 +5311,7 @@ public final class Builder {
 	private static void persistCivicSiteSearch(VillageRef ref, CivicSiteSearch search) {
 		List<Integer> variants = java.util.Arrays.stream(search.variants).boxed().toList();
 		ref.data().extra.civicSiteSearch = Optional.of(new de.villagerplus.village.VillageData.Extra.CivicSiteSearch(
-			search.type, variants, search.phaseSeed, search.variantIndex, search.nextCandidate, search.tolerant, search.retryAt));
+			search.type, variants, search.phaseSeed, search.variantIndex, search.nextCandidate, search.tolerant, search.retryAt, search.terraced));
 		ref.dirty();
 	}
 
