@@ -3169,7 +3169,7 @@ public final class Builder {
 			Architect.Design selectedDesign = design;
 			BlockPos civicAnchor = civicSiteAnchor(level, ref);
 			// Slots 0-15: column scan reasons (Sites.SCAN_REJECT delta of this search only), 16-21: plan checks.
-			int[] civicReject = CIVIC_REJECT_BY_VILLAGE.computeIfAbsent(ref.bell().asLong(), k -> new int[3][22])[search.terraced ? 2 : search.tolerant ? 1 : 0];
+			int[] civicReject = CIVIC_REJECT_BY_VILLAGE.computeIfAbsent(ref.bell().asLong(), k -> new int[3][23])[search.terraced ? 2 : search.tolerant ? 1 : 0];
 			int[] scanBefore = Sites.SCAN_REJECT.clone();
 			java.util.function.Predicate<BlockPos> fits = p -> {
 				List<Step> candidateSteps = sitingSteps(c, ref, selectedType, selectedVariant, selectedDesign, style, p, civicAnchor);
@@ -3177,13 +3177,24 @@ public final class Builder {
 				if (rejectedPlot(ref, p)) { civicReject[17]++; return false; }
 				if (!ZoneAwareSites.allowsPlan(ref, selectedType, candidateSteps)) { civicReject[18]++; return false; }
 				if (planSiteConflicts(ref, candidateSteps, p)) { civicReject[19]++; return false; }
+				if (search.terraced) {
+					// Last-resort pass: rooted natural trees count as clearable vegetation, but only when the site
+					// preparation can really remove every one of them (otherwise the plan would stall or skip steps).
+					BlockPos[] prepBox = civicPrepBox(p, candidateSteps, selectedDesign.headroom());
+					NaturalSitePreparation.Status preparable = NaturalSitePreparation.inspect(level, prepBox[0], prepBox[1],
+						MAX_CIVIC_SITE_OBSTACLES).status();
+					if (preparable != NaturalSitePreparation.Status.READY && preparable != NaturalSitePreparation.Status.CLEARABLE) {
+						civicReject[21]++;
+						return false;
+					}
+				}
 				if (!routeConnected(c, ref, p)) { civicReject[20]++; return false; }
-				civicReject[21]++;
+				civicReject[22]++;
 				return true;
 			};
 			Sites.margin = 2;
 			Sites.SearchPage page = Sites.findSystematicPage(level, ref.bell(), min, max,
-				-half, half, -half, half, headroom + (search.tolerant ? 1 : 0), search.terraced ? Sites.TERRACED_CIVIC_RELIEF : search.tolerant ? 1 : 0, search.nextCandidate,
+				-half, half, -half, half, headroom + (search.tolerant ? 1 : 0), search.terraced ? Sites.TERRACED_CIVIC_RELIEF : search.tolerant ? 1 : 0, search.terraced, search.nextCandidate,
 				CIVIC_SITE_CANDIDATE_BUDGET, search.phaseSeed, search.visitedColumns(), fits, civicAnchor.getY());
 			for (int i = 0; i < 16; i++) civicReject[i] += Sites.SCAN_REJECT[i] - scanBefore[i];
 			search.nextCandidate = page.nextCandidate();
@@ -3213,9 +3224,9 @@ public final class Builder {
 					int[][] passes = CIVIC_REJECT_BY_VILLAGE.get(ref.bell().asLong());
 					for (int pass = 0; pass < passes.length; pass++) {
 						if (java.util.Arrays.stream(passes[pass]).sum() == 0) continue;
-						LOGGER.info("Villagers: Repurposed: Bauplatz-Ablehnung '{}' (Glocke {}) Pass {}: Spalten {} {} Plan [geprueft, Parzelle, Zone, Konflikt, Weg, bestanden] {}",
+						LOGGER.info("Villagers: Repurposed: Bauplatz-Ablehnung '{}' (Glocke {}) Pass {}: Spalten {} {} Plan [geprueft, Parzelle, Zone, Konflikt, Weg, Baumpflege, bestanden] {}",
 							type, ref.bell().toShortString(), passNames[pass], Sites.SCAN_REJECT_LEGEND, java.util.Arrays.toString(java.util.Arrays.copyOfRange(passes[pass], 0, 16)),
-							java.util.Arrays.toString(java.util.Arrays.copyOfRange(passes[pass], 16, 22)));
+							java.util.Arrays.toString(java.util.Arrays.copyOfRange(passes[pass], 16, 23)));
 						java.util.Arrays.fill(passes[pass], 0);
 					}
 				}
@@ -3679,6 +3690,25 @@ public final class Builder {
 		}
 		Sites.margin = 3;
 		return site == null ? null : naturalHouseAnchor(level, type, variant, site);
+	}
+
+	/** Upper bound on natural obstacles (trunks, leaves, plants) a civic site preparation may remove. */
+	private static final int MAX_CIVIC_SITE_OBSTACLES = 1024;
+	static final long CIVIC_CLEARANCE_RETRY_TICKS = 0L;
+
+	/**
+	 * Work volume of a civic site preparation: the exact plan footprint from the anchor height up to the design's headroom.
+	 * It starts at the anchor so that natural soil below the building is never a removal target (no digging, no pits).
+	 */
+	static BlockPos[] civicPrepBox(BlockPos origin, List<Step> steps, int headroom) {
+		int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+		for (Step step : steps) {
+			minX = Math.min(minX, step.pos().getX());
+			maxX = Math.max(maxX, step.pos().getX());
+			minZ = Math.min(minZ, step.pos().getZ());
+			maxZ = Math.max(maxZ, step.pos().getZ());
+		}
+		return new BlockPos[]{new BlockPos(minX, origin.getY(), minZ), new BlockPos(maxX, origin.getY() + headroom + 1, maxZ)};
 	}
 
 	/** Diagnostic: actual plan extents [minX, maxX, minZ, maxZ] relative to the anchor for a door facing, from the generated steps. */
@@ -4880,6 +4910,35 @@ public final class Builder {
 		List<Step> prepSteps = d.planType.equals(Blueprints.HOUSE)
 			? steps.stream().filter(step -> !Paths.isYardStep(level, origin, dir, step.pos())).toList() : steps;
 		java.util.Set<Long> fp = d.planType.equals(Blueprints.FARM) ? null : FOOT.computeIfAbsent(origin.asLong(), k -> Prep.footprint(prepSteps, origin));
+		if (!helper && d.planStep == 0 && civicSite(d.planType) && architect(d.planType) && !REPAIRS.contains(origin.asLong())) {
+			// Trees inside a last-resort civic site are removed by the same verified natural-site clearing the house lots use.
+			// A site without natural obstacles reports READY and costs nothing; anything it cannot clear keeps the old behaviour.
+			BlockPos[] prepBox = civicPrepBox(origin, steps, designForPlan(d.planType, d.planVariant).headroom());
+			NaturalSitePreparation.Scan civicPrep = NaturalSitePreparation.clearOne(level, prepBox[0], prepBox[1],
+				MAX_CIVIC_SITE_OBSTACLES, c.v());
+			if (civicPrep.status() == NaturalSitePreparation.Status.CLEARED) {
+				c.setActivity("raeumt den Bauplatz");
+				d.planProgress = c.now();
+				c.st().cooldownUntil = c.now() + CIVIC_CLEARANCE_RETRY_TICKS;
+				ref.dirty();
+				return true;
+			}
+			if (civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_CHUNK
+				|| civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_ENTITY
+				|| civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_TOOL) {
+				c.setActivity("wartet auf einen freien Bauplatz");
+				d.planProgress = c.now();
+				c.st().cooldownUntil = c.now() + 100;
+				ref.dirty();
+				return true;
+			}
+			if (civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_INVENTORY) {
+				c.setActivity("schafft Platz fuer die Ernte vom Bauplatz");
+				d.planProgress = c.now();
+				ref.dirty();
+				return false;
+			}
+		}
 		if (d.planStep == 0 && needsNaturalHousePreparation(d.planType, d.planVariant, d.planSource.isPresent())) {
 			if (!houseLotStillSafe(level, ref, origin, dir, prepSteps, steps, d.planVariant, d.planSource.isPresent())) {
 				why = "Hausbauplatz ist inzwischen geschuetzt oder nicht mehr sicher";

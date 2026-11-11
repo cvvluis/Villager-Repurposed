@@ -270,6 +270,18 @@ public final class Sites {
 	public static SearchPage findSystematicPage(ServerLevel level, BlockPos around, int minDist, int maxDist,
 		int minX, int maxX, int minZ, int maxZ, int headroom, int maxRelief, int startCandidate,
 		int candidateBudget, long phaseSeed, Set<Long> visitedColumns, Predicate<BlockPos> fits, int referenceY) {
+		return findSystematicPage(level, around, minDist, maxDist, minX, maxX, minZ, maxZ, headroom, maxRelief, false,
+			startCandidate, candidateBudget, phaseSeed, visitedColumns, fits, referenceY);
+	}
+
+	/**
+	 * {@code clearableTrees}: rooted natural trees do not count as terrain. Their trunks are measured at the soil under them
+	 * and trunk/leaf blocks do not fail the headroom test; the caller must verify with
+	 * {@code NaturalSitePreparation.inspect} that the trees can really be cleared and must clear them before building.
+	 */
+	public static SearchPage findSystematicPage(ServerLevel level, BlockPos around, int minDist, int maxDist,
+		int minX, int maxX, int minZ, int maxZ, int headroom, int maxRelief, boolean clearableTrees, int startCandidate,
+		int candidateBudget, long phaseSeed, Set<Long> visitedColumns, Predicate<BlockPos> fits, int referenceY) {
 		boolean tolerant = maxRelief > 0;
 		int total = systematicCandidateCount(minDist, maxDist);
 		if (total == 0 || candidateBudget <= 0) return new SearchPage(null, Math.max(0, startCandidate), true);
@@ -293,7 +305,7 @@ public final class Sites {
 			BlockPos candidate = new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
 			if (!villageLevel(referenceY, candidate.getY())) { SCAN_REJECT[2]++; continue; }
 			if (tolerant) {
-				int base = tolerantBase(level, candidate, minX, maxX, minZ, maxZ, headroom, maxRelief);
+				int base = tolerantBase(level, candidate, minX, maxX, minZ, maxZ, headroom, maxRelief, clearableTrees);
 				if (base == Integer.MIN_VALUE) continue;
 				candidate = new BlockPos(x, base, z);
 			} else if (!okRect(level, candidate, minX, maxX, minZ, maxZ, headroom)) {
@@ -912,10 +924,11 @@ public final class Sites {
 	}
 
 	private static int tolerantBase(ServerLevel level, BlockPos c, int minX, int maxX, int minZ, int maxZ, int headroom) {
-		return tolerantBase(level, c, minX, maxX, minZ, maxZ, headroom, 1);
+		return tolerantBase(level, c, minX, maxX, minZ, maxZ, headroom, 1, false);
 	}
 
-	private static int tolerantBase(ServerLevel level, BlockPos c, int minX, int maxX, int minZ, int maxZ, int headroom, int maxRelief) {
+	private static int tolerantBase(ServerLevel level, BlockPos c, int minX, int maxX, int minZ, int maxZ, int headroom, int maxRelief,
+		boolean clearableTrees) {
 		if (Market.reserved(level,c,Math.max(Math.max(Math.abs(minX),Math.abs(maxX)),Math.max(Math.abs(minZ),Math.abs(maxZ))))) { SCAN_REJECT[3]++; return Integer.MIN_VALUE; }
 		int w = maxX - minX + 1;
 		int d = maxZ - minZ + 1;
@@ -929,7 +942,8 @@ public final class Sites {
 					SCAN_REJECT[4]++;
 					return Integer.MIN_VALUE;
 				}
-				heights[n++] = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+				int surface = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+				heights[n++] = clearableTrees ? groundHeight(level, x, surface, z) : surface;
 			}
 		}
 		int[] sorted = heights.clone();
@@ -959,6 +973,7 @@ public final class Sites {
 				}
 				for (int y = Math.max(h, base); y < base + headroom; y++) {
 					BlockState s = level.getBlockState(new BlockPos(x, y, z));
+					if (clearableTrees && (s.is(BlockTags.OVERWORLD_NATURAL_LOGS) || s.is(BlockTags.LEAVES))) continue;
 					if (!s.isAir() && !s.canBeReplaced()) {
 						SCAN_REJECT[8]++;
 						return Integer.MIN_VALUE;
