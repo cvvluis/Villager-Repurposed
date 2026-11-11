@@ -1,0 +1,34 @@
+#Dev server settings for Villagers: Repurposed tests (no secrets; the RCON password is a local test value)
+#Placeholders @LEVEL@ @SEED@ @PORT@ @RPORT@ are filled in by tools/cloud/natural-run.sh
+accepts-transfers=false
+allow-flight=false
+difficulty=peaceful
+enable-rcon=true
+enable-status=true
+enforce-secure-profile=false
+force-gamemode=true
+function-permission-level=2
+gamemode=survival
+generate-structures=true
+hardcore=false
+level-name=@LEVEL@
+level-seed=@SEED@
+level-type=minecraft\:normal
+management-server-enabled=false
+max-players=1
+max-tick-time=-1
+motd=VillagerPlus dev test
+online-mode=false
+op-permission-level=4
+pause-when-empty-seconds=-1
+player-idle-timeout=0
+rcon.password=vptest
+rcon.port=@RPORT@
+simulation-distance=4
+spawn-animals=true
+spawn-monsters=false
+spawn-protection=0
+view-distance=4
+server-port=@PORT@
+query.port=@PORT@
+white-list=false
