@@ -27,7 +27,8 @@ unset VP_AUTOTEST
 [[ -z "$cont" || "$cont" =~ ^[a-z0-9]+$ ]] || { echo "invalid continue tag: $cont" >&2; exit 2; }
 [[ -f run/eula.txt ]] && grep -q '^eula=true' run/eula.txt || { echo "run/eula.txt with eula=true is missing (see tools/cloud/README.md)" >&2; exit 2; }
 [[ ! -e run/vp-autotest.txt ]] || { echo "run/vp-autotest.txt exists: remove it first" >&2; exit 2; }
-if pgrep -f 'net.fabricmc.devlaunchinjector|KnotServer|fabric-server' >/dev/null 2>&1; then echo "a server process is already running" >&2; exit 2; fi
+# Only servers started from THIS checkout/worktree count (other worktrees use their own ports).
+if pgrep -f "(net.fabricmc.devlaunchinjector|KnotServer|fabric-server).*$PWD/|$PWD/.*(net.fabricmc.devlaunchinjector|KnotServer)" >/dev/null 2>&1; then echo "a server process is already running in $PWD" >&2; exit 2; fi
 
 if [[ -n "$cont" ]]; then
   [[ -d "run/$label" ]] || { echo "world run/$label does not exist" >&2; exit 2; }
