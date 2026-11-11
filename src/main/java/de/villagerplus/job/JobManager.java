@@ -874,7 +874,7 @@ public final class JobManager {
 	 * Gestrandete Dorfbewohner (weit vom Dorf weg oder tief unter der Dorfmitte, z. B. in einer Hoehle gefallen) werden zur
 	 * Dorfkiste zurueckgeholt. Bergleute bei der Arbeit und Expeditionsmitglieder sind ausgenommen.
 	 */
-	private static boolean rescueStranded(Ctx c) {
+	static boolean rescueStranded(Ctx c) {
 		VillageRef ref = c.village();
 		if (ref == null || c.now() < c.st().miningUntil + 400L) {
 			return false;
@@ -899,17 +899,30 @@ public final class JobManager {
 			&& c.v().getY() >= c.st().target.getY() - 3 && c.st().target.getY() >= lowest - 14) {
 			deep = false;
 		}
-		if (!far && !deep) {
+		net.minecraft.core.BlockPos arrival = null;
+		// Route-less strand: repeated unreachable long routes (<= 4 nodes) from one spot. The bounded walk-back search on the
+		// real blocks decides; a worker that can walk home is on a legitimate task (or merely has an unreachable goal).
+		boolean routeStuck = false;
+		if (!far && !deep && !expedition && JobUtil.routeStrandSuspected(c.v().getUUID(), c.v().blockPosition(), c.now())) {
+			arrival = de.villagerplus.build.Builder.villageReturn(c.level(), ref.bell());
+			if (arrival == null || de.villagerplus.village.Sites.walksBackTo(c.level(), c.v().blockPosition(), arrival)) {
+				JobUtil.clearRouteFailures(c.v().getUUID());
+			} else {
+				routeStuck = true;
+			}
+		}
+		if (!far && !deep && !routeStuck) {
 			return false;
 		}
-		var arrival = de.villagerplus.build.Builder.villageReturn(c.level(), ref.bell());
+		if (arrival == null) arrival = de.villagerplus.build.Builder.villageReturn(c.level(), ref.bell());
 		if (arrival == null) return false;
 		c.v().getNavigation().stop();
 		c.v().teleportTo(arrival.getX() + 0.5, arrival.getY(), arrival.getZ() + 0.5);
 		c.st().builderRelocations++;
 		c.v().resetFallDistance();
 		c.st().cooldownUntil = c.now() + 40;
-		LOGGER.info("Villagers: Repurposed: {} war gestrandet und wurde zur Dorfkiste zurueckgeholt (far={}, deep={}, Expedition={}, Ziel={}, Position={}, Abstand={})", c.mem().name, far, deep, expedition, c.st().target == null ? "-" : c.st().target.toShortString(), c.v().blockPosition().toShortString(), (int) Math.sqrt(distance));
+		JobUtil.markRescued(c.v().getUUID(), c.now());
+		LOGGER.info("Villagers: Repurposed: {} war gestrandet und wurde zur Dorfkiste zurueckgeholt (far={}, deep={}, route={}, Expedition={}, Ziel={}, Position={}, Abstand={})", c.mem().name, far, deep, routeStuck, expedition, c.st().target == null ? "-" : c.st().target.toShortString(), c.v().blockPosition().toShortString(), (int) Math.sqrt(distance));
 		return true;
 	}
 

@@ -42,6 +42,15 @@ public final class JobUtil {
 	private static long longRouteSearches;
 	private static long longRouteCacheReuses;
 	private record LongRouteAttempt(BlockPos goal, BlockPos waypoint, long retryAt) { }
+	/** Consecutive failed long routes (unreachable, at most {@link #STRAND_MAX_ROUTE_NODES} nodes) while the worker stays in place. */
+	private record StrandWatch(BlockPos anchor, long firstFail, long lastFail, int failures) { }
+	static final int STRAND_MIN_FAILURES = 3;
+	static final long STRAND_MIN_TICKS = 600L;
+	static final long STRAND_RECENT_TICKS = 400L;
+	static final long STRAND_QUIET_TICKS = 1200L;
+	static final int STRAND_MAX_ROUTE_NODES = 4;
+	private static final Map<UUID, StrandWatch> STRAND_WATCH = new HashMap<>();
+	private static final Map<UUID, Long> STRAND_QUIET_UNTIL = new HashMap<>();
 	private record SharedStandReservation(BlockPos target, BlockPos stand, long expiresAt) { }
 
 	private JobUtil() {
@@ -76,6 +85,44 @@ public final class JobUtil {
 		LONG_ROUTE_DIAGNOSTICS.clear();
 		longRouteSearches = 0L;
 		longRouteCacheReuses = 0L;
+		STRAND_WATCH.clear();
+		STRAND_QUIET_UNTIL.clear();
+	}
+
+	/** Records one failed long route; a move of more than 2 blocks since the first failure restarts the count. */
+	static void noteRouteFailure(UUID id, BlockPos position, long now) {
+		StrandWatch watch = STRAND_WATCH.get(id);
+		if (STRAND_WATCH.size() > 512) STRAND_WATCH.clear();
+		if (watch == null || !sameSpot(watch.anchor(), position) || now - watch.lastFail() > STRAND_RECENT_TICKS) {
+			STRAND_WATCH.put(id, new StrandWatch(position.immutable(), now, now, 1));
+			return;
+		}
+		STRAND_WATCH.put(id, new StrandWatch(watch.anchor(), watch.firstFail(), now, watch.failures() + 1));
+	}
+
+	static void clearRouteFailures(UUID id) {
+		STRAND_WATCH.remove(id);
+	}
+
+	/**
+	 * True when the worker failed at least {@link #STRAND_MIN_FAILURES} long routes within a window of at least
+	 * {@link #STRAND_MIN_TICKS} without leaving its spot (+-2 blocks), the last failure is recent, and no rescue ran lately.
+	 * Pure state check; the caller still has to prove with the real blocks that there is no way home.
+	 */
+	static boolean routeStrandSuspected(UUID id, BlockPos position, long now) {
+		StrandWatch watch = STRAND_WATCH.get(id);
+		if (watch == null || now < STRAND_QUIET_UNTIL.getOrDefault(id, 0L)) return false;
+		return watch.failures() >= STRAND_MIN_FAILURES && now - watch.firstFail() >= STRAND_MIN_TICKS
+			&& now - watch.lastFail() <= STRAND_RECENT_TICKS && sameSpot(watch.anchor(), position);
+	}
+
+	static void markRescued(UUID id, long now) {
+		STRAND_WATCH.remove(id);
+		STRAND_QUIET_UNTIL.put(id, now + STRAND_QUIET_TICKS);
+	}
+
+	private static boolean sameSpot(BlockPos a, BlockPos b) {
+		return Math.abs(a.getX() - b.getX()) <= 2 && Math.abs(a.getZ() - b.getZ()) <= 2 && Math.abs(a.getY() - b.getY()) <= 2;
 	}
 
 	/** True while the worker's cached long-route search to exactly this goal found no complete path. */
@@ -287,6 +334,7 @@ public final class JobUtil {
 	public static boolean approachLong(Ctx c, BlockPos pos, double reach) {
 		if (approach(c,pos,reach)) {
 			LONG_ROUTE_ATTEMPTS.remove(c.v().getUUID());
+			clearRouteFailures(c.v().getUUID());
 			return true;
 		}
 		if (c.st().cooldownUntil>c.now()) {
@@ -308,11 +356,13 @@ public final class JobUtil {
 		var route=de.villagerplus.build.Builder.workPath(c,pos);
 		if(route==null||!route.canReach()) {
 			LONG_ROUTE_ATTEMPTS.put(workerId, new LongRouteAttempt(pos.immutable(), null, c.now() + LONG_ROUTE_CACHE_TICKS));
+			if (route == null || route.getNodeCount() <= STRAND_MAX_ROUTE_NODES) noteRouteFailure(workerId, c.v().blockPosition(), c.now());
 			clearUnreachableWalkTarget(c.v());
 			rememberLongRouteDiagnostic(c.v(), "unreachable from=" + c.v().blockPosition().toShortString() + " goal=" + pos.toShortString()
 				+ " route=" + (route == null ? "null" : route.getNodeCount() + " nodes"));
 			return false;
 		}
+		if (route.getNodeCount() > STRAND_MAX_ROUTE_NODES) clearRouteFailures(workerId);
 		BlockPos waypoint=pos;
 		for(int i=0;i<route.getNodeCount();i++) {
 			BlockPos node=route.getNodePos(i);
