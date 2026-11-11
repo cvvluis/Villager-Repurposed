@@ -182,7 +182,7 @@ public final class Builder {
 	private static final int[] SITE_REJECT = new int[10];
 	private static final java.util.Map<String, Integer> GRADE_REJECT = new java.util.TreeMap<>();
 	/** Diagnostic civic search: [Plan-Pruefungen, Parzelle, Zone, Konflikt, Weg, bestanden] since the last log line. */
-	private static final java.util.Map<Long, int[]> CIVIC_REJECT_BY_VILLAGE = new java.util.HashMap<>();
+	private static final java.util.Map<Long, int[][]> CIVIC_REJECT_BY_VILLAGE = new java.util.HashMap<>();
 
 	/** Candidate preflight uses the exact generated house and its approach yard, including safe-clearable plants. */
 	private static boolean siteCandidateFits(Ctx c, VillageRef ref, String type, int variant, Architect.Design design,
@@ -3168,7 +3168,8 @@ public final class Builder {
 			Architect.Design selectedDesign = design;
 			BlockPos civicAnchor = civicSiteAnchor(level, ref);
 			// Slots 0-12: column scan reasons (Sites.SCAN_REJECT delta of this search only), 13-18: plan checks.
-			int[] civicReject = CIVIC_REJECT_BY_VILLAGE.computeIfAbsent(ref.bell().asLong(), k -> new int[19]);
+			int[] civicReject = CIVIC_REJECT_BY_VILLAGE.computeIfAbsent(ref.bell().asLong(), k -> new int[2][19])[search.tolerant ? 1 : 0];
+			int[] otherReject = CIVIC_REJECT_BY_VILLAGE.get(ref.bell().asLong())[search.tolerant ? 0 : 1];
 			int[] scanBefore = Sites.SCAN_REJECT.clone();
 			java.util.function.Predicate<BlockPos> fits = p -> {
 				List<Step> candidateSteps = sitingSteps(c, ref, selectedType, selectedVariant, selectedDesign, style, p, civicAnchor);
@@ -3202,6 +3203,11 @@ public final class Builder {
 						Sites.SCAN_REJECT_LEGEND, java.util.Arrays.toString(java.util.Arrays.copyOfRange(civicReject, 0, 13)),
 						java.util.Arrays.toString(java.util.Arrays.copyOfRange(civicReject, 13, 19)));
 					java.util.Arrays.fill(civicReject, 0);
+					LOGGER.info("Villagers: Repurposed: Bauplatzsuche '{}' Gegenpass ({}) seit letzter Meldung: Spalten {} Plan {}", type,
+						search.tolerant ? "ebener Bauplatz" : "unebenes Gelaende",
+						java.util.Arrays.toString(java.util.Arrays.copyOfRange(otherReject, 0, 13)),
+						java.util.Arrays.toString(java.util.Arrays.copyOfRange(otherReject, 13, 19)));
+					java.util.Arrays.fill(otherReject, 0);
 				}
 				return false;
 			}

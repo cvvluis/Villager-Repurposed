@@ -70,12 +70,26 @@ public final class Sites {
 	 * 2 village level, 3 market reservation, 4 rect unloaded, 5 rim too high, 6 uneven (height spread), 7 ground,
 	 * 8 headroom, 9 existing building within margin. okRect and tolerantBase share the indices 3..9.
 	 */
-	public static final int[] SCAN_REJECT = new int[13];
-	public static final String SCAN_REJECT_LEGEND = "[Spalten, ungeladen, Hoehenlage, Markt, Rand-ungeladen, Randhoehe, uneben, Untergrund, Kopffreiheit, Gebaeude, davon Randhoehe/uneben durch Baumstamm, uneben mit Spreizung 2, Spreizung >2]";
+	public static final int[] SCAN_REJECT = new int[13]; // slot 10 unused
+	public static final String SCAN_REJECT_LEGEND = "[Spalten, ungeladen, Hoehenlage, Markt, Rand-ungeladen, Randhoehe, uneben, Untergrund, Kopffreiheit, Gebaeude, Randhoehe/uneben nur wegen Baumstaemmen (Boden unter Staemmen ebener), Randhoehe/uneben echtes Gelaende]";
 
 	/** Diagnostic: true when the column top (as the MOTION_BLOCKING_NO_LEAVES height sees it) is a tree trunk. */
-	private static boolean trunkTop(ServerLevel level, int x, int h, int z) {
-		return level.getBlockState(new BlockPos(x, h - 1, z)).is(BlockTags.OVERWORLD_NATURAL_LOGS);
+	private static int groundHeight(ServerLevel level, int x, int h, int z) {
+		int y = h;
+		while (y > level.getMinY() + 1 && level.getBlockState(new BlockPos(x, y - 1, z)).is(BlockTags.OVERWORLD_NATURAL_LOGS)) y--;
+		return y;
+	}
+
+	/** Diagnostic, only on rejection: 11 when the rect would be level (spread <= 1) with trunks counted at their root, else 12. */
+	private static void classifyRelief(ServerLevel level, BlockPos c, int minX, int maxX, int minZ, int maxZ) {
+		int lo = Integer.MAX_VALUE, hi = Integer.MIN_VALUE;
+		for (int dx = minX; dx <= maxX; dx++) for (int dz = minZ; dz <= maxZ; dz++) {
+			int x = c.getX() + dx, z = c.getZ() + dz;
+			int g = groundHeight(level, x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
+			lo = Math.min(lo, g);
+			hi = Math.max(hi, g);
+		}
+		SCAN_REJECT[hi - lo <= 1 ? 11 : 12]++;
 	}
 
 	/** One bounded portion of the deterministic site scan. */
@@ -379,14 +393,14 @@ public final class Sites {
 				if (!inner) {
 					if (h > c.getY() + 1) {
 						SCAN_REJECT[5]++;
-						if (trunkTop(level, x, h, z)) SCAN_REJECT[10]++;
+						classifyRelief(level, c, minX, maxX, minZ, maxZ);
 						return false;
 					}
 					continue;
 				}
 				if (h != c.getY()) {
 					SCAN_REJECT[6]++;
-					if (trunkTop(level, x, h, z)) SCAN_REJECT[10]++;
+					classifyRelief(level, c, minX, maxX, minZ, maxZ);
 					return false;
 				}
 				BlockPos ground = new BlockPos(x, c.getY() - 1, z);
@@ -904,14 +918,7 @@ public final class Sites {
 		int base = sorted[sorted.length - 1];
 		if (base - sorted[0] > 1) {
 			SCAN_REJECT[6]++;
-			SCAN_REJECT[base - sorted[0] == 2 ? 11 : 12]++;
-			for (int k = 0, m = 0; k < w && m < 1; k++) for (int j = 0; j < d; j++) {
-				if (heights[k * d + j] == base) {
-					if (trunkTop(level, c.getX() + minX + k, base, c.getZ() + minZ + j)) SCAN_REJECT[10]++;
-					m++;
-					break;
-				}
-			}
+			classifyRelief(level, c, minX, maxX, minZ, maxZ);
 			return Integer.MIN_VALUE;
 		}
 		n = 0;
