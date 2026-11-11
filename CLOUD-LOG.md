@@ -128,3 +128,19 @@ Naechster Schritt nach Freigabe: `bash tools/cloud/autotest.sh housesearch`, dan
 - P1 in-world: `strandrescue` PASS 15 (Log: 2 Rueckholungen mit route=true aus der Grube, keine bei Bergbau-Fenster/Rampe/zu wenigen Fehlschlaegen).
   Regression (je einzeln, je 1 Lauf): roles 112, mining 68, miningcycle 199, woodcuttinggroup 48 - alle = Referenz.
   Noch offen fuer P1: Naturlauf (Zahl unreachable route<=4 / gestrandet), Fixture ist synthetisch.
+
+## Natuerlicher Lauf vp-natural111-a (Seed 4242, ohne Fixtures, forceload als Spielerersatz; Stand inkl. P1-Code)
+Lauf 1: Tick 18-24236; Lauf 2 (cont1): 24243-48481. Keine Spielerpruefung.
+| Zaehler | Lauf 1 | Lauf 2 |
+|---|---|---|
+| Bauplan gestartet / fertiggestellt | 1 (house @166,66,-310, Tick 24018) / 0 | 1 (house @48,70,-425, Tick 48254) / 0 |
+| Hausplan-Abbruch | 0 | 1 ("kein Weg zum Bauplatz", Schritt 0, Tick 33260) |
+| Langweg unreachable gesamt / route<=4 | 5 / 0 | 8 / 2 |
+| gestrandet/zurueckgeholt | 3 (alle deep=true, route=false) | 3 (kumulativ im Zaehler; route=true nie ausgeloest) |
+| Steinbruch "kein Rueckweg" verworfen | 0 | 4 |
+| "keine Mine anlegbar" | 0 | 0 (Mine 103,67,-365 wurde angelegt, Abbau "von Hand") |
+Befunde: (1) P1-Route-Rueckholung wurde natuerlich nicht ausgeloest (route<=4 nur 2x, ueber Schwelle nie) -> Wirkung nur ueber Fixture belegt.
+(2) P3: Granary-Suche bleibt in beiden Laeufen ohne Treffer (nur "fortgesetzt"-Zeilen, keine Ablehnungsstatistik) - Agent claude/granary-site.
+(3) P4: Haus bekam nie sein Material (21 Bruchstein fehlten; 3000 Ticks Stillstand, Geruest-Fallback); Elsa verwirft Schluchten-Steinbrueche (ca. 50 Bloecke noerdlich)
+reihenweise, baut dann "von Hand" in der Mine -> Steinkette ist der Engpass - Agent claude/stone-supply. Bauplaetze liegen 68-81 Bloecke von der Glocke.
+(4) Dschungel: viele Bergleute "keine Spitzhacke" (Bedarf METAL), sonst "Bedarf verneint".
