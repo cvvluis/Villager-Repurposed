@@ -181,6 +181,8 @@ public final class Builder {
 	/** Diagnostic: candidates tested / rejected per filter since the last "Kein Bauplatz" log line. */
 	private static final int[] SITE_REJECT = new int[10];
 	private static final java.util.Map<String, Integer> GRADE_REJECT = new java.util.TreeMap<>();
+	/** Diagnostic civic search: [Plan-Pruefungen, Parzelle, Zone, Konflikt, Weg, bestanden] since the last log line. */
+	private static final java.util.Map<Long, int[]> CIVIC_REJECT_BY_VILLAGE = new java.util.HashMap<>();
 
 	/** Candidate preflight uses the exact generated house and its approach yard, including safe-clearable plants. */
 	private static boolean siteCandidateFits(Ctx c, VillageRef ref, String type, int variant, Architect.Design design,
@@ -3165,15 +3167,24 @@ public final class Builder {
 			int selectedVariant = variant;
 			Architect.Design selectedDesign = design;
 			BlockPos civicAnchor = civicSiteAnchor(level, ref);
+			// Slots 0-9: column scan reasons (Sites.SCAN_REJECT delta of this search only), 10-15: plan checks.
+			int[] civicReject = CIVIC_REJECT_BY_VILLAGE.computeIfAbsent(ref.bell().asLong(), k -> new int[16]);
+			int[] scanBefore = Sites.SCAN_REJECT.clone();
 			java.util.function.Predicate<BlockPos> fits = p -> {
 				List<Step> candidateSteps = sitingSteps(c, ref, selectedType, selectedVariant, selectedDesign, style, p, civicAnchor);
-				return !rejectedPlot(ref, p) && ZoneAwareSites.allowsPlan(ref, selectedType, candidateSteps)
-					&& !planSiteConflicts(ref, candidateSteps, p) && routeConnected(c, ref, p);
+				civicReject[10]++;
+				if (rejectedPlot(ref, p)) { civicReject[11]++; return false; }
+				if (!ZoneAwareSites.allowsPlan(ref, selectedType, candidateSteps)) { civicReject[12]++; return false; }
+				if (planSiteConflicts(ref, candidateSteps, p)) { civicReject[13]++; return false; }
+				if (!routeConnected(c, ref, p)) { civicReject[14]++; return false; }
+				civicReject[15]++;
+				return true;
 			};
 			Sites.margin = 2;
 			Sites.SearchPage page = Sites.findSystematicPage(level, ref.bell(), min, max,
 				-half, half, -half, half, headroom + (search.tolerant ? 1 : 0), search.tolerant, search.nextCandidate,
 				CIVIC_SITE_CANDIDATE_BUDGET, search.phaseSeed, search.visitedColumns(), fits, civicAnchor.getY());
+			for (int i = 0; i < 10; i++) civicReject[i] += Sites.SCAN_REJECT[i] - scanBefore[i];
 			search.nextCandidate = page.nextCandidate();
 			persistCivicSiteSearch(ref, search);
 			Sites.margin = 3;
@@ -3185,9 +3196,12 @@ public final class Builder {
 				if (type.equals(Blueprints.STORAGE) && completedCycle) STORAGE_BLOCKED.put(ref.bell().asLong(), c.now() + 24000L);
 				if (c.now() - lastDiag > 1200) {
 					lastDiag = c.now();
-					LOGGER.info("Villagers: Repurposed: Bauplatzsuche fuer '{}' fortgesetzt (Variante {}, {}, Kandidat {}/{}, besuchte Spalten {}), noch kein passender Standort",
+					LOGGER.info("Villagers: Repurposed: Bauplatzsuche fuer '{}' fortgesetzt (Variante {}, {}, Kandidat {}/{}, besuchte Spalten {}, halbe Kante {}, Hoehe {}), noch kein passender Standort; Ablehnung Spalten {} {} Plan [geprueft, Parzelle, Zone, Konflikt, Weg, bestanden] {}",
 						type, search.variantIndex + 1, search.tolerant ? "unebenes Gelaende" : "ebener Bauplatz",
-						search.nextCandidate, Sites.systematicCandidateCount(min, max), search.visitedColumns().size());
+						search.nextCandidate, Sites.systematicCandidateCount(min, max), search.visitedColumns().size(), half, headroom,
+						Sites.SCAN_REJECT_LEGEND, java.util.Arrays.toString(java.util.Arrays.copyOfRange(civicReject, 0, 10)),
+						java.util.Arrays.toString(java.util.Arrays.copyOfRange(civicReject, 10, 16)));
+					java.util.Arrays.fill(civicReject, 0);
 				}
 				return false;
 			}
@@ -3371,8 +3385,10 @@ public final class Builder {
 				if (c.now() - lastDiag > 1200) {
 					lastDiag = c.now();
 					LOGGER.info("Villagers: Repurposed: Kein Bauplatz fuer '{}' (halbe Kante {}, Hoehe {}); Kandidaten/Ablehnung [geprueft, Anker, Hoehenlage, Grundstueck, Hof, Parzelle, Zone, Konflikt, Vorbereitung, Weg] = {}", type, half, headroom, java.util.Arrays.toString(SITE_REJECT));
+					LOGGER.info("Villagers: Repurposed: Bauplatz-Spaltenablehnung {} {}", Sites.SCAN_REJECT_LEGEND, java.util.Arrays.toString(Sites.SCAN_REJECT));
 					LOGGER.info("Villagers: Repurposed: Bauplatz-Diagnose Gelaende {} Grundstueck [Gebaeude, Abstand, Zugang-Boden, Zugang-Hoehe, Strasse, Ungeladen] {}", GRADE_REJECT, java.util.Arrays.toString(Sites.PLOT_REJECT));
 					java.util.Arrays.fill(SITE_REJECT, 0);
+					java.util.Arrays.fill(Sites.SCAN_REJECT, 0);
 					GRADE_REJECT.clear();
 					java.util.Arrays.fill(Sites.PLOT_REJECT, 0);
 					if (!Sites.PLOT_BLOCKERS.isEmpty()) {

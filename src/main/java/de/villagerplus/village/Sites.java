@@ -65,6 +65,14 @@ public final class Sites {
 	private static long houseStructureCacheTick = Long.MIN_VALUE;
 	private static final Map<StructureChunkKey, StructureChunkSnapshot> HOUSE_STRUCTURE_CACHE = new LinkedHashMap<>(32, 0.75F, true);
 
+	/**
+	 * Diagnostic: why scanned site columns were rejected since the last log line. Indices: 0 scanned columns, 1 unloaded,
+	 * 2 village level, 3 market reservation, 4 rect unloaded, 5 rim too high, 6 uneven (height spread), 7 ground,
+	 * 8 headroom, 9 existing building within margin. okRect and tolerantBase share the indices 3..9.
+	 */
+	public static final int[] SCAN_REJECT = new int[10];
+	public static final String SCAN_REJECT_LEGEND = "[Spalten, ungeladen, Hoehenlage, Markt, Rand-ungeladen, Randhoehe, uneben, Untergrund, Kopffreiheit, Gebaeude]";
+
 	/** One bounded portion of the deterministic site scan. */
 	public record SearchPage(BlockPos site, int nextCandidate, boolean complete) { }
 
@@ -244,10 +252,11 @@ public final class Sites {
 			long column = BlockPos.asLong(x, 0, z);
 			if (visitedColumns.contains(column) || !pageColumns.add(column)) continue;
 			BlockPos probe = new BlockPos(x, around.getY(), z);
-			if (!level.hasChunkAt(probe)) continue;
+			if (!level.hasChunkAt(probe)) { SCAN_REJECT[1]++; continue; }
 			visitedColumns.add(column);
+			SCAN_REJECT[0]++;
 			BlockPos candidate = new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
-			if (!villageLevel(referenceY, candidate.getY())) continue;
+			if (!villageLevel(referenceY, candidate.getY())) { SCAN_REJECT[2]++; continue; }
 			if (tolerant) {
 				int base = tolerantBase(level, candidate, minX, maxX, minZ, maxZ, headroom);
 				if (base == Integer.MIN_VALUE) continue;
@@ -351,40 +360,46 @@ public final class Sites {
 
 	/** Rechteckiger Bauplatz relativ zu c: innen muss alles eben und frei sein, im 1-Block-Rand darf nichts hoeher aufragen. */
 	public static boolean okRect(ServerLevel level, BlockPos c, int minX, int maxX, int minZ, int maxZ, int headroom) {
-		if (Market.reserved(level, c, Math.max(Math.max(Math.abs(minX), Math.abs(maxX)), Math.max(Math.abs(minZ), Math.abs(maxZ))))) return false;
+		if (Market.reserved(level, c, Math.max(Math.max(Math.abs(minX), Math.abs(maxX)), Math.max(Math.abs(minZ), Math.abs(maxZ))))) { SCAN_REJECT[3]++; return false; }
 		for (int dx = minX - 1; dx <= maxX + 1; dx++) {
 			for (int dz = minZ - 1; dz <= maxZ + 1; dz++) {
 				int x = c.getX() + dx;
 				int z = c.getZ() + dz;
 				if (!level.hasChunkAt(new BlockPos(x, c.getY(), z))) {
+					SCAN_REJECT[4]++;
 					return false;
 				}
 				int h = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 				boolean inner = dx >= minX && dx <= maxX && dz >= minZ && dz <= maxZ;
 				if (!inner) {
 					if (h > c.getY() + 1) {
+						SCAN_REJECT[5]++;
 						return false;
 					}
 					continue;
 				}
 				if (h != c.getY()) {
+					SCAN_REJECT[6]++;
 					return false;
 				}
 				BlockPos ground = new BlockPos(x, c.getY() - 1, z);
 				BlockState gs = level.getBlockState(ground);
 				if (!gs.isFaceSturdy(level, ground, Direction.UP) || !gs.getFluidState().isEmpty()
 					|| gs.is(Blocks.FARMLAND) || gs.is(Blocks.DIRT_PATH) || gs.is(BlockTags.LEAVES)) {
+					SCAN_REJECT[7]++;
 					return false;
 				}
 				for (int dy = 0; dy < headroom; dy++) {
 					BlockState s = level.getBlockState(new BlockPos(x, c.getY() + dy, z));
 					if (!s.isAir() && !s.canBeReplaced()) {
+						SCAN_REJECT[8]++;
 						return false;
 					}
 				}
 			}
 		}
-		return !touchesBuilding(level, c, minX, maxX, minZ, maxZ, headroom);
+		if (touchesBuilding(level, c, minX, maxX, minZ, maxZ, headroom)) { SCAN_REJECT[9]++; return false; }
+		return true;
 	}
 
 	/**
@@ -860,7 +875,7 @@ public final class Sites {
 	}
 
 	private static int tolerantBase(ServerLevel level, BlockPos c, int minX, int maxX, int minZ, int maxZ, int headroom) {
-		if (Market.reserved(level,c,Math.max(Math.max(Math.abs(minX),Math.abs(maxX)),Math.max(Math.abs(minZ),Math.abs(maxZ))))) return Integer.MIN_VALUE;
+		if (Market.reserved(level,c,Math.max(Math.max(Math.abs(minX),Math.abs(maxX)),Math.max(Math.abs(minZ),Math.abs(maxZ))))) { SCAN_REJECT[3]++; return Integer.MIN_VALUE; }
 		int w = maxX - minX + 1;
 		int d = maxZ - minZ + 1;
 		int[] heights = new int[w * d];
@@ -870,6 +885,7 @@ public final class Sites {
 				int x = c.getX() + dx;
 				int z = c.getZ() + dz;
 				if (!level.hasChunkAt(new BlockPos(x, c.getY(), z))) {
+					SCAN_REJECT[4]++;
 					return Integer.MIN_VALUE;
 				}
 				heights[n++] = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
@@ -880,6 +896,7 @@ public final class Sites {
 		// Bauhoehe = hoechster Punkt der Flaeche; nur ein Block darf aufgefuellt werden.
 		int base = sorted[sorted.length - 1];
 		if (base - sorted[0] > 1) {
+			SCAN_REJECT[6]++;
 			return Integer.MIN_VALUE;
 		}
 		n = 0;
@@ -887,6 +904,7 @@ public final class Sites {
 			for (int dz = minZ; dz <= maxZ; dz++) {
 				int h = heights[n++];
 				if (Math.abs(h - base) > 1) {
+					SCAN_REJECT[6]++;
 					return Integer.MIN_VALUE;
 				}
 				int x = c.getX() + dx;
@@ -894,16 +912,19 @@ public final class Sites {
 				BlockPos ground = new BlockPos(x, h - 1, z);
 				BlockState gs = level.getBlockState(ground);
 				if (!de.villagerplus.village.VillageStyle.natural(gs) || !gs.getFluidState().isEmpty()) {
+					SCAN_REJECT[7]++;
 					return Integer.MIN_VALUE;
 				}
 				for (int y = Math.max(h, base); y < base + headroom; y++) {
 					BlockState s = level.getBlockState(new BlockPos(x, y, z));
 					if (!s.isAir() && !s.canBeReplaced()) {
+						SCAN_REJECT[8]++;
 						return Integer.MIN_VALUE;
 					}
 				}
 			}
 		}
-		return touchesBuilding(level, new BlockPos(c.getX(), base, c.getZ()), minX, maxX, minZ, maxZ, headroom) ? Integer.MIN_VALUE : base;
+		if (touchesBuilding(level, new BlockPos(c.getX(), base, c.getZ()), minX, maxX, minZ, maxZ, headroom)) { SCAN_REJECT[9]++; return Integer.MIN_VALUE; }
+		return base;
 	}
 }
