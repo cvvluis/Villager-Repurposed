@@ -47,8 +47,8 @@ public final class Prep {
 	}
 
 	/**
-	 * Gelaende eines abgebrochenen Bauplatzes wiederherstellen: Abgetragene Saeulen werden mit Erde (oben Gras) bis zur alten
-	 * Hoehe aufgefuellt, aufgeschuettete Erde wird wieder entfernt. Es bleiben keine Gruben in der Landschaft.
+	 * Gelaende eines abgebrochenen Bauplatzes wiederherstellen: Nur waehrend der Vorbereitung abgetragene Hoehen werden
+	 * mit Erde (oben Gras) geschlossen. Niedriges Naturgelaende wird nicht als kostenloser Fuellboden behandelt.
 	 */
 	public static void restore(ServerLevel level, BlockPos anchor, java.util.Map<Long, Integer> record) {
 		int base = anchor.getY();
@@ -66,18 +66,6 @@ public final class Prep {
 					if (s.isAir() || s.canBeReplaced()) {
 						level.setBlock(p, y == orig - 1 ? Blocks.GRASS_BLOCK.defaultBlockState() : Blocks.DIRT.defaultBlockState(), 3);
 					}
-				}
-			} else {
-				for (int y = base - 1; y >= orig; y--) {
-					BlockPos p = new BlockPos(x, y, z);
-					BlockState s = level.getBlockState(p);
-					if (s.is(Blocks.DIRT) || s.is(Blocks.GRASS_BLOCK)) {
-						level.setBlock(p, Blocks.AIR.defaultBlockState(), 3);
-					}
-				}
-				BlockPos top = new BlockPos(x, orig - 1, z);
-				if (level.getBlockState(top).is(Blocks.DIRT)) {
-					level.setBlock(top, Blocks.GRASS_BLOCK.defaultBlockState(), 3);
 				}
 			}
 		}
@@ -119,17 +107,14 @@ public final class Prep {
 					continue;
 				}
 				int h = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
-				if (record != null && h != base) {
-					record.putIfAbsent(key(x, z), h);
-				}
 				boolean changed = false;
-				for (int y = h; y < base; y++) {
-					level.setBlock(new BlockPos(x, y, z), y == base - 1 ? Blocks.GRASS_BLOCK.defaultBlockState() : Blocks.DIRT.defaultBlockState(), 3);
-					changed = true;
-				}
 				for (int y = h - 1; y >= base; y--) {
-					level.setBlock(new BlockPos(x, y, z), Blocks.AIR.defaultBlockState(), 3);
-					changed = true;
+					BlockPos p = new BlockPos(x, y, z);
+					BlockState state = level.getBlockState(p);
+					if (!state.isAir() && !state.hasBlockEntity()) {
+						level.setBlock(p, Blocks.AIR.defaultBlockState(), 3);
+						changed |= level.getBlockState(p).isAir();
+					}
 				}
 				for (int y = base; y <= base + maxY; y++) {
 					BlockPos p = new BlockPos(x, y, z);
@@ -138,6 +123,9 @@ public final class Prep {
 						level.setBlock(p, Blocks.AIR.defaultBlockState(), 3);
 						changed = true;
 					}
+				}
+				if (changed && record != null && h > base) {
+					record.putIfAbsent(key(x, z), h);
 				}
 				if (changed && ++work >= budget) {
 					return false;

@@ -18,14 +18,15 @@ public final class RoadClearing {
   int referenceY=ref==null?level.getMinY():ref.bell().getY();
   if(!level.hasChunkAt(new BlockPos(x,referenceY,z)))return null;
   int rawHeight=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z)-1;
-  int capY=ref==null?rawHeight:Math.min(rawHeight,referenceY+20);
+  // Resolve the actual surface before looking for trunks. Capping at bellY + 20
+  // made taller trunks or elevated forest edges look like solid ground.
+  int capY=rawHeight;
   BlockPos top=new BlockPos(x,capY,z);
-  if(ref!=null)while(top.getY()>referenceY-8&&level.getBlockState(top).isAir())top=top.below();
   for(int lowered=0;lowered<4&&soft(level.getBlockState(top));lowered++)top=top.below();
   BlockPos root=state.containsKey(key+":root")?BlockPos.of(state.get(key+":root")):null;
   int peak=state.containsKey(key+":top")?state.get(key+":top").intValue():top.getY();
   if(root==null&&ref!=null) {
-   BlockPos[] column=findLogColumn(level,x,z,referenceY);
+   BlockPos[] column=findLogColumn(level,x,z);
    if(column!=null) {
     root=column[0];top=column[1];peak=top.getY();
     state.put(key+":root",root.asLong());state.put(key+":top",(long)peak);
@@ -39,6 +40,17 @@ public final class RoadClearing {
   }
   if(root!=null) {
    if(root.getX()!=x||root.getZ()!=z||peak<root.getY()||peak-root.getY()>32||protectedArea(level,root))return null;
+   // A cached crown bound is evidence for resuming an interrupted tree, not permission
+    // to ignore later edits. If new trunk blocks appeared above it, invalidate these
+    // bounds so the next route scan rediscovers the current tree instead of paving below it.
+   for(int y=peak+1;y<=root.getY()+32;y++) {
+    BlockPos above=new BlockPos(x,y,z);
+    if(!level.hasChunkAt(above))return null;
+    if(level.getBlockState(above).is(BlockTags.OVERWORLD_NATURAL_LOGS)) {
+     state.remove(key+":root");state.remove(key+":top");
+     return null;
+    }
+   }
    BlockPos ground=root.below();if(!soilOrRoad(level.getBlockState(ground)))return null;
    BlockPos pending=null;
    for(int y=peak;y>=root.getY();y--) {
@@ -91,8 +103,9 @@ public final class RoadClearing {
    if(level.hasChunkAt(p)&&level.getBlockState(p).is(BlockTags.LEAVES)&&soft(level.getBlockState(p)))return true;
   return false;
  }
- private static BlockPos[] findLogColumn(ServerLevel level,int x,int z,int referenceY) {
-  int minY=Math.max(level.getMinY()+1,referenceY-8),maxY=referenceY+20;
+ private static BlockPos[] findLogColumn(ServerLevel level,int x,int z) {
+  int maxY=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z)-1;
+  int minY=Math.max(level.getMinY()+1,maxY-32);
   for(int y=minY;y<=maxY;y++) {
    BlockPos seed=new BlockPos(x,y,z);
    if(!level.getBlockState(seed).is(BlockTags.OVERWORLD_NATURAL_LOGS))continue;

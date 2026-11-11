@@ -24,9 +24,47 @@
 .claude/
 AGENTS.override.md
 
+# Share the seven reusable Minecraft Fabric 26.2 project skills; keep local agent state private.
+!.agents/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/fabric-26-2-expert/
+!.agents/skills/fabric-26-2-expert/SKILL.md
+!.agents/skills/fabric-26-2-expert/references/
+!.agents/skills/fabric-26-2-expert/references/*.md
+!.agents/skills/fabric-26-2-mixin-internals-expert/
+!.agents/skills/fabric-26-2-mixin-internals-expert/SKILL.md
+!.agents/skills/fabric-26-2-mixin-internals-expert/references/
+!.agents/skills/fabric-26-2-mixin-internals-expert/references/*.md
+!.agents/skills/fabric-loom-gradle-expert/
+!.agents/skills/fabric-loom-gradle-expert/SKILL.md
+!.agents/skills/fabric-loom-gradle-expert/references/
+!.agents/skills/fabric-loom-gradle-expert/references/*.md
+!.agents/skills/minecraft-rendering-expert/
+!.agents/skills/minecraft-rendering-expert/SKILL.md
+!.agents/skills/minecraft-rendering-expert/references/
+!.agents/skills/minecraft-rendering-expert/references/*.md
+!.agents/skills/minecraft-performance-expert/
+!.agents/skills/minecraft-performance-expert/SKILL.md
+!.agents/skills/minecraft-performance-expert/references/
+!.agents/skills/minecraft-performance-expert/references/*.md
+!.agents/skills/minecraft-mod-testing-expert/
+!.agents/skills/minecraft-mod-testing-expert/SKILL.md
+!.agents/skills/minecraft-mod-testing-expert/references/
+!.agents/skills/minecraft-mod-testing-expert/references/*.md
+!.agents/skills/minecraft-mod-architecture-expert/
+!.agents/skills/minecraft-mod-architecture-expert/SKILL.md
+!.agents/skills/minecraft-mod-architecture-expert/references/
+!.agents/skills/minecraft-mod-architecture-expert/references/*.md
+
 # Generated one-off source bundle
 /tools/master-base-sources.jar
 /tools/master-changes.patch
 
 # Conflict snapshot retained by the workspace tooling
 /src/main/java/de/villagerplus/village/Sites (# Edit conflict *.java
+
+# Local chat attachments and bytecode caches
+/.codex-remote-attachments/
+/tools/__pycache__/

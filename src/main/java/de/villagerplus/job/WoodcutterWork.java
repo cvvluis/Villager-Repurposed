@@ -10,13 +10,14 @@ import net.minecraft.world.item.ItemStack;
 
 /** Persistent cursor for one woodcutter's active tree and its safely staged output. */
 public record WoodcutterWork(Optional<BlockPos> root, Optional<BlockPos> log, int stage,
-	boolean removalPending, List<ItemStack> pendingDrops, String pendingBlock, String species, List<ReplantSite> replantSites) {
+	boolean removalPending, boolean removalConfirmed, List<ItemStack> pendingDrops, String pendingBlock, String species, List<ReplantSite> replantSites) {
 	private static final int MAX_REPLANT_SITES = 32;
 	public static final Codec<WoodcutterWork> CODEC = RecordCodecBuilder.create(i -> i.group(
 		BlockPos.CODEC.optionalFieldOf("root").forGetter(WoodcutterWork::root),
 		BlockPos.CODEC.optionalFieldOf("log").forGetter(WoodcutterWork::log),
 		Codec.INT.optionalFieldOf("stage", -1).forGetter(WoodcutterWork::stage),
 		Codec.BOOL.optionalFieldOf("removal_pending", false).forGetter(WoodcutterWork::removalPending),
+		Codec.BOOL.optionalFieldOf("removal_confirmed", false).forGetter(WoodcutterWork::removalConfirmed),
 		ItemStack.CODEC.listOf().optionalFieldOf("pending_drops", List.of()).forGetter(WoodcutterWork::pendingDrops),
 		Codec.STRING.optionalFieldOf("pending_block", "").forGetter(WoodcutterWork::pendingBlock),
 		Codec.STRING.optionalFieldOf("species", "").forGetter(WoodcutterWork::species),
@@ -34,34 +35,39 @@ public record WoodcutterWork(Optional<BlockPos> root, Optional<BlockPos> log, in
 	}
 
 	public static WoodcutterWork empty() {
-		return new WoodcutterWork(Optional.empty(), Optional.empty(), -1, false, List.of(), "", "", List.of());
+		return new WoodcutterWork(Optional.empty(), Optional.empty(), -1, false, false, List.of(), "", "", List.of());
 	}
 
 	public WoodcutterWork start(BlockPos root, String species) {
-		return new WoodcutterWork(Optional.of(root), Optional.empty(), -1, false, List.of(), "", species, replantSites);
+		return new WoodcutterWork(Optional.of(root), Optional.empty(), -1, false, false, List.of(), "", species, replantSites);
 	}
 
 	public WoodcutterWork select(BlockPos log) {
-		return new WoodcutterWork(root, Optional.of(log), -1, false, List.of(), "", species, replantSites);
+		return new WoodcutterWork(root, Optional.of(log), -1, false, false, List.of(), "", species, replantSites);
 	}
 
 	public WoodcutterWork withStage(int stage) {
-		return new WoodcutterWork(root, log, stage, false, List.of(), "", species, replantSites);
+		return new WoodcutterWork(root, log, stage, false, false, List.of(), "", species, replantSites);
 	}
 
 	/** Persist drops and the claim before changing the block, so a restart can finish either half exactly once. */
 	public WoodcutterWork claimRemoval(List<ItemStack> drops, net.minecraft.world.level.block.Block block) {
 		String blockId = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(block).toString();
-		return new WoodcutterWork(root, log, 9, true, drops, blockId, species, replantSites);
+		return new WoodcutterWork(root, log, 9, true, false, drops, blockId, species, replantSites);
+	}
+
+	/** Records that this worker successfully removed the claimed block; only then may its cached drops be paid. */
+	public WoodcutterWork confirmRemoval() {
+		return new WoodcutterWork(root, log, 9, true, true, pendingDrops, pendingBlock, species, replantSites);
 	}
 
 	public WoodcutterWork afterRemovalDelivered() {
-		return new WoodcutterWork(root, Optional.empty(), -1, false, List.of(), "", species, replantSites);
+		return new WoodcutterWork(root, Optional.empty(), -1, false, false, List.of(), "", species, replantSites);
 	}
 
 	/** Abandon an active tree if construction has appeared beside it; preserve unrelated replant work. */
 	public WoodcutterWork abandonTree() {
-		return new WoodcutterWork(Optional.empty(), Optional.empty(), -1, false, List.of(), "", "", replantSites);
+		return new WoodcutterWork(Optional.empty(), Optional.empty(), -1, false, false, List.of(), "", "", replantSites);
 	}
 
 	public WoodcutterWork finishTree() {
@@ -72,11 +78,11 @@ public record WoodcutterWork(Optional<BlockPos> root, Optional<BlockPos> log, in
 			sites.add(new ReplantSite(base, species, 0));
 			while (sites.size() > MAX_REPLANT_SITES) sites.remove(0);
 		}
-		return new WoodcutterWork(Optional.empty(), Optional.empty(), -1, false, List.of(), "", "", sites);
+		return new WoodcutterWork(Optional.empty(), Optional.empty(), -1, false, false, List.of(), "", "", sites);
 	}
 
 	public WoodcutterWork updateReplantSites(List<ReplantSite> sites) {
-		return new WoodcutterWork(root, log, stage, removalPending, pendingDrops, pendingBlock, species, sites);
+		return new WoodcutterWork(root, log, stage, removalPending, removalConfirmed, pendingDrops, pendingBlock, species, sites);
 	}
 
 	public record ReplantSite(BlockPos pos, String species, long retryAt) {

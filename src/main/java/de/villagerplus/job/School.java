@@ -2,177 +2,381 @@ package de.villagerplus.job;
 
 import de.villagerplus.Config;
 import de.villagerplus.VillagerMemory;
+import de.villagerplus.VillagerPlus;
+import de.villagerplus.village.Expedition;
+import de.villagerplus.village.Guests;
+import de.villagerplus.village.Journal;
 import de.villagerplus.village.VillageRef;
+import de.villagerplus.village.Villages;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.GlobalPos;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.item.Items;
-import net.minecraft.core.Direction;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.LecternBlock;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-import java.util.Comparator;
+import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.minecraft.world.phys.Vec3;
 
-/**
- * Kindheit: Kinder wachsen langsamer auf ({@code Config.GROWTH_FACTOR}) und gehen tagsueber in die Dorfschule. Dort lernen
- * sie; jede Unterrichtsstunde zaehlt als Erfahrung, mit der sie spaeter in ihren Beruf starten (kleiner Vorsprung, siehe Skills).
- */
+/** Children attend the real school room, with qualification XP awarded only for an active teacher-led lesson. */
 public final class School {
+	private static final int LESSON_TICKS = 200;
+	private static final int LESSON_WINDOW_TICKS = 400;
+	private static final int TEACHER_CACHE_TICKS = 100;
+	private static final int FURNISH_RETRY_TICKS = 40;
+
+	private record LocationKey(ResourceKey<Level> dimension, long position) {}
+	private record TeacherCache(long checkedAt, UUID teacher) {}
+	private record Lesson(UUID teacher, long gameTime, long lectern) {}
+	private record Seat(BlockPos bench, BlockPos stand) {}
+	private record StudentSeat(Villager child, Seat seat) {}
+	private record Classroom(BlockPos school, BlockPos lectern, Direction facing, List<Seat> seats) {}
+
+	private static final Map<LocationKey, BlockPos> LECTERNS = new HashMap<>();
+	private static final Map<LocationKey, Long> FURNISH_TRIED = new HashMap<>();
+	private static final Map<LocationKey, TeacherCache> TEACHERS = new HashMap<>();
+	private static final Map<LocationKey, Lesson> TAUGHT = new HashMap<>();
+	private static final Map<LocationKey, Long> JOURNAL_DAY = new HashMap<>();
+
+	private School() {}
+
 	static boolean isSchoolActivity(String activity) {
 		return activity != null && activity.startsWith("lernt ");
 	}
-	private static final int LESSON_TICKS = 200;
 
-	private School() {
-	}
-
-	/** Bremst das Aufwachsen: bei jedem Takt wird ein Teil der vergangenen Zeit wieder vom Alter abgezogen. */
-	public static void slowGrowth(Villager v) {
-		int age = v.getAge();
+	/** Slows natural ageing by retaining a fraction of the ticks that vanilla removes. */
+	public static void slowGrowth(Villager villager) {
+		int age = villager.getAge();
 		if (age < 0 && Config.GROWTH_FACTOR > 1) {
 			int back = (int) (Config.JOB_INTERVAL * (1.0 - 1.0 / Config.GROWTH_FACTOR));
-			v.setAge(age - back);
+			villager.setAge(age - back);
 		}
 	}
 
-	// --- Lehrer und Lectern -----------------------------------------------------------------
-
-	private static final Map<Long, BlockPos> LECTERNS = new HashMap<>();
-	private static final Map<Long, Long> TRIED = new HashMap<>();
-	private static final Map<Long, Object[]> TEACHERS = new HashMap<>(); // Glocke -> {Zeit, UUID, Name}
-	private static final Map<Long, Long> TAUGHT = new HashMap<>(); // Glocke -> letzte Unterrichtsminute (Spielzeit)
-	private static final Map<Long, Long> JOURNAL_DAY = new HashMap<>();
-
-	/** Lehrerpult der Schule (gesucht um den Ursprung, bei Altbestand nachtraeglich gesetzt). */
+	/** Finds an existing lectern inside the registered school footprint without adopting a porch or placing free furniture. */
 	public static BlockPos lectern(ServerLevel level, BlockPos school) {
-		BlockPos c = LECTERNS.get(school.asLong());
-		if (c != null && level.getBlockState(c).getBlock() instanceof LecternBlock) {
-			return c;
+		if (school == null || !schoolFootprintLoaded(level, school)) return null;
+		LocationKey key = new LocationKey(level.dimension(), school.asLong());
+		BoundingBox box = schoolBox(school);
+		BlockPos cached = LECTERNS.get(key);
+		if (cached != null && box.isInside(cached) && level.hasChunkAt(cached)
+			&& level.getBlockState(cached).getBlock() instanceof LecternBlock
+			&& de.villagerplus.build.Furnisher.isSchoolInterior(level, cached)) {
+			return cached;
 		}
-		LECTERNS.remove(school.asLong());
-		if (!level.hasChunkAt(school) || level.getGameTime() < TRIED.getOrDefault(school.asLong(), 0L)) {
-			return null;
+		LECTERNS.remove(key);
+		BlockPos existing = findLectern(level, box);
+		if (existing != null) {
+			LECTERNS.put(key, existing);
+			return existing;
 		}
-		TRIED.put(school.asLong(), level.getGameTime() + 2400);
-		var box = new net.minecraft.world.level.levelgen.structure.BoundingBox(school.getX() - 7, school.getY() - 1, school.getZ() - 7, school.getX() + 7, school.getY() + 5, school.getZ() + 7);
-		if (de.villagerplus.build.Furnisher.placeLectern(level, box)) {
-			for (BlockPos pos : BlockPos.betweenClosed(box.minX(), box.minY(), box.minZ(), box.maxX(), box.maxY(), box.maxZ())) {
-				if (level.getBlockState(pos).getBlock() instanceof LecternBlock) {
-					LECTERNS.put(school.asLong(), pos.immutable());
-					return pos.immutable();
-				}
+		return null;
+	}
+
+	private static boolean ensureFurnished(Ctx c, VillageRef ref) {
+		BlockPos school = ref.data().extra.school.orElse(null);
+		if (school == null || !schoolFootprintLoaded(c.level(), school)) return false;
+		LocationKey key = new LocationKey(c.level().dimension(), school.asLong());
+		if (c.now() < FURNISH_TRIED.getOrDefault(key, Long.MIN_VALUE)) return false;
+		FURNISH_TRIED.put(key, c.now() + FURNISH_RETRY_TICKS);
+		return de.villagerplus.build.Furnisher.furnishSchool(c, ref, schoolBox(school), null);
+	}
+
+	/** Short public status for the village overview; incomplete furnishing retries from public stock. */
+	public static String furnishingStatus(ServerLevel level, BlockPos school) {
+		if (school == null) return "Schule fehlt";
+		if (!schoolFootprintLoaded(level, school)) return "Schule nicht geladen";
+		BoundingBox box = schoolBox(school);
+		int lecterns = findLectern(level, box) == null ? 0 : 1;
+		int shelves = 0;
+		for (BlockPos pos : BlockPos.betweenClosed(box.minX(), box.minY(), box.minZ(), box.maxX(), box.maxY(), box.maxZ())) {
+			if (!de.villagerplus.build.Furnisher.isSchoolInterior(level, pos)) continue;
+			if (level.getBlockState(pos).is(net.minecraft.world.level.block.Blocks.BOOKSHELF)) shelves++;
+		}
+		var benches = de.villagerplus.build.Furnisher.schoolBenchPlan(level, box);
+		int capacity = benches.capacity();
+		int usable = benches.existing().size();
+		boolean complete = lecterns > 0 && shelves >= 12 && capacity > 0 && usable >= capacity;
+		return (complete ? "eingerichtet" : "Einrichtung offen") + " (Pult " + lecterns + "/1, Regale "
+			+ Math.min(12, shelves) + "/12, Bänke " + usable + "/" + capacity
+			+ (capacity == 0 ? ", kein sicherer Sitz-/Zugangspfad" : "") + ")";
+	}
+
+	private static BlockPos findLectern(ServerLevel level, BoundingBox box) {
+		for (BlockPos pos : BlockPos.betweenClosed(box.minX(), box.minY(), box.minZ(), box.maxX(), box.maxY(), box.maxZ())) {
+			if (level.getBlockState(pos).getBlock() instanceof LecternBlock
+				&& de.villagerplus.build.Furnisher.isSchoolInterior(level, pos)) {
+				return pos.immutable();
 			}
 		}
 		return null;
 	}
 
-	/** Der Lehrer des Dorfes: Bibliothekar (Lectern ist sein Arbeitsblock), sonst Kleriker; bei mehreren der mit der kleinsten UUID. Alle 5 s neu bestimmt. */
-	private static Object[] teacher(ServerLevel level, VillageRef ref) {
-		Object[] t = TEACHERS.get(ref.bell().asLong());
-		if (t != null && level.getGameTime() - (Long) t[0] < 100) {
-			return t;
-		}
-		Villager best = null;
-		for (String job : new String[] {"librarian", "cleric"}) {
-			best = level.getEntitiesOfClass(Villager.class, new net.minecraft.world.phys.AABB(ref.bell()).inflate(Config.VILLAGE_RADIUS),
-				v -> v.isAlive() && !v.isBaby() && !v.isSleeping() && !de.villagerplus.village.Guests.isGuest(v) && !de.villagerplus.village.Expedition.isAway(v)
-					&& v.getVillagerData().profession().unwrapKey().map(k -> k.identifier().getPath().contains(job)).orElse(false))
-				.stream().min(Comparator.comparing(Villager::getUUID)).orElse(null);
-			if (best != null) {
+	private static BoundingBox schoolBox(BlockPos school) {
+		// The generated school is seven by five blocks, centered on its registered origin.
+		return new BoundingBox(school.getX() - 3, school.getY() - 1, school.getZ() - 3,
+			school.getX() + 3, school.getY() + 3, school.getZ() + 3);
+	}
+
+	private static boolean schoolFootprintLoaded(ServerLevel level, BlockPos school) {
+		BoundingBox box = schoolBox(school);
+		return level.hasChunkAt(school)
+			&& level.hasChunkAt(new BlockPos(box.minX(), school.getY(), box.minZ()))
+			&& level.hasChunkAt(new BlockPos(box.minX(), school.getY(), box.maxZ()))
+			&& level.hasChunkAt(new BlockPos(box.maxX(), school.getY(), box.minZ()))
+			&& level.hasChunkAt(new BlockPos(box.maxX(), school.getY(), box.maxZ()));
+	}
+
+	private static Classroom classroom(ServerLevel level, VillageRef ref) {
+		Optional<BlockPos> registered = ref.data().extra.school;
+		if (registered.isEmpty()) return null;
+		BlockPos school = registered.get();
+		BlockPos lectern = lectern(level, school);
+		if (lectern == null || !schoolBox(school).isInside(lectern) || !insideClassroom(level, lectern)) return null;
+		Direction facing = level.getBlockState(lectern).getValue(LecternBlock.FACING);
+		List<Seat> seats = classroomSeats(level, school, lectern);
+		return seats.isEmpty() ? null : new Classroom(school, lectern, facing, seats);
+	}
+
+	/** Returns only usable stand positions beside actual stair benches inside the built school footprint. */
+	private static List<Seat> classroomSeats(ServerLevel level, BlockPos school, BlockPos lectern) {
+		BoundingBox box = schoolBox(school);
+		return de.villagerplus.build.Furnisher.schoolBenchPlan(level, box).existing().stream()
+			.map(seat -> new Seat(seat.position(), seat.stand())).toList();
+	}
+
+	private static boolean insideClassroom(ServerLevel level, BlockPos position) {
+		boolean roofed = false;
+		for (int dy = 1; dy <= 5; dy++) {
+			BlockPos above = position.above(dy);
+			if (!level.hasChunkAt(above)) return false;
+			var state = level.getBlockState(above);
+			if (!state.isAir() && !state.canBeReplaced()) {
+				roofed = true;
 				break;
 			}
 		}
-		UUID id = best == null ? null : best.getUUID();
-		String name = best == null ? "" : best.getAttachedOrCreate(de.villagerplus.VillagerPlus.MEMORY).name;
-		t = new Object[] {level.getGameTime(), id, name};
-		TEACHERS.put(ref.bell().asLong(), t);
-		return t;
+		if (!roofed) return false;
+		int enclosedSides = 0;
+		for (Direction direction : Direction.Plane.HORIZONTAL) {
+			boolean wall = false;
+			for (int distance = 1; distance <= 4 && !wall; distance++) {
+				BlockPos candidate = position.relative(direction, distance);
+				wall = level.hasChunkAt(candidate)
+					&& level.getBlockState(candidate).isFaceSturdy(level, candidate, direction.getOpposite());
+			}
+			if (wall) enclosedSides++;
+		}
+		// One side may be the classroom entrance; three enclosed sides plus a roof distinguish it from outdoor stairs.
+		return enclosedSides >= 3;
 	}
 
-	/** Findet gerade Unterricht statt (Lehrer hat in den letzten 20 Sekunden am Pult unterrichtet)? */
+	private static boolean safeStand(ServerLevel level, BlockPos feet) {
+		return level.hasChunkAt(feet) && level.hasChunkAt(feet.above()) && level.hasChunkAt(feet.below())
+			&& level.getBlockState(feet).getCollisionShape(level, feet).isEmpty()
+			&& level.getBlockState(feet.above()).getCollisionShape(level, feet.above()).isEmpty()
+			&& level.getBlockState(feet.below()).isFaceSturdy(level, feet.below(), Direction.UP);
+	}
+
+	private static List<Villager> children(ServerLevel level, VillageRef ref) {
+		List<Villager> children = Villages.residents(level, ref, Config.VILLAGE_RADIUS,
+			villager -> villager.isBaby() && !Guests.isGuest(villager) && !Expedition.isAway(villager));
+		children.sort(Comparator.comparing(Villager::getUUID));
+		return children;
+	}
+
+	/** Rotates excess children through the real seats once per day; children never share a bench assignment. */
+	private static List<StudentSeat> roster(ServerLevel level, VillageRef ref, Classroom classroom) {
+		List<Villager> children = children(level, ref);
+		if (children.isEmpty() || classroom.seats().isEmpty()) return List.of();
+		int assigned = Math.min(children.size(), classroom.seats().size());
+		long day = Math.floorDiv(level.getOverworldClockTime(), 24000L);
+		int offset = (int) Math.floorMod(day, children.size());
+		List<StudentSeat> roster = new ArrayList<>(assigned);
+		for (int i = 0; i < assigned; i++) {
+			Villager child = children.get((offset + i) % children.size());
+			roster.add(new StudentSeat(child, classroom.seats().get(i)));
+		}
+		return List.copyOf(roster);
+	}
+
+	private static boolean atAssignedSeat(Villager villager, Seat seat) {
+		return villager.position().distanceToSqr(Vec3.atBottomCenterOf(seat.stand())) <= 1.25 * 1.25;
+	}
+
+	/** Selects an adult librarian or cleric assigned to this exact village, never a nearby settlement's teacher. */
+	private static Villager teacher(ServerLevel level, VillageRef ref) {
+		LocationKey key = villageKey(level, ref);
+		long now = level.getGameTime();
+		TeacherCache cached = TEACHERS.get(key);
+		if (cached != null && now >= cached.checkedAt() && now - cached.checkedAt() < TEACHER_CACHE_TICKS) {
+			if (cached.teacher() == null) return null;
+			if (level.getEntity(cached.teacher()) instanceof Villager villager && eligibleTeacher(villager)
+				&& assignedTo(villager, level, ref)) return villager;
+			TEACHERS.remove(key);
+		}
+		Villager selected = Villages.residents(level, ref, Config.VILLAGE_RADIUS, School::eligibleTeacher).stream()
+			.min(Comparator.comparingInt(School::teacherPriority).thenComparing(Villager::getUUID)).orElse(null);
+		TEACHERS.put(key, new TeacherCache(now, selected == null ? null : selected.getUUID()));
+		return selected;
+	}
+
+	private static boolean eligibleTeacher(Villager villager) {
+		if (!villager.isAlive() || villager.isBaby() || villager.isSleeping() || villager.isTrading()
+			|| Guests.isGuest(villager) || Expedition.isAway(villager)) return false;
+		String profession = professionPath(villager);
+		return profession.equals("librarian") || profession.equals("cleric");
+	}
+
+	private static int teacherPriority(Villager villager) {
+		return professionPath(villager).equals("librarian") ? 0 : 1;
+	}
+
+	private static String professionPath(Villager villager) {
+		return villager.getVillagerData().profession().unwrapKey().map(key -> key.identifier().getPath()).orElse("");
+	}
+
+	private static boolean assignedTo(Villager villager, ServerLevel level, VillageRef ref) {
+		Optional<GlobalPos> meeting = villager.getBrain().getMemory(MemoryModuleType.MEETING_POINT);
+		if (meeting.isPresent()) {
+			return meeting.get().dimension().equals(level.dimension()) && meeting.get().pos().equals(ref.bell());
+		}
+		if (villager.blockPosition().distSqr(ref.bell()) > (long) Config.VILLAGE_RADIUS * Config.VILLAGE_RADIUS) return false;
+		VillageRef assigned = Villages.find(level, villager);
+		return assigned != null && assigned.bell().equals(ref.bell());
+	}
+
+	private static LocationKey villageKey(ServerLevel level, VillageRef ref) {
+		return new LocationKey(level.dimension(), ref.bell().asLong());
+	}
+
+	private static boolean atLectern(Villager teacher, Classroom classroom) {
+		BlockPos stand = classroom.lectern().relative(classroom.facing());
+		return teacher.position().distanceToSqr(Vec3.atBottomCenterOf(stand)) <= 1.8 * 1.8;
+	}
+
+	private static Lesson activeLesson(ServerLevel level, VillageRef ref, Classroom classroom, Villager teacher) {
+		if (teacher == null || !eligibleTeacher(teacher) || !assignedTo(teacher, level, ref) || !atLectern(teacher, classroom)) return null;
+		Lesson lesson = TAUGHT.get(villageKey(level, ref));
+		long now = level.getGameTime();
+		if (lesson == null || !lesson.teacher().equals(teacher.getUUID()) || lesson.lectern() != classroom.lectern().asLong() || now < lesson.gameTime()
+			|| now - lesson.gameTime() > LESSON_WINDOW_TICKS) return null;
+		return lesson;
+	}
+
+	/** True only while the assigned teacher is still at the school lectern after a recent lesson. */
 	public static boolean taught(ServerLevel level, VillageRef ref) {
-		return level.getGameTime() - TAUGHT.getOrDefault(ref.bell().asLong(), -1000L) < 400;
+		Classroom classroom = classroom(level, ref);
+		if (classroom == null) return false;
+		return activeLesson(level, ref, classroom, teacher(level, ref)) != null;
 	}
 
-	/** Arbeitszeit des Lehrers: am Pult stehen und die Kinder unterrichten (true = beschaeftigt). Ohne Kinder oder Pult arbeitet er normal. */
+	/** Teacher work: hold a real lesson at the classroom lectern when at least one assigned pupil is seated. */
 	public static boolean teach(Ctx c, Phase phase) {
 		VillageRef ref = c.village();
-		if (ref == null || ref.data().extra.school.isEmpty() || phase.routine) {
-			return false;
-		}
-		Object[] t = teacher(c.level(), ref);
-		if (t[1] == null || !t[1].equals(c.v().getUUID())) {
-			return false;
-		}
-		BlockPos lectern = lectern(c.level(), ref.data().extra.school.get());
-		if (lectern == null) {
-			return false;
-		}
-		boolean kids = !c.level().getEntitiesOfClass(Villager.class, new net.minecraft.world.phys.AABB(lectern).inflate(Config.VILLAGE_RADIUS), v -> v.isBaby() && v.isAlive() && !v.isSleeping()).isEmpty();
-		if (!kids) {
-			return false;
-		}
-		Direction f = c.level().getBlockState(lectern).getValue(LecternBlock.FACING);
+		if (ref == null || ref.data().extra.school.isEmpty() || phase.routine || phase == Phase.NIGHT) return false;
+		Villager teacher = teacher(c.level(), ref);
+		if (teacher == null || !teacher.getUUID().equals(c.v().getUUID())) return false;
+		if (ensureFurnished(c, ref)) return true;
+		Classroom classroom = classroom(c.level(), ref);
+		if (classroom == null) return false;
+		List<StudentSeat> pupils = roster(c.level(), ref, classroom);
+		if (pupils.stream().noneMatch(pupil -> pupil.child().isAlive() && !pupil.child().isSleeping() && atAssignedSeat(pupil.child(), pupil.seat()))) return false;
+
 		c.setActivity("unterrichtet die Kinder am Lehrerpult");
 		Anim.hold(c, Items.WRITTEN_BOOK);
-		if (!JobUtil.approach(c, lectern.relative(f), 1.6)) {
-			return true;
-		}
-		c.v().getLookControl().setLookAt(lectern.getX() + 0.5 + f.getStepX() * 4, c.v().getEyeY(), lectern.getZ() + 0.5 + f.getStepZ() * 4);
+		BlockPos teacherStand = classroom.lectern().relative(classroom.facing());
+		if (!JobUtil.approachLong(c, teacherStand, 1.6)) return true;
+		c.v().getLookControl().setLookAt(classroom.lectern().getX() + 0.5, c.v().getEyeY(), classroom.lectern().getZ() + 0.5);
 		if (c.now() >= c.st().cooldownUntil) {
 			JobUtil.swing(c.v());
 			c.mem().jobsDone++;
 			c.st().cooldownUntil = c.now() + LESSON_TICKS;
-			TAUGHT.put(ref.bell().asLong(), c.now());
-			c.level().sendParticles(net.minecraft.core.particles.ParticleTypes.ENCHANT, lectern.getX() + 0.5, lectern.getY() + 1.4, lectern.getZ() + 0.5, 12, 0.3, 0.2, 0.3, 0.5);
+			TAUGHT.put(villageKey(c.level(), ref), new Lesson(c.v().getUUID(), c.now(), classroom.lectern().asLong()));
+			c.level().sendParticles(net.minecraft.core.particles.ParticleTypes.ENCHANT,
+				classroom.lectern().getX() + 0.5, classroom.lectern().getY() + 1.4, classroom.lectern().getZ() + 0.5,
+				12, 0.3, 0.2, 0.3, 0.5);
 			long day = c.now() / 24000L;
-			if (!Long.valueOf(day).equals(JOURNAL_DAY.get(ref.bell().asLong()))) {
-				JOURNAL_DAY.put(ref.bell().asLong(), day);
-				de.villagerplus.village.Journal.add(c.level(), ref, "Befinden", c.mem().name, "unterrichtet die Dorfkinder in der Schule", 0);
+			LocationKey key = villageKey(c.level(), ref);
+			if (!Long.valueOf(day).equals(JOURNAL_DAY.get(key))) {
+				JOURNAL_DAY.put(key, day);
+				Journal.add(c.level(), ref, "Befinden", c.mem().name, "unterrichtet die Dorfkinder in der Schule", 0);
 			}
 		}
 		return true;
 	}
 
-	/** Tagsueber: Kind sitzt in der Schule vor dem Lehrerpult und lernt (true = beschaeftigt). Mit Lehrer 3 Erfahrung je Stunde, ohne nur 1. */
+	/** Children use an actual bench, and earn XP once per fresh lesson only while their teacher is present. */
 	public static boolean attend(Ctx c, Phase phase) {
 		VillageRef ref = c.village();
-		if (ref == null || ref.data().extra.school.isEmpty() || phase.routine) {
+		if (ref == null || ref.data().extra.school.isEmpty() || phase.routine || phase == Phase.NIGHT) return false;
+		Classroom classroom = classroom(c.level(), ref);
+		if (classroom == null) {
+			// A child may trigger furnishing work, but that does not make an empty room a
+			// classroom or count as school attendance for this work cycle.
+			ensureFurnished(c, ref);
 			return false;
 		}
-		BlockPos school = ref.data().extra.school.get();
-		BlockPos lectern = lectern(c.level(), school);
-		BlockPos seat = school;
-		Direction f = null;
-		if (lectern != null) {
-			f = c.level().getBlockState(lectern).getValue(LecternBlock.FACING);
-			int h = c.v().getUUID().hashCode();
-			// Sitzreihen: 2-3 Bloecke vor dem Pult, seitlich versetzt je Kind
-			seat = lectern.relative(f, 3 + Math.floorMod(h, 2)).relative(f.getClockWise(), Math.floorMod(h >>> 4, 5) - 2);
-		}
-		boolean teacherHere = taught(c.level(), ref);
-		Object[] t = teacher(c.level(), ref);
+		if (ensureFurnished(c, ref)) return true;
+		StudentSeat assigned = roster(c.level(), ref, classroom).stream()
+			.filter(pupil -> pupil.child().getUUID().equals(c.v().getUUID())).findFirst().orElse(null);
+		if (assigned == null) return false;
+
+		Villager teacher = teacher(c.level(), ref);
+		Lesson lesson = activeLesson(c.level(), ref, classroom, teacher);
 		String apprenticeship = Apprentices.activity(c.level(), c.v());
-		c.setActivity(apprenticeship != null ? apprenticeship : teacherHere ? "lernt beim Lehrer " + t[2] : "lernt in der Schule (Lehrer fehlt)");
+		c.setActivity(apprenticeship != null ? apprenticeship
+			: lesson != null ? teacherActivity(teacher)
+			: teacher == null ? "lernt in der Schule (Lehrer fehlt)" : "lernt in der Schule (wartet auf Unterricht)");
 		Anim.hold(c, Items.BOOK);
-		if (!JobUtil.approach(c, seat, 1.8)) {
+		if (!JobUtil.approachLong(c, assigned.seat().stand(), 0.75)) return true;
+		c.v().getLookControl().setLookAt(classroom.lectern().getX() + 0.5, c.v().getEyeY(), classroom.lectern().getZ() + 0.5);
+		if (lesson == null || c.now() < c.st().cooldownUntil) return true;
+
+		Apprentices.Progress progress = Apprentices.get(c.v());
+		if (progress.lastLessonAt() == lesson.gameTime()) {
+			c.st().cooldownUntil = c.now() + LESSON_TICKS;
 			return true;
 		}
-		if (lectern != null) {
-			c.v().getLookControl().setLookAt(lectern.getX() + 0.5, c.v().getEyeY(), lectern.getZ() + 0.5);
-		}
-		VillagerMemory mem = c.mem();
-		if (c.now() >= c.st().cooldownUntil) {
-			int lessonXp = teacherHere ? 3 : 1;
-			mem.jobsDone += lessonXp;
-			Apprentices.awardLesson(c.v(), lessonXp);
-			if (teacherHere) {
-				JobUtil.swing(c.v());
-				c.level().sendParticles(net.minecraft.core.particles.ParticleTypes.HAPPY_VILLAGER, c.v().getX(), c.v().getY() + 1.4, c.v().getZ(), 2, 0.2, 0.1, 0.2, 0.0);
-			}
-			c.st().cooldownUntil = c.now() + LESSON_TICKS;
-		}
+		int lessonXp = 3;
+		c.mem().jobsDone += lessonXp;
+		Apprentices.awardLesson(c.v(), lessonXp, lesson.gameTime());
+		c.level().sendParticles(net.minecraft.core.particles.ParticleTypes.HAPPY_VILLAGER,
+			c.v().getX(), c.v().getY() + 1.4, c.v().getZ(), 2, 0.2, 0.1, 0.2, 0.0);
+		c.st().cooldownUntil = c.now() + LESSON_TICKS;
 		return true;
+	}
+
+	private static String teacherActivity(Villager teacher) {
+		VillagerMemory memory = teacher.getAttachedOrCreate(VillagerPlus.MEMORY);
+		return memory.name == null || memory.name.isBlank() ? "lernt beim Lehrer" : "lernt beim Lehrer " + memory.name;
+	}
+
+	/** Lets the grouped in-world checks discard per-process school state after restoring their fixture. */
+	static void clearTransientStateForChecks(ServerLevel level, VillageRef ref, BlockPos school) {
+		if (school != null) {
+			LocationKey schoolKey = new LocationKey(level.dimension(), school.asLong());
+			LECTERNS.remove(schoolKey);
+			FURNISH_TRIED.remove(schoolKey);
+		}
+		if (ref != null) {
+			LocationKey key = villageKey(level, ref);
+			TEACHERS.remove(key);
+			TAUGHT.remove(key);
+			JOURNAL_DAY.remove(key);
+		}
 	}
 }

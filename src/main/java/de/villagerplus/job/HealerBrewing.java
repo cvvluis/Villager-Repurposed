@@ -24,7 +24,9 @@ public final class HealerBrewing {
 	public static boolean work(Ctx c) {
 		if (c.village() == null) return false;
 		if (Workstation.ensure(c, Blocks.BREWING_STAND)) return true;
-		BlockPos standPos = Workstation.find(c.level(), c.village().bell(), Blocks.BREWING_STAND, 8);
+		BlockPos origin = c.village().chestPos(c.level());
+		if (origin == null) origin = c.village().bell();
+		BlockPos standPos = Workstation.find(c.level(), origin, Blocks.BREWING_STAND, 8);
 		if (standPos == null || !(c.level().getBlockEntity(standPos) instanceof BrewingStandBlockEntity stand)) return false;
 		Container chest = communal(c);
 		if (chest == null) return false;

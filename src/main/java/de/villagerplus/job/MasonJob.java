@@ -24,15 +24,18 @@ public class MasonJob implements Job {
 
 	@Override
 	public boolean primary(Ctx c) {
-		return build(c) || workshop(c) || mine(c) || placeTorch(c);
+		return GravelQuarry.work(c) || build(c) || workshop(c) || mine(c) || placeTorch(c);
 	}
 
 	@Override
 	public boolean secondary(Ctx c) {
+		if (GravelQuarry.work(c)) {
+			return true;
+		}
 		if (c.village() != null && c.village().data().hasPlan() && build(c)) {
 			return true;
 		}
-		return GravelQuarry.work(c) || RoadBuilderJob.work(c) || mine(c) || workshop(c) || build(c) || placeTorch(c);
+		return RoadBuilderJob.work(c) || mine(c) || workshop(c) || build(c) || placeTorch(c);
 	}
 
 	private static boolean build(Ctx c) {

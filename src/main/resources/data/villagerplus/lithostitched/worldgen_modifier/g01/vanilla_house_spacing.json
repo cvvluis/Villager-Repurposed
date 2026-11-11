@@ -1,0 +1,24 @@
+{
+  "type": "lithostitched:add_template_pool_elements",
+  "template_pools": [
+    "minecraft:village/desert/houses",
+    "minecraft:village/desert/zombie/houses",
+    "minecraft:village/plains/houses",
+    "minecraft:village/plains/zombie/houses",
+    "minecraft:village/savanna/houses",
+    "minecraft:village/savanna/zombie/houses",
+    "minecraft:village/snowy/houses",
+    "minecraft:village/snowy/zombie/houses",
+    "minecraft:village/taiga/houses",
+    "minecraft:village/taiga/zombie/houses"
+  ],
+  "elements": [
+    {
+      "weight": 90,
+      "element": {
+        "element_type": "minecraft:empty_pool_element",
+        "projection": "rigid"
+      }
+    }
+  ]
+}

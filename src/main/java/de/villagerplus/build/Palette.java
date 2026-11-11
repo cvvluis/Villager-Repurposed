@@ -214,7 +214,7 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 
 						BlockState s = level.getBlockState(p);
 
-						if (s.isAir() || VillageStyle.natural(s) || s.getBlock() instanceof BedBlock) {
+						if (s.isAir() || furnishingOnly(s.getBlock()) || VillageStyle.natural(s) || s.getBlock() instanceof BedBlock) {
 
 							continue;
 
@@ -334,7 +334,7 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 
 				int rel = q.getY() - bed.getY();
 
-				if (s.isAir() || VillageStyle.natural(s) || s.is(BlockTags.LOGS) || s.getBlock() instanceof StairBlock
+				if (s.isAir() || furnishingOnly(s.getBlock()) || VillageStyle.natural(s) || s.is(BlockTags.LOGS) || s.getBlock() instanceof StairBlock
 
 					|| s.getBlock() instanceof BedBlock || !s.isCollisionShapeFullBlock(level, q)) {
 
@@ -374,6 +374,11 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 
 		return new Palette(lower, upper, p.frame, sock, p.roofFull, p.roofStair, p.roofSlab, p.window, p.floor, p.door, p.fence);
 
+	}
+
+	/** Interior shelves must never become the wall, foundation, or roof material for new buildings. */
+	private static boolean furnishingOnly(Block block) {
+		return block == Blocks.BOOKSHELF || block == Blocks.CHISELED_BOOKSHELF;
 	}
 
 	/** Aussenkante (Sockel): neben dem Block liegt gewachsener Boden oder Luft ueber Boden - kein Innenboden. */
@@ -593,6 +598,10 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 	private static Palette detectAt(ServerLevel level, BlockPos bell, Villager hint, BlockPos site) {
 
 		VillageStyle def = VillageStyle.detect(level, bell, hint);
+		// VillageStyle supplies fallbacks as well as detected values. A bookshelf can still be returned by that
+		// fallback path when the sampled home contains shelves but no other valid wall, so sanitize it here too.
+		Block fallbackWall = furnishingOnly(def.wall()) ? Blocks.COBBLESTONE : def.wall();
+		Block fallbackFloor = furnishingOnly(def.floor()) ? Blocks.OAK_PLANKS : def.floor();
 
 		Map<Block, Integer> walls = new HashMap<>();
 
@@ -628,7 +637,7 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 
 				int rel = p.getY() - bed.getY();
 
-				if (b instanceof BedBlock || VillageStyle.natural(s) || b == Blocks.RED_MUSHROOM_BLOCK || b == Blocks.BROWN_MUSHROOM_BLOCK || b == Blocks.MUSHROOM_STEM) {
+				if (b instanceof BedBlock || furnishingOnly(b) || VillageStyle.natural(s) || b == Blocks.RED_MUSHROOM_BLOCK || b == Blocks.BROWN_MUSHROOM_BLOCK || b == Blocks.MUSHROOM_STEM) {
 
 					continue;
 
@@ -688,7 +697,7 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 
 		}
 
-		Block wall = top(walls, null, def.wall());
+		Block wall = top(walls, null, fallbackWall);
 
 		Block wall2 = top(walls, wall, wall);
 
@@ -704,7 +713,7 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 
 		Block window = top(windows, null, Blocks.GLASS_PANE);
 
-		return new Palette(wall, wall2, frame, base, roofFull, roofStair, roofSlab, window, def.floor(), def.door(), def.fence());
+		return new Palette(wall, wall2, frame, base, roofFull, roofStair, roofSlab, window, fallbackFloor, def.door(), def.fence());
 
 	}
 
@@ -830,7 +839,7 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 
 	/** Haeufigster Block (ohne {@code not}); gibt es keinen, {@code fallback}. Der zweite Aufruf liefert so die "zweite Wand". */
 
-	private static Block top(Map<Block, Integer> tally, Block not, Block fallback) {
+	static Block top(Map<Block, Integer> tally, Block not, Block fallback) {
 
 		Block best = null;
 
@@ -850,7 +859,10 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 
 			// Nur wirklich ins Gewicht fallende Bloecke (mind. 12 % aller Zaehlungen) zaehlen als Stilmerkmal.
 
-			if (e.getValue() > bestCount && e.getValue() * 100 >= total * 12) {
+			String candidateId = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(b).toString();
+			String bestId = best == null ? null : net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(best).toString();
+			if (e.getValue() * 100 >= total * 12
+				&& (e.getValue() > bestCount || (e.getValue() == bestCount && (bestId == null || candidateId.compareTo(bestId) < 0)))) {
 
 				best = b;
 

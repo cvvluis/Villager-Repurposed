@@ -17,19 +17,31 @@ import net.minecraft.world.entity.npc.villager.VillagerProfession;
 public final class Apprentices {
 	public static final int QUALIFICATION_XP = 300;
 	private static final int MAX_LESSON_XP = 100_000;
+	private static final long NO_LESSON = Long.MIN_VALUE;
 
-	public record Progress(String target, int lessonXp) {
+	public record Progress(String target, int lessonXp, long lastLessonAt, boolean quotaAssigned, boolean quotaOptOut) {
 		public static final Codec<Progress> CODEC = RecordCodecBuilder.create(i -> i.group(
 			Codec.STRING.optionalFieldOf("target", "").forGetter(Progress::target),
-			Codec.INT.optionalFieldOf("lesson_xp", 0).forGetter(Progress::lessonXp)
+			Codec.INT.optionalFieldOf("lesson_xp", 0).forGetter(Progress::lessonXp),
+			Codec.LONG.optionalFieldOf("last_lesson_at", NO_LESSON).forGetter(Progress::lastLessonAt),
+			Codec.BOOL.optionalFieldOf("quota_assigned", false).forGetter(Progress::quotaAssigned),
+			Codec.BOOL.optionalFieldOf("quota_opt_out", false).forGetter(Progress::quotaOptOut)
 		).apply(i, Progress::new));
+
+		public Progress(String target, int lessonXp) {
+			this(target, lessonXp, NO_LESSON, false, false);
+		}
+
+		public Progress(String target, int lessonXp, long lastLessonAt) {
+			this(target, lessonXp, lastLessonAt, false, false);
+		}
 
 		public Progress {
 			target = target == null ? "" : target;
 			lessonXp = Math.max(0, Math.min(MAX_LESSON_XP, lessonXp));
 		}
 
-		public static Progress empty() { return new Progress("", 0); }
+		public static Progress empty() { return new Progress("", 0, NO_LESSON, false, false); }
 	}
 
 	private Apprentices() {}
@@ -39,14 +51,37 @@ public final class Apprentices {
 		return progress == null ? Progress.empty() : progress;
 	}
 
-	/** Selects a future profession. "minecraft:none" clears the whole apprenticeship. */
+	/** Selects a manual future profession. "minecraft:none" records a persistent opt-out from automatic allocation. */
 	public static void plan(Villager villager, String profession) {
 		if (profession == null || profession.equals("minecraft:none")) {
-			clear(villager);
+			villager.setAttached(VillagerPlus.APPRENTICE, new Progress("", 0, NO_LESSON, false, true));
 			return;
 		}
 		Progress old = get(villager);
-		villager.setAttached(VillagerPlus.APPRENTICE, new Progress(profession, old.lessonXp()));
+		villager.setAttached(VillagerPlus.APPRENTICE, new Progress(profession, old.lessonXp(), old.lastLessonAt(), false, false));
+	}
+
+	/** Sets an automatically selected target which may be removed when the village quota is reduced. */
+	public static void planByQuota(Villager villager, String profession) {
+		if (profession == null || profession.isBlank() || profession.equals("minecraft:none")) return;
+		Progress old = get(villager);
+		villager.setAttached(VillagerPlus.APPRENTICE, new Progress(profession, old.lessonXp(), old.lastLessonAt(), true, false));
+	}
+
+	/** A manual none-selection remains distinct from a child who has never received a target. */
+	public static boolean quotaOptOut(Villager villager) {
+		return get(villager).quotaOptOut();
+	}
+
+	public static boolean quotaAssigned(Villager villager) {
+		return get(villager).quotaAssigned();
+	}
+
+	/** Removes only a quota-managed target while retaining school progress. */
+	public static void clearQuotaPlan(Villager villager) {
+		Progress old = get(villager);
+		if (!old.quotaAssigned()) return;
+		villager.setAttached(VillagerPlus.APPRENTICE, new Progress("", old.lessonXp(), old.lastLessonAt(), false, false));
 	}
 
 	public static void clear(Villager villager) {
@@ -55,11 +90,19 @@ public final class Apprentices {
 
 	/** Awards both real villager XP and persistent qualification XP for a school lesson. */
 	public static int awardLesson(Villager villager, int amount) {
+		return awardLesson(villager, amount, NO_LESSON);
+	}
+
+	/** Awards a concrete classroom lesson at most once per villager, including across an entity reload. */
+	public static int awardLesson(Villager villager, int amount, long lessonAt) {
 		if (amount <= 0) return get(villager).lessonXp();
 		Progress old = get(villager);
-		Progress next = new Progress(old.target(), old.lessonXp() + amount);
+		if (lessonAt != NO_LESSON && old.lastLessonAt() == lessonAt) return old.lessonXp();
+		int lessonXp = (int) Math.min(MAX_LESSON_XP, (long) old.lessonXp() + amount);
+		long lastLessonAt = lessonAt == NO_LESSON ? old.lastLessonAt() : lessonAt;
+		Progress next = new Progress(old.target(), lessonXp, lastLessonAt, old.quotaAssigned(), old.quotaOptOut());
 		villager.setAttached(VillagerPlus.APPRENTICE, next);
-		villager.setVillagerXp(Math.min(1_000_000, villager.getVillagerXp() + amount));
+		villager.setVillagerXp((int) Math.min(1_000_000L, (long) villager.getVillagerXp() + amount));
 		return next.lessonXp();
 	}
 
@@ -108,16 +151,19 @@ public final class Apprentices {
 	public static boolean completeIfAdult(ServerLevel level, Villager villager) {
 		if (villager.isBaby()) return false;
 		Progress progress = get(villager);
-		if (progress.target().isEmpty()) return false;
+		if (progress.target().isEmpty()) {
+			if (progress.quotaAssigned() || progress.quotaOptOut()) clearTarget(villager, progress);
+			return false;
+		}
 		Identifier id = Identifier.tryParse(progress.target());
 		if (id == null) {
-			clear(villager);
+			clearTarget(villager, progress);
 			return false;
 		}
 		ResourceKey<VillagerProfession> key = ResourceKey.create(Registries.VILLAGER_PROFESSION, id);
 		var profession = level.registryAccess().lookupOrThrow(Registries.VILLAGER_PROFESSION).get(key);
 		if (profession.isEmpty()) {
-			clear(villager);
+			clearTarget(villager, progress);
 			return false;
 		}
 		villager.releasePoi(MemoryModuleType.JOB_SITE);
@@ -129,7 +175,11 @@ public final class Apprentices {
 		villager.setOffers(null);
 		villager.refreshBrain(level);
 		// Clearing the target makes this hook idempotent and leaves later player or vanilla career changes alone.
-		villager.setAttached(VillagerPlus.APPRENTICE, new Progress("", progress.lessonXp()));
+		villager.setAttached(VillagerPlus.APPRENTICE, new Progress("", progress.lessonXp(), progress.lastLessonAt(), false, false));
 		return true;
+	}
+
+	private static void clearTarget(Villager villager, Progress progress) {
+		villager.setAttached(VillagerPlus.APPRENTICE, new Progress("", progress.lessonXp(), progress.lastLessonAt(), false, false));
 	}
 }

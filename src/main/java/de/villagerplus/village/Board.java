@@ -85,6 +85,9 @@ public final class Board {
 			if (cur.getBlock() instanceof DorftafelBlock) {
 				BlockPos[] parts = DorftafelBlock.parts(cur, board.get());
 				if (DorftafelBlock.complete(level, board.get(), cur)) {
+					if (DorftafelBlock.widthOf(cur) == 4 || !upgradeToLarge(level, ref, cur, parts)) {
+						return;
+					}
 					return;
 				}
 				// Aeltere, kleinere Tafel: abbauen und neu (in voller Groesse) aufstellen.
@@ -112,19 +115,79 @@ public final class Board {
 			Direction toChest = Sites.facingTowards(p, chest);
 			Direction r = toChest.getCounterClockWise();
 			boolean ok = true;
-			for (int i = 0; i < 3 && ok; i++) {
+			for (int i = 0; i < 4 && ok; i++) {
 				BlockPos t = p.relative(r, i);
-				BlockPos below = t.below();
-				ok = level.getBlockState(t).isAir() && level.getBlockState(t.above()).isAir() && level.getBlockState(t.above(2)).isAir()
-					&& level.getBlockState(below).isFaceSturdy(level, below, Direction.UP);
+				ok = boardColumnClear(level, t);
 			}
 			if (!ok) {
 				continue;
 			}
-			DorftafelBlock.placeAll(level, p.immutable(), ModBlocks.DORFTAFEL.defaultBlockState().setValue(DorftafelBlock.FACING, toChest));
+			DorftafelBlock.placeAll(level, p.immutable(), ModBlocks.DORFTAFEL_GROSS.defaultBlockState().setValue(DorftafelBlock.FACING, toChest));
 			ref.data().extra.board = Optional.of(p.immutable());
 			ref.dirty();
 			return;
 		}
+		// A chest in a steep or crowded generated village may have no four-block
+		// level strip at its own elevation. Search loaded terrain farther out without
+		// clearing foliage, structures, containers, or any other existing blocks.
+		BlockPos fallback = findFallbackSite(level, chest);
+		if (fallback != null) {
+			Direction facing = Sites.facingTowards(fallback, chest);
+			DorftafelBlock.placeAll(level, fallback, ModBlocks.DORFTAFEL_GROSS.defaultBlockState().setValue(DorftafelBlock.FACING, facing));
+			ref.data().extra.board = Optional.of(fallback);
+			ref.dirty();
+		}
+	}
+
+	static BlockPos findFallbackSite(ServerLevel level, BlockPos chest) {
+		for (int radius = 3; radius <= 16; radius++) {
+			for (int dx = -radius; dx <= radius; dx++) for (int dz = -radius; dz <= radius; dz++) {
+				if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) continue;
+				BlockPos column = chest.offset(dx, 0, dz);
+				if (!level.hasChunkAt(column)) continue;
+				int y = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+					column.getX(), column.getZ());
+				if (Math.abs(y - chest.getY()) > 8) continue;
+				BlockPos p = new BlockPos(column.getX(), y, column.getZ());
+				Direction right = Sites.facingTowards(p, chest).getCounterClockWise();
+				boolean safe = true;
+				for (int i = 0; i < 4 && safe; i++) {
+					BlockPos cell = p.relative(right, i);
+					if (!level.hasChunkAt(cell)) { safe = false; break; }
+					safe = boardColumnClear(level, cell);
+				}
+				if (safe) return p;
+			}
+		}
+		return null;
+	}
+
+	static boolean boardColumnClear(ServerLevel level, BlockPos cell) {
+		BlockPos below = cell.below();
+		return level.getBlockState(cell).isAir() && level.getBlockState(cell.above()).isAir()
+			&& level.getBlockState(below).isFaceSturdy(level, below, Direction.UP);
+	}
+
+	/** An old three-block board becomes the large one in place, if its fourth column is free; otherwise it stays as it is. */
+	private static boolean upgradeToLarge(ServerLevel level, VillageRef ref, BlockState old, BlockPos[] lower) {
+		Direction r = old.getValue(DorftafelBlock.FACING).getCounterClockWise();
+		BlockPos extra = lower[lower.length - 1].relative(r);
+		BlockPos below = extra.below();
+		boolean free = level.getBlockState(extra).canBeReplaced() && level.getBlockState(extra.above()).canBeReplaced()
+			&& level.getBlockState(below).isFaceSturdy(level, below, Direction.UP);
+		if (!free) {
+			return false;
+		}
+		for (BlockPos p : lower) {
+			for (BlockPos q : new BlockPos[] {p, p.above()}) {
+				if (level.getBlockState(q).getBlock() instanceof DorftafelBlock) {
+					level.setBlock(q, Blocks.AIR.defaultBlockState(), 3);
+				}
+			}
+		}
+		DorftafelBlock.placeAll(level, lower[0], ModBlocks.DORFTAFEL_GROSS.defaultBlockState()
+			.setValue(DorftafelBlock.FACING, old.getValue(DorftafelBlock.FACING)));
+		ref.dirty();
+		return true;
 	}
 }

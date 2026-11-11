@@ -4,6 +4,8 @@ import de.villagerplus.Compat;
 import de.villagerplus.Config;
 import de.villagerplus.VillagerPlus;
 import de.villagerplus.job.JobUtil;
+import de.villagerplus.job.Apprentices;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,8 +34,14 @@ public final class Staffing {
 	private static final List<ResourceKey<VillagerProfession>> CRITICAL = List.of(VillagerProfession.MASON, VillagerProfession.FLETCHER, VillagerProfession.FARMER);
 	private static final List<String> JOB = List.of("mason", "fletcher", "farmer");
 	private static final List<String> LABEL = List.of("Maurer", "Pfeilmacher", "Bauer");
+	private static final String APPRENTICE_QUOTA = "apprentice";
+	private static final int DEFAULT_APPRENTICE_QUOTA = 0;
 
 	private Staffing() {
+	}
+
+	static void clearTickForChecks(VillageRef ref) {
+		LAST.remove(ref.bell().asLong());
 	}
 
 	public static void tick(ServerLevel level, VillageRef ref, long now) {
@@ -57,6 +65,7 @@ public final class Staffing {
 					.withLevel(Math.max(2, v.getVillagerData().level())));
 			}
 		}
+		assignApprentices(level, ref, residents);
 
 		// 2) Fehlende Schluesselberufe nachbesetzen.
 		if (residents.size() < 3) {
@@ -64,6 +73,7 @@ public final class Staffing {
 		}
 		for (int i = 0; i < CRITICAL.size(); i++) {
 			String job = JOB.get(i);
+			if (quotaPercent(ref, job) == 0) continue;
 			if (residents.stream().anyMatch(v -> job.equals(Compat.jobKey(v.getVillagerData().profession())))) {
 				continue;
 			}
@@ -105,9 +115,84 @@ public final class Staffing {
 	}
 
 	/** Sollanteile je Beruf (Prozent der Einwohner); Berufe ohne Eintrag (Dorftrottel, Traeger) werden nicht angefasst. */
-	private static final String[][] SHARE = {{"farmer", "16", "Bauer"}, {"mason", "7", "Maurer"}, {"fletcher", "5", "Pfeilmacher"}, {"butcher", "7", "Metzger"},
+	private static final String[][] SHARE = {{"farmer", "16", "Bauer"}, {"mason", "12", "Maurer"}, {"fletcher", "5", "Pfeilmacher"}, {"butcher", "7", "Metzger"},
 		{"shepherd", "6", "Schäfer"}, {"toolsmith", "4", "Werkzeugschmied"}, {"weaponsmith", "3", "Waffenschmied"}, {"armorer", "3", "Rüstungsschmied"},
 		{"cleric", "5", "Kleriker"}, {"librarian", "3", "Bibliothekar"}, {"cartographer", "3", "Kartograph"}, {"fisherman", "5", "Fischer"}, {"leatherworker", "7", "Gerber"}};
+
+	/** Assigns only enough unplanned children to meet the saved share of all village children. */
+	private static void assignApprentices(ServerLevel level, VillageRef ref, List<Villager> residents) {
+		List<Villager> children = residents.stream().filter(Villager::isBaby)
+			.sorted(Comparator.comparing(v -> v.getUUID().toString())).toList();
+		if (children.isEmpty()) return;
+		int percent = quotaPercent(ref, APPRENTICE_QUOTA);
+		int target = percent <= 0 ? 0 : Math.min(children.size(), Math.max(1, (children.size() * percent + 99) / 100));
+		List<Villager> manuallyPlanned = children.stream()
+			.filter(v -> hasValidApprenticeship(level, v) && !Apprentices.quotaAssigned(v)).toList();
+		List<Villager> quotaPlanned = children.stream()
+			.filter(v -> hasValidApprenticeship(level, v) && Apprentices.quotaAssigned(v)).toList();
+		int quotaSlots = Math.max(0, target - manuallyPlanned.size());
+		int keepQuotaPlans = Math.min(quotaSlots, quotaPlanned.size());
+		for (int i = keepQuotaPlans; i < quotaPlanned.size(); i++) Apprentices.clearQuotaPlan(quotaPlanned.get(i));
+		int missing = quotaSlots - keepQuotaPlans;
+		if (missing <= 0) return;
+		for (Villager child : children) {
+			if (Apprentices.quotaOptOut(child) || hasValidApprenticeship(level, child)) continue;
+			String profession = nextApprenticeProfession(level, ref, residents);
+			if (profession == null) return;
+			Apprentices.planByQuota(child, profession);
+			missing--;
+			if (missing == 0) return;
+		}
+	}
+
+	private static boolean hasValidApprenticeship(ServerLevel level, Villager villager) {
+		String target = Apprentices.get(villager).target();
+		if (target.isBlank() || target.equals("minecraft:none")) return false;
+		net.minecraft.resources.Identifier id = net.minecraft.resources.Identifier.tryParse(target);
+		if (id == null) return false;
+		var key = ResourceKey.create(net.minecraft.core.registries.Registries.VILLAGER_PROFESSION, id);
+		return level.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.VILLAGER_PROFESSION).get(key).isPresent();
+	}
+
+	/** Choose the profession with the lowest projected staffing ratio; job shares therefore guide future careers too. */
+	private static String nextApprenticeProfession(ServerLevel level, VillageRef ref, List<Villager> residents) {
+		Map<String, Integer> projected = new HashMap<>();
+		for (Villager villager : residents) {
+			if (!villager.isBaby()) {
+				projected.merge(keyOf(villager), 1, Integer::sum);
+				continue;
+			}
+			String target = Apprentices.get(villager).target();
+			String job = apprenticeshipJobKey(level, target);
+			if (job != null) projected.merge(job, 1, Integer::sum);
+		}
+		String selected = null;
+		double lowestRatio = Double.POSITIVE_INFINITY;
+		for (String[] share : SHARE) {
+			int percent = quotaPercent(ref, share[0]);
+			if (percent <= 0) continue;
+			var id = net.minecraft.resources.Identifier.withDefaultNamespace(share[0]);
+			var key = ResourceKey.create(net.minecraft.core.registries.Registries.VILLAGER_PROFESSION, id);
+			ResourceKey<VillagerProfession> preferred = Compat.preferredKey(level, share[0], key);
+			if (level.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.VILLAGER_PROFESSION).get(preferred).isEmpty()) continue;
+			double ratio = (projected.getOrDefault(share[0], 0) + 1.0) / percent;
+			if (ratio < lowestRatio) {
+				lowestRatio = ratio;
+				selected = preferred.identifier().toString();
+			}
+		}
+		return selected;
+	}
+
+	private static String apprenticeshipJobKey(ServerLevel level, String target) {
+		net.minecraft.resources.Identifier id = net.minecraft.resources.Identifier.tryParse(target);
+		if (id == null || id.getPath().equals("none")) return null;
+		var key = ResourceKey.create(net.minecraft.core.registries.Registries.VILLAGER_PROFESSION, id);
+		var profession = level.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.VILLAGER_PROFESSION).get(key).orElse(null);
+		if (profession == null) return null;
+		if (id.getNamespace().equals("minecraft")) return id.getPath();
+		return Compat.jobKey(profession);
+	}
 
 	private static String keyOf(Villager v) {
 		// Vanilla-Berufe werden nach ihrem echten Namen gezaehlt (Compat.jobKey fasst z. B. alle Schmiede zu "smith" zusammen).
@@ -261,7 +346,12 @@ public final class Staffing {
 	private static int quotaOf(VillageRef ref, String[] share, int pop) {
 		var custom = sanitizedQuotas(ref);
 		int pct = custom.getOrDefault(share[0], Integer.parseInt(share[1]));
-		return pct <= 0 ? 0 : Math.max(1, (int) Math.round(pop * pct / 100.0));
+		pct = (int) Math.round(pct * VillageAdmin.quotaBoost(ref, share[0]));
+		return quotaTarget(pct, pop);
+	}
+
+	static int quotaTarget(int percent, int population) {
+		return percent <= 0 ? 0 : Math.max(1, (int) Math.round(population * percent / 100.0));
 	}
 
 	private static Map<String, Integer> sanitizedQuotas(VillageRef ref) {
@@ -271,11 +361,40 @@ public final class Staffing {
 			Integer value = raw.get(entry[0]);
 			if (value != null) valid.put(entry[0], Math.max(0, Math.min(40, value)));
 		}
+		Integer apprentice = raw.get(APPRENTICE_QUOTA);
+		if (apprentice != null) valid.put(APPRENTICE_QUOTA, Math.max(0, Math.min(40, apprentice)));
 		return valid;
+	}
+
+	/** Configured percentage, or -1 for an unknown job. */
+	public static int quotaPercent(VillageRef ref, String job) {
+		if (APPRENTICE_QUOTA.equals(job)) return sanitizedQuotas(ref).getOrDefault(job, DEFAULT_APPRENTICE_QUOTA);
+		for (String[] entry : SHARE) {
+			if (entry[0].equals(job)) return sanitizedQuotas(ref).getOrDefault(job, Integer.parseInt(entry[1]));
+		}
+		return -1;
+	}
+
+	/** Apply an absolute slider target; invalid jobs and out-of-range targets are rejected. */
+	public static boolean setQuota(VillageRef ref, String job, int target) {
+		if (target < 0 || target > 40 || quotaPercent(ref, job) < 0) return false;
+		var quotas = new HashMap<>(sanitizedQuotas(ref));
+		quotas.put(job, target);
+		ref.bellEntity().setAttached(VillagerPlus.QUOTAS, Map.copyOf(quotas));
+		ref.dirty();
+		return true;
 	}
 
 	/** Spielereinstellung: Berufsquote um delta Prozentpunkte (0..40) aendern. */
 	public static void changeQuota(VillageRef ref, String job, int delta) {
+		if (APPRENTICE_QUOTA.equals(job)) {
+			var quotas = new HashMap<>(sanitizedQuotas(ref));
+			int current = quotaPercent(ref, APPRENTICE_QUOTA);
+			quotas.put(APPRENTICE_QUOTA, Math.max(0, Math.min(40, current + Math.max(-40, Math.min(40, delta)))));
+			ref.bellEntity().setAttached(VillagerPlus.QUOTAS, Map.copyOf(quotas));
+			ref.dirty();
+			return;
+		}
 		String[] entry = null;
 		for (String[] s : SHARE) {
 			if (s[0].equals(job)) {
@@ -305,6 +424,10 @@ public final class Staffing {
 			int pct = custom.getOrDefault(s[0], Integer.parseInt(s[1]));
 			rows.add(s[0] + "|" + s[2] + "|" + have.getOrDefault(s[0], 0) + "|" + pct + "|" + s[1]);
 		}
+		int apprentices = (int) residents.stream().filter(Villager::isBaby).filter(v -> !Apprentices.get(v).target().isBlank())
+			.count();
+		rows.add(APPRENTICE_QUOTA + "|Lehrlinge (Kinder)|" + apprentices + "|"
+			+ custom.getOrDefault(APPRENTICE_QUOTA, DEFAULT_APPRENTICE_QUOTA) + "|" + DEFAULT_APPRENTICE_QUOTA);
 		rows.add("none|Träger / ohne Beruf|" + have.getOrDefault("none", 0) + "|10|10");
 		return rows;
 	}

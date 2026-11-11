@@ -14,7 +14,8 @@ import net.minecraft.world.phys.AABB;
 public class PorterJob implements Job {
 	@Override
 	public Predicate<ItemStack> produce() {
-		return s -> !net.minecraft.world.entity.npc.villager.Villager.FOOD_POINTS.containsKey(s.getItem());
+		return s -> !BuildHaul.isMarkedCargo(s)
+			&& !net.minecraft.world.entity.npc.villager.Villager.FOOD_POINTS.containsKey(s.getItem());
 	}
 
 	@Override
@@ -23,6 +24,7 @@ public class PorterJob implements Job {
 			de.villagerplus.village.Caravan.releasePorter(c.v());
 			return false;
 		}
+		if (BuildHaul.returnOrphanedCargo(c)) return true;
 		if (de.villagerplus.village.Caravan.porterDelivery(c)) return true;
 		if (FreightLoading.work(c)) return true;
 		if (JobUtil.depositSurplus(c, produce(), 16, 0)) {

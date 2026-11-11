@@ -27,6 +27,17 @@ public final class Ownership {
 	private Ownership() {
 	}
 
+	/** Owner metadata for a loaded block entity only; this never loads a chunk. */
+	public static UUID ownerAt(ServerLevel level, BlockPos pos) {
+		if (level == null || pos == null || !level.hasChunkAt(pos)) return null;
+		BlockEntity be = level.getBlockEntity(pos);
+		return be == null ? null : be.getAttached(VillagerPlus.OWNER);
+	}
+
+	public static boolean isOwnedBy(ServerLevel level, BlockPos pos, UUID owner) {
+		return owner != null && owner.equals(ownerAt(level, pos));
+	}
+
 	public static void register() {
 		UseBlockCallback.EVENT.register((player, world, hand, hit) -> {
 			check(player, world, hit.getBlockPos(), false);

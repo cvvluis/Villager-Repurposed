@@ -276,21 +276,23 @@ public final class Landmarks {
 		}
 	}
 
-	/** Stufe 0: drei Laternenpfaehle, zwei Baenke, Blumenbeete. */
+	/** Stufe 0: ein Laternenpfahl am kurzen Weg, zwei Baenke und Blumenbeete. */
 	private static void lanternWalk(Map<BlockPos, Step> m, Palette p, BlockPos c, Direction dir, RandomSource r) {
 		for (int i = -3; i <= 3; i++) {
 			free(m, at(c, dir, i, 0, -1), Blocks.DIRT_PATH.defaultBlockState());
-		}
-		for (int i = -2; i <= 2; i += 2) {
-			lampPost(m, p, at(c, dir, i, -1, 0), 2);
 		}
 		for (int side = -1; side <= 1; side += 2) {
 			stair(m, p, at(c, dir, side * 2 + side, 1, 0), dir.getOpposite(), false);
 			stair(m, p, at(c, dir, side * 2, 1, 0), dir.getOpposite(), false);
 		}
 		for (int k = 0; k < 6; k++) {
-			flowers(m, r, at(c, dir, r.nextInt(7) - 3, r.nextBoolean() ? 2 : -2, 0));
+			BlockPos flower = at(c, dir, r.nextInt(7) - 3, r.nextBoolean() ? 2 : -2, 0);
+			if (!flower.equals(at(c, dir, -3, -2, 0)) && !flower.equals(at(c, dir, 3, 2, 0))) {
+				flowers(m, r, flower);
+			}
 		}
+		// One lamp is enough for this short walk and avoids a tightly paired entrance.
+		lampPost(m, p, at(c, dir, 0, -1, 0), 2);
 	}
 
 	/** Stufe 1: Marktstand mit Stoffdach aus Wolle, Tresen, Fass und Kisten. */

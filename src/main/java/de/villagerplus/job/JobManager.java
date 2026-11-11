@@ -11,19 +11,32 @@ import de.villagerplus.village.VillageRef;
 import de.villagerplus.village.Villages;
 import de.villagerplus.village.Wellbeing;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.NavigableSet;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.TreeSet;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.ai.memory.MemoryModuleType;
+import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.npc.villager.VillagerProfession;
 import net.minecraft.world.entity.schedule.Activity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 
 /**
@@ -33,11 +46,13 @@ import org.slf4j.Logger;
  */
 public final class JobManager {
 	private static final Logger LOGGER = LogUtils.getLogger();
-	/** Ein verwalteter Dorfbewohner samt Zustand und naechstem Takt (kein Hash-Zugriff pro Tick). */
-	private static final class Entry {
+	/** Ein verwalteter Dorfbewohner samt Zustand und naechstem Takt. */
+	static final class Entry {
 		final Villager v;
 		final JobState st;
 		long nextAt;
+		long queueOrder;
+		int workPhase;
 
 		Entry(Villager v, JobState st) {
 			this.v = v;
@@ -45,17 +60,136 @@ public final class JobManager {
 		}
 	}
 
+	/** Ordered index: looking for the next worker is independent of the number of non-due workers. */
+	static final class DueWorkQueue {
+		private final NavigableSet<Entry> entries = new TreeSet<>(Comparator
+			.comparingLong((Entry e) -> e.nextAt)
+			.thenComparingLong(e -> e.queueOrder));
+
+		void add(Entry entry) {
+			if (!entries.add(entry)) {
+				throw new IllegalStateException("Duplicate JobManager queue order");
+			}
+		}
+
+		Entry pollDue(long now) {
+			Entry next = entries.isEmpty() ? null : entries.first();
+			return next == null || next.nextAt > now ? null : entries.pollFirst();
+		}
+
+		boolean remove(Entry entry) {
+			return entries.remove(entry);
+		}
+
+		boolean isEmpty() {
+			return entries.isEmpty();
+		}
+	}
+
 	/** Die Villager einer Dimension; Zu- und Abgaenge werden gesammelt und erst zu Tickbeginn eingearbeitet. */
-	private static final class Group {
-		final ArrayList<Entry> list = new ArrayList<>();
+	static final class Group {
+		final Map<Villager, Entry> entries = new HashMap<>();
 		final ArrayList<Entry> add = new ArrayList<>();
 		final Set<Villager> remove = new HashSet<>();
-		final Set<Villager> known = new HashSet<>();
-		int cursor;
+		final Set<Villager> reloaded = new HashSet<>();
+		final DueWorkQueue due = new DueWorkQueue();
+		long nextQueueOrder;
+		int phaseInterval;
+
+		void queueLoad(Entry entry) {
+			if (remove.contains(entry.v)) {
+				// A reload supersedes any older pending load for this Villager, but keep the
+				// removal queued so the old entry is removed before the replacement is added.
+				reloaded.add(entry.v);
+				add.removeIf(pending -> pending.v == entry.v);
+			}
+			add.add(entry);
+		}
+
+		void queueUnload(Villager villager) {
+			remove.add(villager);
+			reloaded.remove(villager);
+		}
+
+		void applyPendingChanges() {
+			if (!remove.isEmpty()) {
+				for (Villager villager : remove) {
+					Entry removed = entries.remove(villager);
+					if (removed != null) due.remove(removed);
+				}
+			}
+			if (!add.isEmpty()) {
+				for (Entry entry : add) {
+					boolean reloadedAfterUnload = reloaded.contains(entry.v);
+					if ((!remove.contains(entry.v) || reloadedAfterUnload) && !entries.containsKey(entry.v)) {
+						entry.queueOrder = nextQueueOrder++;
+						entries.put(entry.v, entry);
+						due.add(entry);
+					}
+				}
+				add.clear();
+			}
+			remove.clear();
+			reloaded.clear();
+		}
+
+		void applyPendingChanges(long now, int interval) {
+			List<Entry> newlyAdded = new ArrayList<>();
+			if (!remove.isEmpty()) {
+				for (Villager villager : remove) {
+					Entry removed = entries.remove(villager);
+					if (removed != null) due.remove(removed);
+				}
+			}
+			if (!add.isEmpty()) {
+				for (Entry entry : add) {
+					boolean reloadedAfterUnload = reloaded.contains(entry.v);
+					if ((!remove.contains(entry.v) || reloadedAfterUnload) && !entries.containsKey(entry.v)) {
+						entries.put(entry.v, entry);
+						newlyAdded.add(entry);
+					}
+				}
+				add.clear();
+			}
+			remove.clear();
+			reloaded.clear();
+
+			if (phaseInterval != interval) {
+				List<Entry> ordered = new ArrayList<>(entries.values());
+				ordered.sort(Comparator.comparing((Entry entry) -> entry.v.getUUID()));
+				Set<Integer> occupied = new HashSet<>();
+				for (Entry entry : ordered) due.remove(entry);
+				for (Entry entry : ordered) scheduleFirst(entry, now, interval, occupied);
+				phaseInterval = interval;
+			} else if (!newlyAdded.isEmpty()) {
+				Set<Integer> occupied = new HashSet<>();
+				for (Entry entry : entries.values()) {
+					if (!newlyAdded.contains(entry)) occupied.add(entry.workPhase);
+				}
+				newlyAdded.sort(Comparator.comparing((Entry entry) -> entry.v.getUUID()));
+				for (Entry entry : newlyAdded) scheduleFirst(entry, now, interval, occupied);
+			}
+		}
+
+		private void scheduleFirst(Entry entry, long now, int interval, Set<Integer> occupied) {
+			entry.workPhase = allocateWorkPhase(entry.v.getUUID(), interval, occupied);
+			entry.nextAt = firstWorkAt(now, interval, entry.workPhase);
+			entry.queueOrder = nextQueueOrder++;
+			due.add(entry);
+		}
 	}
 
 	private static final Map<ServerLevel, Group> GROUPS = new java.util.IdentityHashMap<>();
 	private static final Map<UUID, JobState> STATES = new HashMap<>();
+	private static final int MAX_WEATHER_PATH_CHECKS_PER_SEARCH = 4;
+	private static final int MAX_WEATHER_PATH_CHECKS_PER_LEVEL_TICK = 32;
+	private static final int WEATHER_SEARCH_RETRY_BASE_TICKS = 120;
+	private static final int WEATHER_SEARCH_RETRY_JITTER_TICKS = 200;
+	private record WeatherPause(Optional<BlockPos> shelter, long startedAt, long shelterCheckedAt) { }
+	private record WeatherPathBudget(long tick, int used) { }
+	private static final Map<UUID, WeatherPause> WEATHER_PAUSES = new HashMap<>();
+	private static final Map<UUID, Integer> WEATHER_SEARCH_CURSORS = new HashMap<>();
+	private static final Map<ServerLevel, WeatherPathBudget> WEATHER_PATH_BUDGETS = new java.util.WeakHashMap<>();
 
 	private static final Job FARMER = new FarmerJob();
 	private static final Job COOK = new CookJob();
@@ -82,29 +216,43 @@ public final class JobManager {
 	public static void register() {
 		ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> {
 			if (entity instanceof Villager v && !de.villagerplus.Compat.ignored(v)) {
+				// The camp's no-AI guard is a display entity, never a worker or route candidate.
+				if (v.entityTags().contains(de.villagerplus.village.CaravanCampSecurity.ARMED_GUARD_TAG)) return;
 				// Gaeste aus einer frueheren Sitzung sind weitergezogen (ihr Zustand liegt nur im Speicher).
 				if (Guests.onLoad(v)) {
 					return;
 				}
 				Group g = GROUPS.computeIfAbsent(level, k -> new Group());
 				Entry e = new Entry(v, state(v));
-				e.nextAt = level.getGameTime() + (v.getId() % Config.JOB_INTERVAL);
-				g.remove.remove(v);
-				g.add.add(e);
+				g.queueLoad(e);
 			}
 		});
 		ServerEntityEvents.ENTITY_UNLOAD.register((entity, level) -> {
 			if (entity instanceof Villager v) {
 				Group g = GROUPS.get(level);
 				if (g != null) {
-					g.remove.add(v);
+					g.queueUnload(v);
 				}
+				WEATHER_PAUSES.remove(v.getUUID());
+				WEATHER_SEARCH_CURSORS.remove(v.getUUID());
+				Routine.forgetGatherSearch(v);
+				JobUtil.clearLongRoute(v);
 				STATES.remove(v.getUUID());
 				Wellbeing.forget(v.getUUID());
 				Villages.forget(v.getUUID());
 			}
 		});
 		ServerTickEvents.END_LEVEL_TICK.register(JobManager::tickLevel);
+		// Villagers on CTOV hill villages are pushed or step off 5-8 block platforms; moderate falls must not kill residents.
+		net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) ->
+			!(entity instanceof Villager villager && source.is(net.minecraft.tags.DamageTypeTags.IS_FALL) && villager.fallDistance <= SAFE_VILLAGER_FALL));
+		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+			WEATHER_PAUSES.clear();
+			WEATHER_SEARCH_CURSORS.clear();
+			WEATHER_PATH_BUDGETS.clear();
+			Routine.clearGatherSearches();
+			JobUtil.clearLongRoutes();
+		});
 	}
 
 	/** Was macht der Dorfbewohner gerade? (fuer die Info-Anzeige) */
@@ -127,10 +275,10 @@ public final class JobManager {
 	public static String perf() {
 		int total = 0;
 		for (Group g : GROUPS.values()) {
-			total += g.list.size();
+			total += g.entries.size();
 		}
-		return String.format("Villagers: Repurposed: Ø %.0f µs je Tick (Spitze %.0f µs), %d Villager verwaltet, Budget %d µs", avgMicros, maxMicros, total,
-			Config.TICK_BUDGET_NANOS / 1000);
+		return String.format("Villagers: Repurposed: Ø %.0f µs je Tick (Spitze %.0f µs), %d Villager verwaltet, Budget %d µs; %s", avgMicros, maxMicros, total,
+			Config.TICK_BUDGET_NANOS / 1000, JobUtil.longRoutePerf());
 	}
 
 	private static void tickLevel(ServerLevel level) {
@@ -149,52 +297,78 @@ public final class JobManager {
 		if (g == null) {
 			return;
 		}
-		if (!g.remove.isEmpty()) {
-			g.list.removeIf(e -> g.remove.contains(e.v));
-			g.known.removeAll(g.remove);
-			g.remove.clear();
-		}
-		if (!g.add.isEmpty()) {
-			for (Entry e : g.add) {
-				if (g.known.add(e.v)) {
-					g.list.add(e);
-				}
-			}
-			g.add.clear();
-		}
-		int n = g.list.size();
-		if (n == 0) {
-			return;
-		}
 		long now = level.getGameTime();
 		int interval = Config.JOB_INTERVAL * loadFactor(level);
+		g.applyPendingChanges(now, interval);
+		if (g.due.isEmpty()) return;
 		long deadline = System.nanoTime() + Config.TICK_BUDGET_NANOS;
 		int processed = 0;
-		int start = g.cursor % n;
-		g.cursor = 0;
-		for (int k = 0; k < n; k++) {
-			int idx = (start + k) % n;
-			Entry e = g.list.get(idx);
-			if (now < e.nextAt) {
-				continue;
-			}
+		while (true) {
+			Entry e = g.due.pollDue(now);
+			if (e == null) return;
 			if (e.v.isRemoved()) {
-				g.remove.add(e.v);
+				g.entries.remove(e.v, e);
 				continue;
 			}
-			e.nextAt = now + interval + (e.v.getId() & 3);
+			e.nextAt = nextWorkAt(now, interval, e.workPhase);
+			e.queueOrder = g.nextQueueOrder++;
 			try {
 				tickVillager(level, e.v, now);
 			} catch (RuntimeException ex) {
 				LOGGER.warn("Villagers: Repurposed: Job von {} ist fehlgeschlagen", e.v, ex);
 				e.st.cooldownUntil = now + 1200;
 			}
-			// Zeitbudget je Tick: bei Lastspitzen wird der Rest im naechsten Tick fortgesetzt (kein Ruckler durch viele Villager).
-			if ((++processed & 3) == 0 && System.nanoTime() > deadline) {
-				g.cursor = idx + 1;
+			g.due.add(e);
+			// Zeitbudget nach jedem Bewohner pruefen, damit teure Jobs nicht mehrere Nachfolger aus demselben Tick verdraengen.
+			processed++;
+			if (shouldYieldForBudget(processed, System.nanoTime(), deadline)) {
 				return;
 			}
 		}
+	}
+
+	/** Stable resident phases spread each loaded group across its dispatch interval. */
+	static int workPhase(UUID resident, int interval) {
+		if (interval <= 0) throw new IllegalArgumentException("Job interval must be positive");
+		long mixed = resident.getMostSignificantBits() ^ Long.rotateLeft(resident.getLeastSignificantBits(), 23);
+		mixed ^= mixed >>> 30;
+		mixed *= 0xBF58476D1CE4E5B9L;
+		mixed ^= mixed >>> 27;
+		mixed *= 0x94D049BB133111EBL;
+		mixed ^= mixed >>> 31;
+		return (int) Long.remainderUnsigned(mixed, interval);
+	}
+
+	/** Assign the resident's hash phase, probing forward to an unused tick slot when possible. */
+	static int allocateWorkPhase(UUID resident, int interval, Set<Integer> occupied) {
+		if (interval <= 0) throw new IllegalArgumentException("Job interval must be positive");
+		int phase = workPhase(resident, interval);
+		for (int offset = 0; offset < interval; offset++) {
+			int candidate = (phase + offset) % interval;
+			if (occupied.add(candidate)) return candidate;
+		}
+		// More residents than available ticks necessarily share a dispatch phase.
+		return phase;
+	}
+
+	/** First scheduled dispatch may run on this tick if the allocated phase matches. */
+	static long firstWorkAt(long now, int interval, UUID resident) {
+		return firstWorkAt(now, interval, workPhase(resident, interval));
+	}
+
+	static long firstWorkAt(long now, int interval, int phase) {
+		int currentPhase = (int) Math.floorMod(now, (long) interval);
+		return now + Math.floorMod(phase - currentPhase, interval);
+	}
+
+	/** Keep the configured cadence exact while preserving the resident's allocated tick phase. */
+	static long nextWorkAt(long now, int interval, UUID resident) {
+		return nextWorkAt(now, interval, workPhase(resident, interval));
+	}
+
+	static long nextWorkAt(long now, int interval, int phase) {
+		int delay = Math.floorMod(phase - (int) Math.floorMod(now, (long) interval), interval);
+		return now + (delay == 0 ? interval : delay);
 	}
 
 	/** Bei hoher Serverlast (Tickzeit nahe/ueber dem Soll) werden die Villager seltener getaktet: 1x, 2x oder 4x. */
@@ -213,6 +387,15 @@ public final class JobManager {
 		return STATES.computeIfAbsent(v.getUUID(), id -> new JobState());
 	}
 
+	/** Read-only lookup for development diagnostics; unlike {@link #state(Villager)}, this never creates state. */
+	public static JobState stateIfKnown(Villager v) {
+		return STATES.get(v.getUUID());
+	}
+
+	/** Fall height (blocks) villagers survive without damage; anything higher keeps vanilla fall damage. */
+	static final double SAFE_VILLAGER_FALL = 10.0;
+	private static final java.util.Map<java.util.UUID, Long> FALL_LOG = new java.util.HashMap<>();
+
 	private static void tickVillager(ServerLevel level, Villager v, long now) {
 		if (Guests.isGuest(v) || de.villagerplus.village.Expedition.isAway(v)
 			|| de.villagerplus.village.RailTransport.isPassenger(v)) {
@@ -221,6 +404,16 @@ public final class JobManager {
 		}
 		VillagerMemory mem = v.getAttachedOrCreate(VillagerPlus.MEMORY);
 		VillageRef village = Villages.find(level, v);
+		if (village != null) de.villagerplus.village.VillageAdmin.maintain(level, village, now);
+		if (v.fallDistance > 3.5 && !v.onGround() && FALL_LOG.getOrDefault(v.getUUID(), -1000L) + 200L < now) {
+			// Dev aid: where and while doing what do residents fall from heights?
+			FALL_LOG.put(v.getUUID(), now);
+			var walk = v.getBrain().getMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
+			LOGGER.info("Sturz {}: fallDistance={} pos={} Aktivitaet='{}' Ziel={} Navigation={}", mem.name, (int) v.fallDistance,
+				v.blockPosition().toShortString(), state(v).activity, walk.map(w -> w.getTarget().currentBlockPosition().toShortString()).orElse("-"),
+				v.getNavigation().isDone() ? "fertig" : "aktiv");
+		}
+		if (village != null) de.villagerplus.village.Anchor.keepVillagerActive(level, v);
 		if (de.villagerplus.village.Staffing.restoreTemporary(level, v, mem, now)) {
 			JobState restored = state(v);
 			restored.idleSince = 0L;
@@ -280,12 +473,15 @@ public final class JobManager {
 			return;
 		}
 		Job job = jobFor(v);
-		if (level.isThundering() && village != null && !phase.routine && !job.indoorsDuringStorm()) {
-			// Gewitter: Außenarbeit endet, Innenberufe arbeiten weiter, die übrigen suchen Unterstand.
-			phase = Phase.EVENING;
-		}
 		JobState st = state(v);
 		Ctx ctx = new Ctx(level, v, st, mem, village, now);
+		de.villagerplus.dev.G02SupplyTrace.jobSelected(level, v, village, job, phase, st, now);
+		boolean badWeather = adverseWeather(level.isRaining(), level.isThundering());
+		if (shouldShelterForWeather(level, phase, job, v.blockPosition())) {
+			pauseForWeather(ctx);
+			return;
+		}
+		resumeAfterWeather(ctx);
 		if (job != PORTER) Caravan.releasePorter(v);
 		if (now < st.cooldownUntil) {
 			Caravan.releasePorter(v);
@@ -335,17 +531,47 @@ public final class JobManager {
 		}
 		long preparedAt = v.getAttachedOrElse(VillagerPlus.PREPARED_MEAL, 0L);
 		boolean preparedMeal = preparedAt != 0 && now >= preparedAt && now - preparedAt < 6000L;
-		if ((now / Config.JOB_INTERVAL) % 4 >= Wellbeing.workQuarters(status, preparedMeal)) {
+		if (!workAttemptAllowed(st, Wellbeing.workQuarters(status, preparedMeal))) {
+			de.villagerplus.dev.G02SupplyTrace.stage(ctx, "work-schedule", "skipped by wellbeing quarter gate; job="
+				+ job.getClass().getSimpleName() + "; cooldown=" + st.cooldownUntil);
 			ctx.setActivity(status.satiety() < 25 ? "ist hungrig und arbeitet langsam" : "ist " + status.moodLabel().toLowerCase() + " und arbeitet langsam");
+			Anim.apply(v, st, now);
+			return;
+		}
+		de.villagerplus.dev.G02SupplyTrace.stage(ctx, "work-schedule", "allowed; job="
+			+ job.getClass().getSimpleName() + "; cooldown=" + st.cooldownUntil);
+		if (phase == Phase.WORK_A && village != null && de.villagerplus.village.VillageAdmin.govern(ctx)) {
 			Anim.apply(v, st, now);
 			return;
 		}
 		boolean first = phase == Phase.WORK_A;
 		long cooldownBefore = st.cooldownUntil;
 		boolean carryingCargo = job == PORTER && Caravan.carryingFor(v) && Caravan.porterDelivery(ctx);
-		boolean busy = carryingCargo || de.villagerplus.village.Market.work(ctx)
-			|| (de.villagerplus.build.Builder.bootstrapBuilder(ctx) && de.villagerplus.build.Builder.tick(ctx, true))
-			|| (first ? job.primary(ctx) || job.secondary(ctx) : job.secondary(ctx) || job.primary(ctx));
+		// Shared market errands and construction can target outdoor sites even for a normally indoor role.
+		boolean sharedOutdoorWork = allowOutdoorSupportWork(badWeather) && (((job == MASON || job == PORTER)
+			&& de.villagerplus.build.Builder.buildHelperWork(ctx))
+			|| de.villagerplus.village.Market.work(ctx)
+			|| de.villagerplus.build.Builder.bootstrapBuildWork(ctx));
+		boolean busy = carryingCargo || sharedOutdoorWork;
+		if (!busy) {
+			// Preserve this phase's first-choice profession work, then let an assigned resident join a
+			// prepared building before falling through to the other profession phase.
+			boolean priorityJobWorked = first ? job.primary(ctx) : job.secondary(ctx);
+			busy = priorityJobWorked;
+			if (job != MASON && job != PORTER
+				&& de.villagerplus.build.Builder.shouldOfferConstructionSupport(priorityJobWorked,
+					allowOutdoorSupportWork(badWeather),
+					de.villagerplus.build.Builder.hasPreparedCrewProject(ctx.village() == null ? null : ctx.village().data()))) {
+				busy = de.villagerplus.build.Builder.buildHelperWork(ctx);
+			}
+			if (!busy) busy = first ? job.secondary(ctx) : job.primary(ctx);
+		}
+		if (badWeather && isWorkPeriod(phase) && job.indoorsDuringStorm() && hasExposedWeatherTarget(level, v)) {
+			// Mixed indoor roles may fetch or assist outside. Let them work only while covered and
+			// cancel any outdoor destination produced by this tick before it becomes an outside task.
+			pauseForWeather(ctx);
+			return;
+		}
 		// Fertigkeit: Pausen zwischen den Handgriffen werden mit der Stufe kuerzer.
 		if (st.cooldownUntil > cooldownBefore && st.cooldownUntil > now) {
 			st.cooldownUntil = now + (long) ((st.cooldownUntil - now) / Skills.speed(mem));
@@ -368,6 +594,283 @@ public final class JobManager {
 	}
 
 	/**
+	 * Wellbeing limits how many of four work attempts are allowed. Advance on each real
+	 * scheduled attempt so a fixed scheduler cadence cannot pin a villager to one quarter.
+	 */
+	static boolean workAttemptAllowed(JobState state, int workQuarters) {
+		int quarter = Math.floorMod(state.workQuarterCursor, 4);
+		state.workQuarterCursor = (quarter + 1) & 3;
+		return quarter < workQuarters;
+	}
+
+	static boolean shouldYieldForBudget(int processed, long nowNanos, long deadlineNanos) {
+		return processed > 0 && nowNanos > deadlineNanos;
+	}
+
+	static boolean adverseWeather(boolean raining, boolean thundering) {
+		return raining || thundering;
+	}
+
+	/** Shared construction/market dispatch always targets exterior work sites, including for indoor professions. */
+	static boolean allowOutdoorSupportWork(boolean badWeather) {
+		return !badWeather;
+	}
+
+	static boolean shouldShelterForWeather(boolean badWeather, Phase phase, Job job) {
+		if (!badWeather) return false;
+		return !isWorkPeriod(phase) || !job.indoorsDuringStorm();
+	}
+
+	/** Single production gate so tests and scheduled work consume the same live level weather state. */
+	static boolean shouldShelterForWeather(ServerLevel level, Phase phase, Job job) {
+		return shouldShelterForWeather(adverseWeather(level.isRaining(), level.isThundering()), phase, job);
+	}
+
+	static boolean shouldShelterForWeather(ServerLevel level, Phase phase, Job job, BlockPos workerStand) {
+		if (!adverseWeather(level.isRaining(), level.isThundering())) return false;
+		if (!isWorkPeriod(phase) || !job.indoorsDuringStorm()) return true;
+		return !isShelteredStand(level, workerStand);
+	}
+
+	private static boolean isWorkPeriod(Phase phase) {
+		return phase == Phase.WORK_A || phase == Phase.WORK_B;
+	}
+
+	/** A role may continue indoor work only when any destination it selects is also under cover. */
+	static boolean hasExposedWeatherTarget(ServerLevel level, Villager villager) {
+		var target = villager.getBrain().getMemory(MemoryModuleType.WALK_TARGET);
+		if (target.isEmpty()) return false;
+		BlockPos feet = target.get().getTarget().currentBlockPosition();
+		for (int dx = -1; dx <= 1; dx++) for (int dy = -1; dy <= 1; dy++) for (int dz = -1; dz <= 1; dz++) {
+			if (isShelteredStand(level, feet.offset(dx, dy, dz))) return false;
+		}
+		return true;
+	}
+
+	static long weatherSearchRetryDelay(UUID villager) {
+		return WEATHER_SEARCH_RETRY_BASE_TICKS
+			+ Math.floorMod(villager.hashCode(), WEATHER_SEARCH_RETRY_JITTER_TICKS);
+	}
+
+	static int reserveWeatherPathBudget(ServerLevel level, long tick, int requested) {
+		if (requested <= 0) return 0;
+		WeatherPathBudget budget = WEATHER_PATH_BUDGETS.get(level);
+		int used = budget != null && budget.tick() == tick ? budget.used() : 0;
+		int granted = Math.min(requested, MAX_WEATHER_PATH_CHECKS_PER_LEVEL_TICK - used);
+		if (granted <= 0) return 0;
+		WEATHER_PATH_BUDGETS.put(level, new WeatherPathBudget(tick, used + granted));
+		return granted;
+	}
+
+	static int weatherCandidateIndex(int offset, int step, int candidateCount) {
+		return candidateCount <= 0 ? 0 : Math.floorMod(offset + step, candidateCount);
+	}
+
+	static int advanceWeatherCandidateCursor(int offset, int examined, int candidateCount) {
+		return candidateCount <= 0 ? 0 : Math.floorMod(offset + examined, candidateCount);
+	}
+
+	/** Pause outdoor work without running routine storage/delivery code or changing its task target. */
+	static void pauseForWeather(Ctx c) {
+		Villager villager = c.v();
+		UUID id = villager.getUUID();
+		WeatherPause pause = WEATHER_PAUSES.get(id);
+		if (pause == null) {
+			pause = new WeatherPause(Optional.ofNullable(findWeatherShelter(c)), c.now(), c.now());
+			WEATHER_PAUSES.put(id, pause);
+		}
+		BlockPos shelter = pause.shelter().orElse(null);
+		if (shelter != null && !isShelteredStand(c.level(), shelter)) {
+			pause = new WeatherPause(Optional.ofNullable(findWeatherShelter(c)), pause.startedAt(), c.now());
+			WEATHER_PAUSES.put(id, pause);
+			shelter = pause.shelter().orElse(null);
+		} else if (shelter != null && !villager.blockPosition().equals(shelter)
+			&& c.now() - pause.shelterCheckedAt() >= weatherSearchRetryDelay(id)) {
+			// A shelter can remain roofed after a door closes or terrain changes. Recheck the route
+			// occasionally and choose another covered position if the current target is no longer reachable.
+			Boolean reachable = weatherPathReachableWithinBudget(c, shelter);
+			if (reachable == null) {
+				pause = new WeatherPause(pause.shelter(), pause.startedAt(), c.now());
+			} else if (!reachable) {
+				pause = new WeatherPause(Optional.ofNullable(findWeatherShelter(c)), pause.startedAt(), c.now());
+			} else {
+				pause = new WeatherPause(pause.shelter(), pause.startedAt(), c.now());
+			}
+			WEATHER_PAUSES.put(id, pause);
+			shelter = pause.shelter().orElse(null);
+		} else if (shelter == null && c.now() - pause.shelterCheckedAt() >= weatherSearchRetryDelay(id)) {
+			pause = new WeatherPause(Optional.ofNullable(findWeatherShelter(c)), pause.startedAt(), c.now());
+			WEATHER_PAUSES.put(id, pause);
+			shelter = pause.shelter().orElse(null);
+		}
+
+		if (shelter != null && !villager.blockPosition().equals(shelter)) {
+			var currentWalk = villager.getBrain().getMemory(MemoryModuleType.WALK_TARGET);
+			boolean alreadyHeadingToShelter = currentWalk.isPresent()
+				&& currentWalk.get().getTarget().currentBlockPosition().equals(shelter);
+			if (!alreadyHeadingToShelter) {
+				villager.getNavigation().stop();
+				villager.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
+				villager.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
+					new WalkTarget(Vec3.atBottomCenterOf(shelter), 0.45F, 0));
+			}
+			c.setActivity("sucht Schutz vor dem Unwetter");
+		} else if (shelter != null) {
+			villager.getNavigation().stop();
+			villager.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
+			c.setActivity("wartet geschützt auf das Ende des Unwetters");
+		} else {
+			villager.getNavigation().stop();
+			villager.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
+			c.setActivity("wartet wegen des Unwetters auf einen sicheren Arbeitsort");
+		}
+		Anim.cancelBreaking(villager);
+		c.st().toolUntil = c.now();
+		Anim.apply(villager, c.st(), c.now());
+	}
+
+	/** Resume the existing task and exclude the shelter trip from its movement/idle timeouts. */
+	static void resumeAfterWeather(Ctx c) {
+		WeatherPause pause = WEATHER_PAUSES.remove(c.v().getUUID());
+		WEATHER_SEARCH_CURSORS.remove(c.v().getUUID());
+		if (pause == null) return;
+		long pausedFor = Math.max(0L, c.now() - pause.startedAt());
+		JobState st = c.st();
+		if (st.walkStart != 0L) st.walkStart += pausedFor;
+		if (st.lastMoveAt != 0L) st.lastMoveAt += pausedFor;
+		if (st.idleSince != 0L) st.idleSince += pausedFor;
+		c.v().getNavigation().stop();
+		c.v().getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
+		c.setActivity("kehrt nach dem Unwetter zur Arbeit zurück");
+	}
+
+	static BlockPos findWeatherShelter(Ctx c) {
+		ServerLevel level = c.level();
+		UUID villagerId = c.v().getUUID();
+		BlockPos current = c.v().blockPosition();
+		if (isShelteredStand(level, current)) {
+			WEATHER_SEARCH_CURSORS.remove(villagerId);
+			return current.immutable();
+		}
+
+		List<BlockPos> anchors = new ArrayList<>();
+		c.mem().homeBed.ifPresent(anchors::add);
+		c.mem().homeChest.ifPresent(anchors::add);
+		if (c.village() != null) anchors.add(c.village().bell());
+		anchors.add(current);
+
+		List<BlockPos> candidates = new ArrayList<>();
+		Set<BlockPos> seen = new HashSet<>();
+		for (BlockPos anchor : anchors) {
+			if (!level.hasChunkAt(anchor)) continue;
+			for (int dx = -6; dx <= 6; dx++) {
+				for (int dy = -3; dy <= 3; dy++) {
+					for (int dz = -6; dz <= 6; dz++) {
+						BlockPos feet = anchor.offset(dx, dy, dz);
+						if (!seen.add(feet) || !isShelteredStand(level, feet)) continue;
+						candidates.add(feet.immutable());
+					}
+				}
+			}
+		}
+		candidates.sort(java.util.Comparator.comparingDouble((BlockPos feet) ->
+			c.v().position().distanceToSqr(Vec3.atBottomCenterOf(feet))));
+		if (candidates.isEmpty()) {
+			WEATHER_SEARCH_CURSORS.remove(villagerId);
+			return null;
+		}
+		int cursor = Math.floorMod(WEATHER_SEARCH_CURSORS.getOrDefault(villagerId, 0), candidates.size());
+		int allowance = reserveWeatherPathBudget(level, c.now(), Math.min(MAX_WEATHER_PATH_CHECKS_PER_SEARCH, candidates.size()));
+		if (allowance == 0) return null;
+		for (int step = 0; step < allowance; step++) {
+			BlockPos candidate = candidates.get(weatherCandidateIndex(cursor, step, candidates.size()));
+			if (weatherPathReachableUnchecked(c, candidate)) {
+				WEATHER_SEARCH_CURSORS.remove(villagerId);
+				return candidate;
+			}
+		}
+		WEATHER_SEARCH_CURSORS.put(villagerId, advanceWeatherCandidateCursor(cursor, allowance, candidates.size()));
+		return null;
+	}
+
+	static boolean weatherPathReachable(Ctx c, BlockPos shelter) {
+		return Boolean.TRUE.equals(weatherPathReachableWithinBudget(c, shelter));
+	}
+
+	private static Boolean weatherPathReachableWithinBudget(Ctx c, BlockPos shelter) {
+		if (reserveWeatherPathBudget(c.level(), c.now(), 1) == 0) return null;
+		return weatherPathReachableUnchecked(c, shelter);
+	}
+
+	private static boolean weatherPathReachableUnchecked(Ctx c, BlockPos shelter) {
+		var path = de.villagerplus.build.Builder.workPath(c, shelter);
+		if (path == null || !path.canReach() || path.getNodeCount() == 0) return false;
+		if (!path.getNodePos(path.getNodeCount() - 1).equals(shelter)) return false;
+		Villager villager = c.v();
+		ServerLevel level = c.level();
+		AABB body = villager.getBoundingBox();
+		for (int i = 0; i < path.getNodeCount(); i++) {
+			BlockPos feet = path.getNodePos(i);
+			BlockPos floor = feet.below();
+			BlockPos head = feet.above();
+			if (!level.hasChunkAt(feet) || !level.hasChunkAt(floor) || !level.hasChunkAt(head)) return false;
+			if (!level.getFluidState(floor).isEmpty() || !level.getFluidState(feet).isEmpty()
+				|| !level.getFluidState(head).isEmpty()) return false;
+			var ground = level.getBlockState(floor);
+			if (!ground.isFaceSturdy(level, floor, Direction.UP) && !ground.is(Blocks.DIRT_PATH)) return false;
+
+			// Check the villager-sized box at each node, including collision shapes intruding from adjacent blocks.
+			AABB atNode = body.move(feet.getX() + 0.5 - villager.getX(), feet.getY() - villager.getY(),
+				feet.getZ() + 0.5 - villager.getZ());
+			if (!level.noBlockCollision(villager, atNode)) return false;
+		}
+		return true;
+	}
+
+	/** Check that an individual pause stand has a complete, collision-free vanilla route. */
+	static boolean safeReachableStand(Ctx c, BlockPos destination) {
+		if (c == null || destination == null || !c.level().hasChunkAt(destination)
+			|| !c.level().hasChunkAt(destination.below()) || !c.level().hasChunkAt(destination.above())) return false;
+		var path = de.villagerplus.build.Builder.workPath(c, destination);
+		if (path == null || !path.canReach() || path.getNodeCount() == 0
+			|| !path.getNodePos(path.getNodeCount() - 1).equals(destination)) return false;
+		var villager = c.v();
+		ServerLevel level = c.level();
+		AABB body = villager.getBoundingBox();
+		for (int i = 0; i < path.getNodeCount(); i++) {
+			BlockPos feet = path.getNodePos(i);
+			BlockPos floor = feet.below();
+			BlockPos head = feet.above();
+			if (!level.hasChunkAt(feet) || !level.hasChunkAt(floor) || !level.hasChunkAt(head)) return false;
+			if (!level.getFluidState(floor).isEmpty() || !level.getFluidState(feet).isEmpty()
+				|| !level.getFluidState(head).isEmpty()) return false;
+			var ground = level.getBlockState(floor);
+			if (!ground.isFaceSturdy(level, floor, Direction.UP) && !ground.is(Blocks.DIRT_PATH)) return false;
+			AABB atNode = body.move(feet.getX() + 0.5 - villager.getX(), feet.getY() - villager.getY(),
+				feet.getZ() + 0.5 - villager.getZ());
+			if (!level.noBlockCollision(villager, atNode)) return false;
+		}
+		return true;
+	}
+
+	static boolean isShelteredStand(ServerLevel level, BlockPos feet) {
+		BlockPos head = feet.above();
+		BlockPos roof = feet.above(2);
+		if (feet.getY() <= level.getMinY() || roof.getY() >= level.getMaxY() || !level.hasChunkAt(roof)) return false;
+		if (!level.getBlockState(feet).getCollisionShape(level, feet).isEmpty()
+			|| !level.getBlockState(head).getCollisionShape(level, head).isEmpty()
+			|| !level.getBlockState(feet.below()).isFaceSturdy(level, feet.below(), Direction.UP)) return false;
+		// A real collision ceiling is enough to protect the standing cell; sky-light queries can be stale
+		// immediately after a roof is placed and are not a reliable shelter test during construction.
+		return !level.getBlockState(roof).getCollisionShape(level, roof).isEmpty();
+	}
+
+	/** Drive the normal villager job logic from a deterministic development walk. */
+	public static void tickForDevelopment(ServerLevel level, Villager villager) {
+		tickVillager(level, villager, level.getGameTime());
+	}
+
+	/**
 	 * Gestrandete Dorfbewohner (weit vom Dorf weg oder tief unter der Dorfmitte, z. B. in einer Hoehle gefallen) werden zur
 	 * Dorfkiste zurueckgeholt. Bergleute bei der Arbeit und Expeditionsmitglieder sind ausgenommen.
 	 */
@@ -378,24 +881,35 @@ public final class JobManager {
 		}
 		net.minecraft.core.BlockPos home = c.mem().homeBed.orElse(ref.bell());
 		double distance=Double.MAX_VALUE;
-		int lowest=home.getY();
+		int lowest=Math.min(home.getY(), de.villagerplus.build.Builder.villageGroundY(c.level(), ref.bell()));
 		java.util.List<net.minecraft.core.BlockPos> anchors=new java.util.ArrayList<>(java.util.List.of(home,ref.bell()));
 		de.villagerplus.village.Market.of(ref).plaza().ifPresent(anchors::add);
 		for(var anchor:anchors) {
 			double dx=c.v().getX()-anchor.getX(),dz=c.v().getZ()-anchor.getZ();
 			distance=Math.min(distance,dx*dx+dz*dz);lowest=Math.min(lowest,anchor.getY());
 		}
-		boolean far=distance>Config.VILLAGE_RADIUS*(double)Config.VILLAGE_RADIUS;
-		boolean deep=c.v().getY()<lowest-12;
+		// A woodcutter walking to a plan tree beyond the village radius is on a legitimate (bounded) expedition.
+		double farLimit = Woodcutting.onWoodExpedition(c) ? Woodcutting.EXPEDITION_LIMIT : Config.VILLAGE_RADIUS;
+		boolean far=distance>farLimit*farLimit;
+		boolean expedition = Woodcutting.onWoodExpedition(c);
+		boolean deep = c.v().getY()<(expedition ? Math.min(lowest, Woodcutting.expeditionTarget(c).getY()) - 12 : lowest-8);
 
+		// Fischer am (tiefer liegenden) Ufer sind nicht gestrandet.
+		if (deep && !far && c.st().target != null && c.level().getFluidState(c.st().target).is(net.minecraft.tags.FluidTags.WATER)
+			&& c.v().getY() >= c.st().target.getY() - 3 && c.st().target.getY() >= lowest - 14) {
+			deep = false;
+		}
 		if (!far && !deep) {
 			return false;
 		}
+		var arrival = de.villagerplus.build.Builder.villageReturn(c.level(), ref.bell());
+		if (arrival == null) return false;
 		c.v().getNavigation().stop();
-		c.v().teleportTo(home.getX() + 0.5, home.getY() + 1.0, home.getZ() + 0.5);
+		c.v().teleportTo(arrival.getX() + 0.5, arrival.getY(), arrival.getZ() + 0.5);
+		c.st().builderRelocations++;
 		c.v().resetFallDistance();
 		c.st().cooldownUntil = c.now() + 40;
-		LOGGER.info("Villagers: Repurposed: {} war gestrandet und wurde zur Dorfkiste zurueckgeholt", c.mem().name);
+		LOGGER.info("Villagers: Repurposed: {} war gestrandet und wurde zur Dorfkiste zurueckgeholt (far={}, deep={}, Expedition={}, Ziel={}, Position={}, Abstand={})", c.mem().name, far, deep, expedition, c.st().target == null ? "-" : c.st().target.toShortString(), c.v().blockPosition().toShortString(), (int) Math.sqrt(distance));
 		return true;
 	}
 
@@ -432,6 +946,11 @@ public final class JobManager {
 		return brain.isActive(Activity.PANIC) || brain.isActive(Activity.RAID) || brain.isActive(Activity.PRE_RAID)
 			|| brain.isActive(Activity.HIDE) || brain.isActive(Activity.FIGHT);
 	}
+	/** True when the resident's resolved village job is the stone trade (mason / miner). */
+	public static boolean isMason(Villager v) {
+		return jobFor(v) == MASON;
+	}
+
 	private static Job jobFor(Villager v) {
 		var prof = v.getVillagerData().profession();
 		// Modded culinary professions only. Do not turn Vanilla farmers or butchers into cooks.

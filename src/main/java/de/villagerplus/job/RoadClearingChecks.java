@@ -6,8 +6,12 @@ import de.villagerplus.village.*;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.item.Items;
@@ -21,6 +25,9 @@ public final class RoadClearingChecks {
   level.getChunkAt(at);
   int groundY=level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,at.getX(),at.getZ())-1;
   at=new BlockPos(at.getX(),groundY+1,at.getZ());
+  Map<BlockPos,Cell> before=capture(level,at,groundY);
+  net.minecraft.world.entity.npc.villager.Villager v=null;
+  try {
   Checks090.fixtureForEquipment(level, at.east(80));
   var ref=Checks090.fixtureForEquipment(level,at);
   groundY=ref.bell().getY()-1;
@@ -60,9 +67,8 @@ public final class RoadClearingChecks {
   check(level.getBlockState(root.above(1)).is(Blocks.OAK_LOG)&&level.getBlockState(root.above(5)).is(Blocks.OAK_LOG),
    "fixture tree missing at lane "+root);
   Roads.nextRepair(level,ref);
-  var v=EntityTypes.VILLAGER.spawn(level,at.south(2),EntitySpawnReason.COMMAND);v.setNoAi(true);v.setInvulnerable(true);v.addTag("vp090_fixture");
+  v=EntityTypes.VILLAGER.spawn(level,at.south(2),EntitySpawnReason.COMMAND);v.setNoAi(true);v.setInvulnerable(true);v.addTag("vp090_fixture");
   var mem=v.getAttachedOrCreate(VillagerPlus.MEMORY);var st=new JobState();long now=level.getGameTime()+1000;int checks=0;
-  try {
    var first=Roads.nextConstruction(level,ref);
    check(first!=null&&first.removal()!=null&&first.ground().equals(root.above(5))&&level.getBlockState(root.above(5)).is(Blocks.OAK_LOG),"planning identifies highest natural log without remotely clearing; task="+first
     +" column="+RoadClearing.column(level,ref,root.getX(),root.getZ(),new HashMap<>(),"debug")
@@ -91,7 +97,24 @@ public final class RoadClearingChecks {
    level.setBlock(beam.below(),Blocks.STONE.defaultBlockState(),3);
    tree(level,beam,1);
    check(RoadClearing.column(level,ref,beam.getX(),beam.getZ(),new HashMap<>(),"beam")==null&&level.getBlockState(beam.above(1)).is(Blocks.OAK_LOG),"isolated placed timber is protected even near leaves");checks++;
-   tree(level,beam,5);level.setBlock(beam.east(),Blocks.OAK_PLANKS.defaultBlockState(),3);
+   tree(level,beam,5);
+   for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)if(dx!=0||dz!=0) {
+    BlockPos pad=beam.offset(dx,0,dz);level.setBlock(pad,Blocks.GRASS_BLOCK.defaultBlockState(),3);
+    level.setBlock(pad.above(),Blocks.AIR.defaultBlockState(),3);level.setBlock(pad.above(2),Blocks.AIR.defaultBlockState(),3);
+   }
+   Map<String,Long> remembered=new HashMap<>();
+   var originalColumn=RoadClearing.column(level,ref,beam.getX(),beam.getZ(),remembered,"resume");
+   check(originalColumn!=null&&originalColumn.next()!=null&&remembered.containsKey("resume:root")&&remembered.get("resume:top")==beam.getY()+5,
+    "first scan persists the original trunk bounds for safe resume");checks++;
+   BlockPos lateLog=beam.above(6);level.setBlock(lateLog,Blocks.OAK_LOG.defaultBlockState(),3);
+   check(RoadClearing.column(level,ref,beam.getX(),beam.getZ(),remembered,"resume")==null&&level.getBlockState(lateLog).is(Blocks.OAK_LOG)
+     &&!remembered.containsKey("resume:root")&&!remembered.containsKey("resume:top"),
+    "a trunk extension above saved crown invalidates stale clearing without mutation");checks++;
+   level.setBlock(lateLog,Blocks.AIR.defaultBlockState(),3);
+   var resumed=RoadClearing.column(level,ref,beam.getX(),beam.getZ(),remembered,"resume");
+   check(resumed!=null&&resumed.next()!=null&&resumed.next().ground().equals(beam.above(5))
+     &&remembered.get("resume:top")==beam.getY()+5,"tree is rediscovered with refreshed bounds after the obstruction is removed");checks++;
+   level.setBlock(beam.east(),Blocks.OAK_PLANKS.defaultBlockState(),3);
    check(RoadClearing.column(level,ref,beam.getX(),beam.getZ(),new HashMap<>(),"house")==null,"structural planks next to rooted logs prevent clearing");checks++;
    level.setBlock(beam.east(),Blocks.AIR.defaultBlockState(),3);level.setBlock(beam.east(),Blocks.BARREL.defaultBlockState(),3);
    check(RoadClearing.column(level,ref,beam.getX(),beam.getZ(),new HashMap<>(),"private")==null,"nearby container protects tree column");checks++;
@@ -104,8 +127,37 @@ public final class RoadClearingChecks {
    level.setBlock(plant,Blocks.OAK_PLANKS.defaultBlockState(),3);
    check(!Roads.repairable(level,soft.next()),"changed target invalidates removal rather than breaking new construction");checks++;
    return checks;
-  } finally {Anim.cancelBreaking(v);v.discard();}
+  } finally {
+   if(v!=null){Anim.cancelBreaking(v);v.discard();}
+   restore(level,before);
+  }
  }
+ private static Map<BlockPos,Cell> capture(ServerLevel level,BlockPos at,int y) {
+  Map<BlockPos,Cell> before=new LinkedHashMap<>();
+  for(int x=at.getX()-2;x<=at.getX()+45;x++)for(int z=at.getZ()-8;z<=at.getZ()+18;z++)
+   for(int py=y-4;py<=y+24;py++) capture(level,before,new BlockPos(x,py,z));
+  for(BlockPos bell:List.of(at,at.east(80)))for(BlockPos pos:List.of(bell.below(),bell,bell.east(3).below(),bell.east(3)))
+   for(int py=pos.getY()-1;py<=pos.getY()+1;py++)capture(level,before,new BlockPos(pos.getX(),py,pos.getZ()));
+  return before;
+ }
+ private static void capture(ServerLevel level,Map<BlockPos,Cell> before,BlockPos pos) {
+  if(before.containsKey(pos))return;
+  level.getChunkAt(pos);BlockEntity be=level.getBlockEntity(pos);
+  before.put(pos,new Cell(level.getBlockState(pos),be==null?null:be.saveWithFullMetadata(level.registryAccess())));
+ }
+ private static void restore(ServerLevel level,Map<BlockPos,Cell> before) {
+  for(BlockPos pos:before.keySet())level.removeBlockEntity(pos);
+  before.forEach((pos,cell)->{
+   level.setBlock(pos,cell.state(),3);
+   level.getPathTypeCache().invalidate(pos);
+  });
+  before.forEach((pos,cell)->{
+   if(cell.nbt()==null)return;
+   BlockEntity be=BlockEntity.loadStatic(pos,cell.state(),cell.nbt().copy(),level.registryAccess());
+   if(be!=null)level.setBlockEntity(be);
+  });
+ }
+ private record Cell(BlockState state,CompoundTag nbt) { }
  private static void tree(ServerLevel level,BlockPos surface,int height){
   level.setBlock(surface,Blocks.GRASS_BLOCK.defaultBlockState(),3);
   for(int y=1;y<=height;y++)level.setBlock(surface.above(y),Blocks.OAK_LOG.defaultBlockState(),3);

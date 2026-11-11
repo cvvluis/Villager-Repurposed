@@ -3,7 +3,13 @@ package de.villagerplus.job;
 import de.villagerplus.village.VillageMessages;
 import de.villagerplus.Config;
 import de.villagerplus.VillagerMemory;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.WeakHashMap;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -22,7 +28,82 @@ import net.minecraft.world.level.block.entity.HopperBlockEntity;
 import net.minecraft.world.phys.Vec3;
 
 public final class JobUtil {
+	private static final long APPROACH_RETRY_COOLDOWN = 40L;
+	private static final long APPROACH_TASK_COOLDOWN = 4201L;
+	private static final long LONG_ROUTE_CACHE_TICKS = 40L;
+	private static final long SHARED_STAND_LEASE_TICKS = 80L;
+	private static final int[][] DELIVERY_STAND_OFFSETS = {
+		{ 3, 0 }, { 2, 2 }, { 0, 3 }, { -2, 2 }, { -3, 0 }, { -2, -2 }, { 0, -3 }, { 2, -2 },
+		{ 3, 1 }, { 1, 3 }, { -1, 3 }, { -3, 1 }, { -3, -1 }, { -1, -3 }, { 1, -3 }, { 3, -1 }
+	};
+	private static final Map<UUID, String> LONG_ROUTE_DIAGNOSTICS = new HashMap<>();
+	private static final Map<UUID, LongRouteAttempt> LONG_ROUTE_ATTEMPTS = new HashMap<>();
+	private static final Map<ServerLevel, Map<UUID, SharedStandReservation>> SHARED_STAND_RESERVATIONS = new WeakHashMap<>();
+	private static long longRouteSearches;
+	private static long longRouteCacheReuses;
+	private record LongRouteAttempt(BlockPos goal, BlockPos waypoint, long retryAt) { }
+	private record SharedStandReservation(BlockPos target, BlockPos stand, long expiresAt) { }
+
 	private JobUtil() {
+	}
+
+	public static String lastLongRouteDiagnostic() {
+		return LONG_ROUTE_DIAGNOSTICS.values().stream().reduce((first, second) -> second).orElse("");
+	}
+
+	public static String lastLongRouteDiagnostic(Villager villager) {
+		return villager == null ? "" : LONG_ROUTE_DIAGNOSTICS.getOrDefault(villager.getUUID(), "");
+	}
+
+	static boolean shouldReuseLongRoute(BlockPos cachedGoal, BlockPos requestedGoal, BlockPos waypoint,
+		long now, long retryAt, Vec3 workerPosition) {
+		return cachedGoal != null && requestedGoal != null && cachedGoal.equals(requestedGoal) && now < retryAt
+			&& (waypoint == null || workerPosition.distanceToSqr(Vec3.atBottomCenterOf(waypoint)) > 4.0);
+	}
+
+	static String longRoutePerf() {
+		return "Langweg A*-Suchen " + longRouteSearches + ", Cache-Wiederverwendungen " + longRouteCacheReuses;
+	}
+
+	static void clearLongRoute(Villager villager) {
+		if (villager == null) return;
+		LONG_ROUTE_ATTEMPTS.remove(villager.getUUID());
+		LONG_ROUTE_DIAGNOSTICS.remove(villager.getUUID());
+	}
+
+	static void clearLongRoutes() {
+		LONG_ROUTE_ATTEMPTS.clear();
+		LONG_ROUTE_DIAGNOSTICS.clear();
+		longRouteSearches = 0L;
+		longRouteCacheReuses = 0L;
+	}
+
+	/** True while the worker's cached long-route search to exactly this goal found no complete path. */
+	public static boolean longRouteKnownUnreachable(Villager villager, BlockPos goal) {
+		LongRouteAttempt cached = LONG_ROUTE_ATTEMPTS.get(villager.getUUID());
+		return cached != null && cached.waypoint() == null && cached.goal().equals(goal);
+	}
+
+	private static void rememberLongRouteDiagnostic(Villager villager, String diagnostic) {
+		if (LONG_ROUTE_DIAGNOSTICS.size() > 256) LONG_ROUTE_DIAGNOSTICS.clear();
+		String previous = LONG_ROUTE_DIAGNOSTICS.put(villager.getUUID(), diagnostic);
+		// Dev aid: surface a worker's changed long-route outcome once instead of keeping it only in memory.
+		if (previous == null || !previous.substring(0, Math.min(previous.length(), 12)).equals(diagnostic.substring(0, Math.min(diagnostic.length(), 12)))) {
+			StringBuilder from = new StringBuilder();
+			for (StackTraceElement frame : new Throwable().getStackTrace()) {
+				String cls = frame.getClassName();
+				if (cls.endsWith("JobUtil") || cls.endsWith("JobManager")) continue;
+				from.append(cls.substring(cls.lastIndexOf('.') + 1)).append('.').append(frame.getMethodName()).append(':').append(frame.getLineNumber()).append(' ');
+				if (from.length() > 90) break;
+			}
+			org.slf4j.LoggerFactory.getLogger("villagerplus").info("Langweg {}: {} via {}", villager.getName().getString(), diagnostic, from.toString().trim());
+		}
+	}
+
+	/** A cached failed search must not leave vanilla navigation retrying the same long target each AI tick. */
+	private static void clearUnreachableWalkTarget(Villager villager) {
+		villager.getNavigation().stop();
+		villager.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
 	}
 
 	/** Laeuft zum Ziel. Gibt true zurueck, sobald der Dorfbewohner nah genug ist. */
@@ -37,15 +118,9 @@ public final class JobUtil {
 		if (st.walkStart == 0) {
 			st.walkStart = c.now();
 		} else if (c.now() - st.walkStart > 1500) {
-			// Kommt nicht hin: aufgeben und spaeter neu versuchen.
-			c.v().getNavigation().stop();
-			c.v().getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
-			st.clearTarget();
-			st.stuckCount = 0;
-			st.bestDist = 0.0;
-			st.cooldownUntil = c.now() + 400;
-			st.idleUntil[0] = c.now() + 400;
-			st.idleUntil[1] = c.now() + 400;
+			// Kommt nicht hin: dieses Ziel aufgeben; waehrenddessen bleiben gemeinsame
+			// Dorfaufgaben moeglich, und ohne Ersatzarbeit greift anschliessend Staffing.
+			abortApproach(c, APPROACH_TASK_COOLDOWN);
 			return false;
 		}
 		// Haengen-Erkennung: kommt der Dorfbewohner dem Ziel ueber lange Zeit nicht merklich naeher (z.B. weil die
@@ -63,17 +138,28 @@ public final class JobUtil {
 			c.v().getNavigation().stop();
 			c.v().getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
 			if (st.stuckCount >= 3) {
-				st.stuckCount = 0;
-				st.walkStart = 0;
-				st.bestDist = 0.0;
-				st.clearTarget();
-				st.cooldownUntil = c.now() + 1200;
-				st.idleUntil[0] = c.now() + 1200;
-				st.idleUntil[1] = c.now() + 1200;
+				abortApproach(c, APPROACH_TASK_COOLDOWN);
 				return false;
 			}
 		}		c.v().getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(pos, (float) Math.min(0.55, 0.45 * Skills.speed(c.mem())), 1));
 		return false;
+	}
+
+	/**
+	 * Abandons one unreachable target without freezing the whole villager for its task cooldown.
+	 * The global cooldown only yields briefly; task slots stay idle beyond JobManager's idle-role
+	 * reassignment threshold, which lets shared market/build work run or lets Staffing choose a role.
+	 */
+	private static void abortApproach(Ctx c, long taskCooldown) {
+		JobState st = c.st();
+		c.v().getNavigation().stop();
+		c.v().getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
+		st.clearTarget();
+		st.stuckCount = 0;
+		st.bestDist = 0.0;
+		st.cooldownUntil = c.now() + APPROACH_RETRY_COOLDOWN;
+		st.idleUntil[0] = c.now() + taskCooldown;
+		st.idleUntil[1] = c.now() + taskCooldown;
 	}
 
 	/** Nahe am Ziel eine Stelle, an der ein Dorfbewohner (2 Bloecke hoch) frei stehen kann und die Luft/Boden hat. */
@@ -97,21 +183,148 @@ public final class JobUtil {
 		return approach(c, Vec3.atBottomCenterOf(pos), reach);
 	}
 
+	/** Stable resident-specific slot among a distributed ring around a shared delivery point. */
+	static int deliveryStandSlot(UUID residentId) {
+		long mixed = residentId.getMostSignificantBits()
+			^ Long.rotateLeft(residentId.getLeastSignificantBits(), 23);
+		mixed ^= mixed >>> 30;
+		mixed *= 0xBF58476D1CE4E5B9L;
+		mixed ^= mixed >>> 27;
+		return (int) Long.remainderUnsigned(mixed, DELIVERY_STAND_OFFSETS.length);
+	}
+
+	/**
+	 * Picks a loaded, supported, two-block-clear position close enough to interact with the
+	 * shared container. Short leases reserve each selected slot; loaded walkers and occupants
+	 * also block a slot so a villager does not join an existing queue. No chunk is requested.
+	 */
+	public static BlockPos sharedStandSpot(Ctx c, BlockPos target, double interactionDistance) {
+		return sharedStandSpot(c, target, Vec3.atBottomCenterOf(target), interactionDistance);
+	}
+
+	/** Chooses a stand around a block while enforcing range to the actual interacting entity. */
+	public static BlockPos sharedStandSpot(Ctx c, BlockPos target, Vec3 interactionPoint, double interactionDistance) {
+		long now = c.now();
+		UUID resident = c.v().getUUID();
+		synchronized (SHARED_STAND_RESERVATIONS) {
+			Map<UUID, SharedStandReservation> reservations = SHARED_STAND_RESERVATIONS.computeIfAbsent(c.level(), ignored -> new HashMap<>());
+			reservations.values().removeIf(reservation -> reservation.expiresAt() <= now);
+			SharedStandReservation own = reservations.get(resident);
+			if (own != null && !own.target().equals(target)) {
+				reservations.remove(resident);
+				own = null;
+			}
+
+			Set<BlockPos> occupied = new HashSet<>();
+			for (Villager other : c.level().getEntitiesOfClass(Villager.class, new net.minecraft.world.phys.AABB(target).inflate(8.0),
+				villager -> villager != c.v() && villager.isAlive())) {
+				BlockPos feet = BlockPos.containing(other.position());
+				if (feet.distSqr(target) <= 25.0) occupied.add(feet);
+				other.getBrain().getMemory(MemoryModuleType.WALK_TARGET)
+					.map(WalkTarget::getTarget).map(targetTracker -> targetTracker.currentBlockPosition())
+					.filter(walk -> walk.distSqr(target) <= 25.0).ifPresent(occupied::add);
+			}
+
+			if (own != null && availableSharedStand(c, target, own.stand(), interactionPoint, interactionDistance,
+				reservations, occupied, resident)) {
+				reservations.put(resident, new SharedStandReservation(target.immutable(), own.stand(), now + SHARED_STAND_LEASE_TICKS));
+				return own.stand();
+			}
+			if (own != null) reservations.remove(resident);
+
+			int rotation = (int) Math.floorMod(now / 20L, DELIVERY_STAND_OFFSETS.length);
+			int start = (deliveryStandSlot(resident) + rotation) % DELIVERY_STAND_OFFSETS.length;
+			for (int attempt = 0; attempt < DELIVERY_STAND_OFFSETS.length; attempt++) {
+				int[] offset = DELIVERY_STAND_OFFSETS[(start + attempt) % DELIVERY_STAND_OFFSETS.length];
+				BlockPos candidate = target.offset(offset[0], 0, offset[1]);
+				if (!c.level().hasChunkAt(candidate)) continue;
+				BlockPos surface = c.level().getHeightmapPos(
+					net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, candidate);
+				Vec3 safe = safeSpot(c.level(), Vec3.atBottomCenterOf(surface));
+				if (safe == null || safe.distanceToSqr(interactionPoint) > interactionDistance * interactionDistance) continue;
+				BlockPos stand = BlockPos.containing(safe);
+				if (!availableSharedStand(c, target, stand, interactionPoint, interactionDistance,
+					reservations, occupied, resident)) continue;
+				reservations.put(resident, new SharedStandReservation(target.immutable(), stand, now + SHARED_STAND_LEASE_TICKS));
+				return stand;
+			}
+			reservations.remove(resident);
+			return null;
+		}
+	}
+
+	private static boolean availableSharedStand(Ctx c, BlockPos target, BlockPos stand, Vec3 interactionPoint,
+		double interactionDistance, Map<UUID, SharedStandReservation> reservations, Set<BlockPos> occupied, UUID resident) {
+		if (!c.level().hasChunkAt(stand) || occupied.contains(stand)
+			|| Vec3.atBottomCenterOf(stand).distanceToSqr(interactionPoint) > interactionDistance * interactionDistance) return false;
+		Vec3 safe = safeSpot(c.level(), Vec3.atBottomCenterOf(stand));
+		if (safe == null || !BlockPos.containing(safe).equals(stand)) return false;
+		for (Map.Entry<UUID, SharedStandReservation> entry : reservations.entrySet()) {
+			SharedStandReservation reservation = entry.getValue();
+			if (!entry.getKey().equals(resident) && reservation.target().equals(target) && reservation.stand().equals(stand)) return false;
+		}
+		return true;
+	}
+
+	private static BlockPos deliveryStandSpot(Ctx c, BlockPos chest) {
+		return sharedStandSpot(c, chest, 4.0);
+	}
+
+	/** Approaches a stable shared-interaction slot while preserving anti-stuck state for that slot. */
+	public static boolean approachShared(Ctx c, BlockPos stand, double reach) {
+		if (!stand.equals(c.st().target) || c.st().targetEntity != null) {
+			c.st().target = stand.immutable();
+			c.st().targetEntity = null;
+			c.st().walkStart = 0;
+			c.st().bestDist = 0.0;
+			c.st().lastMoveAt = 0;
+			c.st().stuckCount = 0;
+		}
+		return approachLong(c, stand, reach);
+	}
+
 	/** Uses the builder's bounded long-route search to feed short waypoints to vanilla navigation. */
 	public static boolean approachLong(Ctx c, BlockPos pos, double reach) {
-		if (approach(c,pos,reach)) return true;
-		if (c.st().cooldownUntil>c.now()) return false;
+		if (approach(c,pos,reach)) {
+			LONG_ROUTE_ATTEMPTS.remove(c.v().getUUID());
+			return true;
+		}
+		if (c.st().cooldownUntil>c.now()) {
+			rememberLongRouteDiagnostic(c.v(), "cooldown from=" + c.v().blockPosition().toShortString() + " goal=" + pos.toShortString());
+			return false;
+		}
+		UUID workerId = c.v().getUUID();
+		LongRouteAttempt cached = LONG_ROUTE_ATTEMPTS.get(workerId);
+		if (cached != null && shouldReuseLongRoute(cached.goal(), pos, cached.waypoint(), c.now(), cached.retryAt(), c.v().position())) {
+			longRouteCacheReuses++;
+			if (cached.waypoint() != null) {
+				var walk = c.v().getBrain().getMemory(MemoryModuleType.WALK_TARGET);
+				if (walk.isPresent()) c.v().getBrain().setMemory(MemoryModuleType.WALK_TARGET,
+					new WalkTarget(cached.waypoint(), walk.get().getSpeedModifier(), 1));
+			} else clearUnreachableWalkTarget(c.v());
+			return false;
+		}
+		longRouteSearches++;
 		var route=de.villagerplus.build.Builder.workPath(c,pos);
-		if(route==null||!route.canReach()) return false;
+		if(route==null||!route.canReach()) {
+			LONG_ROUTE_ATTEMPTS.put(workerId, new LongRouteAttempt(pos.immutable(), null, c.now() + LONG_ROUTE_CACHE_TICKS));
+			clearUnreachableWalkTarget(c.v());
+			rememberLongRouteDiagnostic(c.v(), "unreachable from=" + c.v().blockPosition().toShortString() + " goal=" + pos.toShortString()
+				+ " route=" + (route == null ? "null" : route.getNodeCount() + " nodes"));
+			return false;
+		}
 		BlockPos waypoint=pos;
 		for(int i=0;i<route.getNodeCount();i++) {
 			BlockPos node=route.getNodePos(i);
 			if(c.v().position().distanceToSqr(Vec3.atBottomCenterOf(node))>100.0) break;
 			waypoint=node;
 		}
+		LONG_ROUTE_ATTEMPTS.put(workerId, new LongRouteAttempt(pos.immutable(), waypoint.immutable(), c.now() + LONG_ROUTE_CACHE_TICKS));
 		var walk=c.v().getBrain().getMemory(MemoryModuleType.WALK_TARGET);
 		if(walk.isPresent()) c.v().getBrain().setMemory(MemoryModuleType.WALK_TARGET,
 			new WalkTarget(waypoint,walk.get().getSpeedModifier(),1));
+		rememberLongRouteDiagnostic(c.v(), "reachable from=" + c.v().blockPosition().toShortString() + " goal=" + pos.toShortString()
+			+ " waypoint=" + waypoint.toShortString() + " nodes=" + route.getNodeCount());
 		return false;
 	}
 
@@ -198,7 +411,7 @@ public final class JobUtil {
 		BlockPos best = null;
 		double bestDist = Double.MAX_VALUE;
 		for (BlockPos p : c.mem().containers) {
-			if (level.getBlockState(p).getBlock() instanceof ChestBlock && unownedChest(level, p)) {
+			if (level.hasChunkAt(p) && level.getBlockState(p).getBlock() instanceof ChestBlock && unownedChest(level, p)) {
 				double d = p.distSqr(v.blockPosition());
 				if (d <= 40.0 * 40.0 && d < bestDist) {
 					best = p;
@@ -213,7 +426,7 @@ public final class JobUtil {
 		int r = Config.CHEST_SEARCH_RADIUS;
 		BlockPos center = v.blockPosition();
 		for (BlockPos p : BlockPos.betweenClosed(center.offset(-r, -3, -r), center.offset(r, 4, r))) {
-			if (level.getBlockState(p).getBlock() instanceof ChestBlock && unownedChest(level, p)) {
+			if (level.hasChunkAt(p) && level.getBlockState(p).getBlock() instanceof ChestBlock && unownedChest(level, p)) {
 				double d = p.distSqr(center);
 				if (d < bestDist) {
 					best = p.immutable();
@@ -228,8 +441,7 @@ public final class JobUtil {
 	}
 
 	private static boolean unownedChest(ServerLevel level, BlockPos pos) {
-		var be = level.getBlockEntity(pos);
-		return be == null || be.getAttached(de.villagerplus.VillagerPlus.OWNER) == null;
+		return de.villagerplus.village.Lager.publicContainerAt(level, pos) != null;
 	}
 
 	/**
@@ -281,6 +493,10 @@ public final class JobUtil {
 				chest = special;
 				destinationDepot = depot;
 				depotLabel = depot.equals(de.villagerplus.build.Blueprints.GRANARY) ? "bringt Waren zum Kornspeicher" : "bringt Waren zur Werkzeugkammer";
+			} else if (de.villagerplus.build.Blueprints.GRANARY.equals(depot)) {
+				// Before the first granary exists, food (including starter seeds) uses the ordinary village chest.
+				// Keep the food policy for this internal public delivery so the material-store filter still rejects direct insertion.
+				destinationDepot = de.villagerplus.build.Blueprints.GRANARY;
 			}
 		}
 		// Ist die Dorfkiste voll, geht der Ueberschuss in den Lagerschuppen (falls das Dorf einen hat).
@@ -291,22 +507,24 @@ public final class JobUtil {
 			if (lagerChest != null) {
 				chest = lagerChest;
 				toLager = true;
+				destinationDepot = de.villagerplus.build.Blueprints.STORAGE;
 			}
+		}
+		BlockPos stand = deliveryStandSpot(c, chest);
+		if (stand == null) {
+			// A missing or obstructed stand is not permission to insert remotely. Keep all
+			// carried goods and let the ordinary task retry cooldown choose when to try again.
+			c.st().depositBlockedUntil = Math.max(c.st().depositBlockedUntil, c.now() + APPROACH_RETRY_COOLDOWN);
+			return false;
 		}
 		// Keep the walk/anti-stuck state for this destination across job ticks. Clearing it
 		// unconditionally here restarted the movement timer every tick, so a long route
 		// could never time out or accumulate the three stuck retries.
-		if (!chest.equals(c.st().target) || c.st().targetEntity != null) {
-			c.st().target = chest.immutable();
-			c.st().targetEntity = null;
-			c.st().walkStart = 0;
-			c.st().bestDist = 0.0;
-			c.st().lastMoveAt = 0;
-			c.st().stuckCount = 0;
-		}
 		c.setActivity(depotLabel != null ? depotLabel : toLager ? "bringt Waren ins Lager" : "bringt Waren zur Dorfkiste");
-		if (!approachLong(c, chest, 3.0)) {
-			return true;
+		if (!approachShared(c, stand, 1.0)) {
+			// A normal route attempt remains active. Anti-stuck abort clears the target;
+			// surface that as a completed attempt so routine stages do not restart it forever.
+			return c.st().target != null;
 		}
 		Container box = HopperBlockEntity.getContainerAt(c.level(), chest);
 		if (box == null) {

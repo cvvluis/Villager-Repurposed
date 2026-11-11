@@ -24,7 +24,7 @@ public interface Job {
 		return 0;
 	}
 
-	/** Gewitter: Innenberufe arbeiten weiter, Außenberufe suchen Unterstand. */
+	/** Regen/Gewitter: Gibt an, ob die Haupt- und Nebenaufgaben dieses Berufs sicher unter Dach erledigt werden können. */
 	default boolean indoorsDuringStorm() {
 		return false;
 	}

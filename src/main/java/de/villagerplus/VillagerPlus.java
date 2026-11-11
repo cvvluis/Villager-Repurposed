@@ -1,6 +1,8 @@
 package de.villagerplus;
 
+import com.mojang.serialization.Codec;
 import de.villagerplus.job.JobManager;
+import de.villagerplus.job.Mining;
 import de.villagerplus.job.WoodcutterWork;
 import de.villagerplus.net.Networking;
 import de.villagerplus.village.Caravan;
@@ -20,6 +22,14 @@ public class VillagerPlus implements ModInitializer {
 	public static final AttachmentType<VillagerMemory> MEMORY = AttachmentRegistry.create(
 		Identifier.fromNamespaceAndPath(MOD_ID, "memory"),
 		builder -> builder.persistent(VillagerMemory.CODEC).initializer(VillagerMemory::new));
+
+	/** Persists a resident's unfulfilled private-chest provisioning request across entity unloads and restarts. */
+	public static final AttachmentType<Boolean> PRIVATE_CHEST_PENDING = AttachmentRegistry.createPersistent(
+		Identifier.fromNamespaceAndPath(MOD_ID, "private_chest_pending"), Codec.BOOL);
+
+	/** Persists a miner's active one-cell route so interrupted visits can safely return after reload. */
+	public static final AttachmentType<Mining.MineRoute> MINING_ROUTE = AttachmentRegistry.createPersistent(
+		Identifier.fromNamespaceAndPath(MOD_ID, "mining_route"), Mining.MineRoute.CODEC);
 
 	/** Reversible one-day emergency job assignment, persisted separately from villager memory to keep its codec bounded. */
 	public static final AttachmentType<de.villagerplus.village.TemporaryAssignment> TEMPORARY_JOB = AttachmentRegistry.create(
@@ -52,9 +62,20 @@ public class VillagerPlus implements ModInitializer {
 	public static final AttachmentType<de.villagerplus.village.VillageExtent> VILLAGE_EXTENT = AttachmentRegistry.createPersistent(
 		Identifier.fromNamespaceAndPath(MOD_ID, "village_extent"), de.villagerplus.village.VillageExtent.CODEC);
 
+	/** Mayor, environment focus and diplomacy bookkeeping of a village (own attachment because VillageData.Extra is full). */
+	public static final AttachmentType<de.villagerplus.village.VillageAdmin.Admin> VILLAGE_ADMIN = AttachmentRegistry.createPersistent(
+		Identifier.fromNamespaceAndPath(MOD_ID, "village_admin"), de.villagerplus.village.VillageAdmin.Admin.CODEC);
+
 	/** Opt-in phase ordering and temporary worksite blocks for the current village construction plan. */
 	public static final AttachmentType<de.villagerplus.build.ConstructionSite> CONSTRUCTION = AttachmentRegistry.createPersistent(
 		Identifier.fromNamespaceAndPath(MOD_ID, "construction"), de.villagerplus.build.ConstructionSite.CODEC);
+
+	/**
+	 * Origins of plans that are built from a shipped template. The choice is persisted so a plan keeps its shape across
+	 * restarts and repairs, while plans started before templates existed keep their old design.
+	 */
+	public static final AttachmentType<java.util.List<Long>> TEMPLATE_PLANS = AttachmentRegistry.createPersistent(
+		Identifier.fromNamespaceAndPath(MOD_ID, "template_plans"), com.mojang.serialization.Codec.LONG.listOf());
 
 	/** Handelsnetz des Dorfes (Partnerorte, Nachbardoerfer, Abklingzeiten); eigenes Attachment, weil Extra voll ist. */
 	public static final AttachmentType<de.villagerplus.village.TradeNetwork> NETWORK = AttachmentRegistry.createPersistent(
@@ -81,7 +102,7 @@ public class VillagerPlus implements ModInitializer {
 
 	/** Expected output for the single in-flight smithing batch; EMPTY means the marked furnace is available. */
 	public static final AttachmentType<net.minecraft.world.item.ItemStack> SMITH_FURNACE = AttachmentRegistry.createPersistent(
-		Identifier.fromNamespaceAndPath(MOD_ID, "smith_furnace"), net.minecraft.world.item.ItemStack.CODEC);
+		Identifier.fromNamespaceAndPath(MOD_ID, "smith_furnace"), net.minecraft.world.item.ItemStack.OPTIONAL_CODEC);
 
  /** Vom Spieler eingestellte Berufsquoten des Dorfes (Beruf -> Prozent der Einwohner); fehlende Eintraege nutzen die Standardanteile. */
  public static final AttachmentType<java.util.Map<String,Integer>> QUOTAS = AttachmentRegistry.createPersistent(
@@ -135,6 +156,7 @@ public class VillagerPlus implements ModInitializer {
 		de.villagerplus.village.Expedition.register();
 		de.villagerplus.village.Market.register();
 		de.villagerplus.village.Market.registerPlayerShop();
+		de.villagerplus.job.BuildHaul.register();
 		JobManager.register();
 		Interactions.register();
 		Ownership.register();

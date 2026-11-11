@@ -21,7 +21,18 @@ public final class RoadRouteChecks {
   int checks=0;
   try {
    buildPad(level,origin);
+   checks+=dryGorgeBridgeCheck(level,origin,before);
+   buildPad(level,origin);
    BlockPos west=origin.west(18),east=origin.east(18);
+   String rejectedKey="road-route-check:rejected-bridge";
+   String rejectedBridge=rejectedKey+":bridge:1:0";
+   Map<String,Long> rejectedBridgeState=new HashMap<>();
+   rejectedBridgeState.put(rejectedBridge,(long)origin.getY());
+   require(!Roads.rememberBridgePlan(rejectedBridgeState,rejectedBridge,origin.getY(),null)
+     &&!rejectedBridgeState.containsKey(rejectedBridge),
+    "a rejected bridge plan clears its unbuilt deck marker");checks++;
+   require(!Roads.routeCursorHasWork(level,rejectedBridgeState,rejectedKey,west,east,1),
+    "a rejected bridge plan does not suppress a safe route replan");checks++;
    String routeKey="road-route-check:detour";
    Map<String,Long> persisted=new HashMap<>();
    // A steep, paved-material mound tests the longitudinal grade rule independently of the wall.
@@ -106,16 +117,88 @@ public final class RoadRouteChecks {
     level.setBlock(origin.offset(0,y,z),Blocks.BRICKS.defaultBlockState(),3);
    String failedKey="road-route-check:sealed";Map<String,Long> failed=new HashMap<>();
    BlockPos shortWest=origin.west(10),shortEast=origin.east(10);
-   require(!RoadRoute.ensureWithRetry(level,shortWest,shortEast,failed,failedKey,null,null,10_000,false),
-    "fully observed sealed corridor returns a bounded no-path result");checks++;
+   boolean sealedAccepted=RoadRoute.ensureWithRetry(level,shortWest,shortEast,failed,failedKey,null,null,10_000,false);
+   StringBuilder sealedRoute=new StringBuilder();
+   if(sealedAccepted)for(int cursor=0;cursor<=RoadRoute.length(failed,failedKey,shortWest,shortEast);cursor++) {
+    BlockPos point=RoadRoute.point(failed,failedKey,shortWest,shortEast,cursor);
+    if(cursor>0)sealedRoute.append(',');
+    sealedRoute.append(point.getX()-origin.getX()).append(',').append(point.getZ()-origin.getZ());
+   }
+   require(!sealedAccepted,"fully observed sealed corridor returns a bounded no-path result"
+    +" (accepted="+sealedAccepted+", geometry="+failed.getOrDefault(failedKey+":routeGeometry",0L)
+    +", count="+failed.getOrDefault(failedKey+":routeCount",0L)+", retryAt="
+    +failed.getOrDefault(failedKey+":routeRetryAt",0L)+", sections=["+sealedRoute+"])");checks++;
    long retryAt=failed.getOrDefault(failedKey+":routeRetryAt",0L);Map<String,Long> failedSnapshot=Map.copyOf(failed);
    require(retryAt>10_000,"failed geometry stores a future retry time");checks++;
-   require(!RoadRoute.ensureWithRetry(level,shortWest,shortEast,failed,failedKey,null,null,10_001,false)
-    &&failed.equals(failedSnapshot),"repeated call inside the retry window does not rerun or mutate the failed plan");checks++;
+   boolean repeatedAccepted=RoadRoute.ensureWithRetry(level,shortWest,shortEast,failed,failedKey,null,null,10_001,false);
+   require(!repeatedAccepted&&failed.equals(failedSnapshot),"repeated call inside the retry window does not rerun or mutate the failed plan"
+    +" (accepted="+repeatedAccepted+", before="+failedSnapshot+", after="+failed+")");checks++;
    return checks;
   } finally {
    before.forEach((pos,state)->level.setBlock(pos,state,3));
   }
+ }
+
+ private static int dryGorgeBridgeCheck(ServerLevel level,BlockPos origin,Map<BlockPos,BlockState> before) {
+  for(int x=-2;x<=3;x++)for(int z=-1;z<=1;z++)for(int y=-10;y<=-2;y++) {
+   BlockPos pos=origin.offset(x,y,z).immutable();level.getChunkAt(pos);before.putIfAbsent(pos,level.getBlockState(pos));
+  }
+  for(int x=-1;x<=2;x++)for(int z=-1;z<=1;z++) {
+   for(int y=0;y>=-7;y--)level.setBlock(origin.offset(x,y,z),Blocks.AIR.defaultBlockState(),3);
+   level.setBlock(origin.offset(x,-8,z),Blocks.STONE.defaultBlockState(),3);
+   // The stone bed can anchor bridge supports, but gravel cannot be placed on it
+   // because its own support cell is open air. This distinguishes bridgeability
+   // from ordinary surface-paving eligibility.
+   level.setBlock(origin.offset(x,-9,z),Blocks.AIR.defaultBlockState(),3);
+  }
+
+  BlockPos west=origin.west(10),east=origin.east(10);String key="road-route-check:dry-gorge";
+  Map<String,Long> state=new HashMap<>();
+  require(RoadRoute.ensure(level,west,east,state,key,null,null),"bounded planner finds the loaded dry-gorge crossing");
+  int length=RoadRoute.length(state,key,west,east),spanned=0,checks=1;
+  boolean directGorgeLine=length==Roads.routeLength(west,east);
+  StringBuilder deckCursors=new StringBuilder(),routeSections=new StringBuilder();
+  for(int cursor=0;cursor<=length;cursor++) {
+   Integer deckY=RoadRoute.gorgeDeckY(state,key,west,east,cursor);
+   Integer reverseY=RoadRoute.gorgeDeckY(state,key,east,west,length-cursor);
+   require(java.util.Objects.equals(deckY,reverseY),"saved deck heights reverse with the shared route cursor");checks++;
+   if(cursor>0)routeSections.append(',');
+   BlockPos route=RoadRoute.point(state,key,west,east,cursor);
+   if(route.getX()!=west.getX()+cursor||route.getZ()!=origin.getZ())directGorgeLine=false;
+   routeSections.append(cursor).append('@').append(route.getX()-origin.getX()).append(',')
+    .append(route.getZ()-origin.getZ()).append('=').append(deckY==null?"-":deckY);
+   if(deckY==null)continue;
+   if(deckCursors.length()>0)deckCursors.append(',');
+   deckCursors.append(cursor).append('@').append(deckY);
+   spanned++;
+   require(deckY==origin.getY()&&route.getX()>=origin.getX()-2&&route.getX()<=origin.getX()+3,
+    "dry-gorge deck profile includes both banks and stays level across the crossing");checks++;
+   if(route.getX()<origin.getX()-1||route.getX()>origin.getX()+2)continue;
+   for(int side=-1;side<=1;side++) {
+    boolean alongX=RoadRoute.alongX(state,key,west,east,cursor);
+    BlockPos deck=new BlockPos(route.getX()+(alongX?0:side),deckY,route.getZ()+(alongX?side:0));
+    RoadBridge.Plan plan=RoadBridge.plan(level,deck);
+    require(plan!=null&&plan.next()!=null&&plan.next().bridge()
+      &&plan.next().paving().is(Blocks.SPRUCE_LOG)&&RoadBridge.validTask(level,plan.next()),
+     "each lane exposes a safe, paid first support task from the gorge floor");checks++;
+   }
+  }
+  require(spanned==6&&directGorgeLine,"the planner prefers the direct, bounded gorge bridge and persists its deck profile"
+   +" (span="+spanned+"/6, routeLength="+length+", routeSections="+(length+1)+", deckCursors=["+deckCursors
+   +"], directLine="+directGorgeLine+", sections=["+routeSections+"])");checks++;
+
+  String legacyKey="road-route-check:legacy-gorge";Map<String,Long> legacy=new HashMap<>();
+  require(RoadRoute.ensure(level,west,east,legacy,legacyKey,null,null,true),"older paid path keeps its Manhattan geometry");checks++;
+  require(RoadRoute.ensureGorgeProfileAtCursor(level,legacy,legacyKey,west,east,8)
+    &&RoadRoute.gorgeDeckY(legacy,legacyKey,west,east,8)!=null
+    &&RoadRoute.gorgeDeckY(legacy,legacyKey,east,west,Roads.routeLength(west,east)-8)!=null,
+   "an older route can persist the same safe deck profile when it reaches the steep edge");checks++;
+  for(int x=-1;x<=2;x++)for(int z=-1;z<=1;z++) {
+   require(level.getBlockState(origin.offset(x,0,z)).isAir()
+     &&level.getBlockState(origin.offset(x,-8,z)).is(Blocks.STONE),
+    "route planning leaves the gorge and its support beds untouched");checks++;
+  }
+  return checks;
  }
 
  private static void snapshotPad(ServerLevel level,Map<BlockPos,BlockState> before,BlockPos origin) {

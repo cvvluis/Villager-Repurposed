@@ -24,7 +24,7 @@ public class FishermanJob implements Job {
 		if (c.idle(0)) {
 			return false;
 		}
-		if (JobUtil.depositSurplus(c, produce(), 12, 0)) {
+		if (JobUtil.depositSurplus(c, produce(), 4, 0)) {
 			return true;
 		}
 		JobState st = c.st();
@@ -90,6 +90,46 @@ public class FishermanJob implements Job {
 				}
 			}
 		}
+		if (best == null && c.village() != null) best = findWideWater(c);
 		return best;
 	}
+
+	/** Kein Wasser am Arbeitsplatz: naechste Wasserflaeche im weiteren Dorfumland (Oberflaeche, nahe am Ufer, ohne Hoehensprung). */
+	private static BlockPos findWideWater(Ctx c) {
+		BlockPos bell = c.village().bell();
+		BlockPos here = c.v().blockPosition();
+		BlockPos best = null;
+		double bestDist = Double.MAX_VALUE;
+		int r = 56;
+		BlockPos.MutableBlockPos probe = new BlockPos.MutableBlockPos();
+		for (int dx = -r; dx <= r; dx += 2) {
+			for (int dz = -r; dz <= r; dz += 2) {
+				int x = bell.getX() + dx, z = bell.getZ() + dz;
+				if (!c.level().hasChunk(x >> 4, z >> 4)) continue;
+				int top = c.level().getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x, z) - 1;
+				if (Math.abs(top - bell.getY()) > 14) continue;
+				probe.set(x, top, z);
+				if (!c.level().getFluidState(probe).is(FluidTags.WATER) || !c.level().getBlockState(probe.above()).isAir() || UNREACHABLE_WATER.contains(probe)) continue;
+				// Nearest to the village centre, not to the walker: otherwise the fishing spot creeps away from home with every trip.
+				double d = probe.distSqr(bell);
+				if (d < bestDist) {
+					best = probe.immutable();
+					bestDist = d;
+				}
+			}
+		}
+		if (best != null) {
+			// Water behind cliffs or on an island would lock the fisherman on a target he can never reach: check the walk once.
+			var route = de.villagerplus.build.Builder.workPath(c, best.above());
+			if (route == null || !route.canReach()) {
+				if (UNREACHABLE_WATER.size() > 256) UNREACHABLE_WATER.clear();
+				UNREACHABLE_WATER.add(best);
+				return null;
+			}
+		}
+		return best;
+	}
+
+	/** Wide-water spots no walker could reach this session; skipped when searching again. */
+	private static final java.util.Set<BlockPos> UNREACHABLE_WATER = new java.util.HashSet<>();
 }

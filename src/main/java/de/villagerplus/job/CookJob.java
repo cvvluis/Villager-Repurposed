@@ -1,16 +1,16 @@
 package de.villagerplus.job;
 
 import de.villagerplus.Config;
-import java.util.ArrayList;
+import de.villagerplus.build.Blueprints;
+import de.villagerplus.village.Specials;
 import java.util.List;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.BarrelBlock;
-import net.minecraft.world.level.block.ChestBlock;
-import net.minecraft.world.level.block.entity.HopperBlockEntity;
 
 /** Cook/Chef: uses food ingredients already stored in the village pantry to make meals. */
 public final class CookJob implements Job {
@@ -46,34 +46,34 @@ public final class CookJob implements Job {
 
 	private static boolean cookFromGranary(Ctx c) {
 		if (c.village() == null) return false;
-		if (Workstation.ensure(c, net.minecraft.world.level.block.Blocks.FURNACE)) return true;
-		var pot = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getOptional(
-			net.minecraft.resources.Identifier.parse("farmersdelight:cooking_pot")).orElse(null);
-		if (pot != null && Workstation.ensure(c, pot)) return true;
-		var board = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getOptional(
-			net.minecraft.resources.Identifier.parse("farmersdelight:cutting_board")).orElse(null);
-		if (board != null && Workstation.ensure(c, board)) return true;
-		if (SmithSmelting.cook(c)) return true;
-		BlockPos origin = de.villagerplus.village.Specials.get(c.village(), "granary");
+		BlockPos origin = Specials.get(c.village(), Blueprints.GRANARY);
 		if (origin == null || !c.level().hasChunkAt(origin)) return false;
 		ServerLevel level = c.level();
-		List<BlockPos> seen = new ArrayList<>();
-		for (BlockPos p : BlockPos.betweenClosed(origin.offset(-9, -2, -9), origin.offset(9, 8, 9))) {
-			var state = level.getBlockState(p);
-			boolean chest = state.getBlock() instanceof ChestBlock
-				&& state.getValue(ChestBlock.TYPE) != net.minecraft.world.level.block.state.properties.ChestType.RIGHT;
-			if (!chest && !(state.getBlock() instanceof BarrelBlock)) continue;
-			BlockPos pos = p.immutable();
-			if (seen.contains(pos)) continue;
-			seen.add(pos);
-			Container box = HopperBlockEntity.getContainerAt(level, pos);
-			if (box == null) continue;
-			if (RecipeCrafting.craft(c, box, pos, CookJob::preparedMeal, 24)) return true;
+		BlockPos kitchen = Specials.get(c.village(), Blueprints.KITCHEN);
+		BlockPos stationAnchor = kitchen == null ? origin : kitchen;
+		List<Container> pantries = Specials.containers(level, c.village(), Blueprints.GRANARY);
+		if (pantries.isEmpty()) return DelightKitchenCrafting.cookInOven(c) || SmithSmelting.cook(c);
+		BlockPos cookingPot = null;
+		BlockPos cuttingBoard = null;
+		boolean farmersDelight = net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("farmersdelight");
+		if (farmersDelight) {
+			Identifier potId = Identifier.parse(Blueprints.FARMERS_DELIGHT_COOKING_POT);
+			var pot = BuiltInRegistries.BLOCK.getOptional(potId).orElse(null);
+			if (pot != null && Workstation.ensure(c, pot, stationAnchor)) return true;
+			Identifier boardId = Identifier.parse(Blueprints.FARMERS_DELIGHT_CUTTING_BOARD);
+			var board = BuiltInRegistries.BLOCK.getOptional(boardId).orElse(null);
+			if (board != null && Workstation.ensure(c, board, stationAnchor)) return true;
+			cookingPot = DelightKitchenCrafting.findStation(level, stationAnchor, potId);
+			cuttingBoard = DelightKitchenCrafting.findStation(level, stationAnchor, boardId);
 		}
-		return false;
-	}
-
-	private static boolean preparedMeal(ItemStack stack) {
-		return Meals.isPreparedFood(stack);
+		if (Workstation.ensure(c, net.minecraft.world.level.block.Blocks.FURNACE, stationAnchor)) return true;
+		for (Container box : pantries) {
+			// Cooking-pot recipes produce prepared dishes even when an addon's item name
+			// does not match the vanilla meal-name heuristic (for example, "bolognese").
+			if (farmersDelight && DelightKitchenCrafting.cookFromPot(c, box, cookingPot, Meals::isFood, 24)) return true;
+			if (farmersDelight && DelightKitchenCrafting.prepareOnBoard(c, box, cuttingBoard, 64)) return true;
+			if (RecipeCrafting.craft(c, box, origin, stack -> Meals.isPreparedFood(level, stack), 24)) return true;
+		}
+		return DelightKitchenCrafting.cookInOven(c) || SmithSmelting.cook(c);
 	}
 }

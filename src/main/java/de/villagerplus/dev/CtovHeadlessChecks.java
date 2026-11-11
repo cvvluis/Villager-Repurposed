@@ -36,7 +36,8 @@ public final class CtovHeadlessChecks {
 		}
 		for (int i = 0; i < 40; i++) level.tick(() -> false);
 		BellBlockEntity bell = findVillageBell(level, located, 8);
-		if (bell == null) throw new IllegalStateException("CTOV headless: no bell near structure at " + located.toShortString());
+		if (bell == null) throw new IllegalStateException("CTOV headless: no bell with eligible residents near village structure at "
+			+ located.toShortString() + "; inspect nearby chunks/meeting points before calling this a builder failure");
 		BlockPos bellPos = bell.getBlockPos();
 		Villages.noteChunk(level.getChunkAt(bellPos));
 		if (bell.getAttached(VillagerPlus.NETWORK) == null) bell.setAttached(VillagerPlus.NETWORK, TradeNetwork.create(bellPos));
@@ -129,7 +130,7 @@ public final class CtovHeadlessChecks {
 		var lookup = level.registryAccess().lookupOrThrow(Registries.STRUCTURE);
 		java.util.List<net.minecraft.core.Holder<net.minecraft.world.level.levelgen.structure.Structure>> ctov = new java.util.ArrayList<>();
 		lookup.listElements().forEach(holder -> {
-			if (holder.key().identifier().getNamespace().equals("ctov")) ctov.add(holder);
+			if (holder.key().identifier().getNamespace().equals("ctov") && holder.is(StructureTags.VILLAGE)) ctov.add(holder);
 		});
 		if (ctov.isEmpty()) return null;
 		var found = level.getChunkSource().getGenerator().findNearestMapStructure(level,
@@ -139,20 +140,33 @@ public final class CtovHeadlessChecks {
 
 	private static BellBlockEntity findVillageBell(ServerLevel level, BlockPos center, int radiusChunks) {
 		BellBlockEntity best = null;
-		int bestVillagers = -1;
+		int bestVillagers = 0;
+		int bellsSeen = 0;
+		java.util.List<String> nearest = new java.util.ArrayList<>();
 		int cx = center.getX() >> 4;
 		int cz = center.getZ() >> 4;
-		for (int dx = -radiusChunks; dx <= radiusChunks; dx++) for (int dz = -radiusChunks; dz <= radiusChunks; dz++) {
+		for (int dx = -16; dx <= 16; dx++) for (int dz = -16; dz <= 16; dz++) {
 			var chunk = level.getChunk(cx + dx, cz + dz);
 			for (var blockEntity : chunk.getBlockEntities().values()) {
 				if (!(blockEntity instanceof BellBlockEntity bell)) continue;
-				int count = level.getEntitiesOfClass(Villager.class, new AABB(bell.getBlockPos()).inflate(32), Villager::isAlive).size();
+				bellsSeen++;
+				// Nearby residents may belong to another CTOV bell. Observe the same
+				// settlement identity the real job loop uses instead of borrowing them.
+				int count = level.getEntitiesOfClass(Villager.class, new AABB(bell.getBlockPos()).inflate(48), v -> {
+					if (!v.isAlive()) return false;
+					var meeting = v.getBrain().getMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.MEETING_POINT);
+					return meeting.isEmpty() || (meeting.get().dimension() == level.dimension()
+						&& meeting.get().pos().equals(bell.getBlockPos()));
+				}).size();
+				if (nearest.size() < 6) nearest.add(bell.getBlockPos().toShortString() + " residents=" + count);
 				if (count > bestVillagers) {
 					bestVillagers = count;
 					best = bell;
 				}
 			}
 		}
+		System.out.println("CTOV HEADLESS bell census center=" + center.toShortString() + " chunks=" + radiusChunks
+			+ " bells=" + bellsSeen + " candidates=" + nearest);
 		return best;
 	}
 

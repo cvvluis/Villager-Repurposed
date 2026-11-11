@@ -2,6 +2,7 @@ package de.villagerplus.village;
 
 import de.villagerplus.VillagerPlus;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -47,6 +48,7 @@ public final class CaravanRoadChecks {
 		Object oldSourceVillage = attached(sourceEntityBefore, VillagerPlus.VILLAGE);
 		int checks = 0;
 		WanderingTrader dummy = null;
+		net.minecraft.world.entity.animal.equine.Donkey departureDonkey = null;
 		try {
 			prepareGround(level, source, east, south);
 			VillageRef a = placeVillage(level, source);
@@ -75,10 +77,56 @@ public final class CaravanRoadChecks {
 			int eastLength = RoadRoute.length(roadState, eastKey, source, east);
 			int inboundIndex = Math.max(8, eastLength / 2);
 			BlockPos inboundCurrent = surfaceFeet(level, RoadRoute.point(roadState, eastKey, source, east, inboundIndex));
+			unpave(level, roadState, source, east, eastKey);
+			check(invokeWaypoint(level, a, inboundCurrent, source, state) == null && roadCursor(state) == -1,
+				"a caravan already en route falls back while its saved road is unfinished"); checks++;
+			pave(level, roadState, source, east, eastKey);
 			BlockPos inbound = invokeWaypoint(level, a, inboundCurrent, source, state);
 			int inboundCursor = indexOf(roadState, eastKey, source, east, inbound);
 			check(inboundCursor >= 0 && inboundCursor < inboundIndex
 				&& inbound.distSqr(source) < inboundCurrent.distSqr(source), "incoming caravan advances along the canonical road toward its village"); checks++;
+			BlockPos heldInbound = invokeWaypoint(level, a, inboundCurrent, source, state);
+			check(inbound.equals(heldInbound) && roadCursor(state) == inboundCursor,
+				"the caravan holds its saved waypoint until it physically reaches it"); checks++;
+
+			// Vanilla wandering traders do not have the custom entity attachment, so their
+			// recovery tags must carry the same pending waypoint over a save/re-adoption.
+			dummy.setPos(inboundCurrent.getX() + 0.5, inboundCurrent.getY(), inboundCurrent.getZ() + 0.5);
+			if (!level.addFreshEntity(dummy)) throw new IllegalStateException("Could not add caravan recovery fixture trader");
+			dummy.addTag("vp_caravan");
+			dummy.addTag("vp_caravan_bell:" + source.asLong());
+			invokePersist(level, state);
+			Object recoveredState = invokeAdopt(level, dummy);
+			check(recoveredState != null && eastKey.equals(roadKey(recoveredState))
+				&& roadCursor(recoveredState) == inboundCursor,
+				"vanilla trader recovery preserves the active canonical road and pending cursor"); checks++;
+			check(inbound.equals(invokeWaypoint(level, a, inboundCurrent, source, recoveredState)),
+				"recovered caravan resumes the same physical road waypoint"); checks++;
+			removeActive(dummy);
+
+			// Paved endpoints must not make an unfinished middle section look like a usable road.
+			int gapIndex = Math.max(1, inboundIndex / 2);
+			BlockPos gap = RoadRoute.point(roadState, eastKey, source, east, gapIndex);
+			int savedCursor = roadCursor(state);
+			level.setBlock(gap.below(), Blocks.STONE.defaultBlockState(), 3);
+			BlockPos gapFallback = invokeWaypoint(level, a, inboundCurrent, source, state);
+			check(gapFallback == null && roadCursor(state) == savedCursor && eastKey.equals(roadKey(state)),
+				"a newly blocked saved-road segment falls back without losing caravan progress"); checks++;
+			pave(level, roadState, source, east, eastKey);
+			BlockPos resumedInbound = invokeWaypoint(level, a, inboundCurrent, source, state);
+			check(inbound.equals(resumedInbound) && roadCursor(state) == savedCursor,
+				"repairing the road resumes the same en-route waypoint"); checks++;
+			BlockPos obstructedFeet = surfaceFeet(level, RoadRoute.point(roadState, eastKey, source, east, savedCursor));
+			level.setBlock(obstructedFeet, Blocks.STONE.defaultBlockState(), 3);
+			check(invokeWaypoint(level, a, inboundCurrent, source, state) == null && roadCursor(state) == savedCursor,
+				"a block above the paved surface makes the road physically unusable without discarding progress"); checks++;
+			level.setBlock(obstructedFeet, Blocks.AIR.defaultBlockState(), 3);
+			check(inbound.equals(invokeWaypoint(level, a, inboundCurrent, source, state)),
+				"clearing the obstruction makes the saved waypoint usable again"); checks++;
+			BlockPos nextInbound = invokeWaypoint(level, a, surfaceFeet(level,
+				RoadRoute.point(roadState, eastKey, source, east, savedCursor)), source, state);
+			check(nextInbound != null && roadCursor(state) < savedCursor,
+				"reaching a waypoint advances the inbound cursor once, toward the destination"); checks++;
 
 			Object returningState = caravanState(dummy, level, a, source);
 			int returningIndex = Math.min(6, eastLength - 8);
@@ -94,6 +142,50 @@ public final class CaravanRoadChecks {
 			check(missingFallback == null, "unpaved route falls back to the vanilla destination"); checks++;
 			pave(level, roadState, source, east, eastKey);
 
+			// Departure must issue a real donkey navigation path; reaching cleanup keeps freight but releases ownership.
+			BlockPos donkeyStart = source.east(3);
+			if (!level.hasChunkAt(donkeyStart)) throw new IllegalStateException("Caravan road check donkey fixture chunk must be loaded: " + donkeyStart);
+			departureDonkey = EntityTypes.DONKEY.spawn(level, donkeyStart, EntitySpawnReason.COMMAND);
+			if (departureDonkey == null) throw new IllegalStateException("Could not spawn caravan departure donkey fixture");
+			// A command-spawned fixture has not received its first physics tick; vanilla ground navigation requires support state.
+			departureDonkey.setOnGround(true);
+			Caravan.State departureState = new Caravan.State(dummy, level, a, departureDonkey.blockPosition(), 0);
+			departureState.llamas.add(departureDonkey.getUUID());
+			departureDonkey.addTag("vp_caravan");
+			departureDonkey.addTag("vp_caravan_bell:" + source.asLong());
+			departureDonkey.setPersistenceRequired();
+			departureDonkey.setTamed(true);
+			departureDonkey.setLeashedTo(dummy, true);
+			var departureChest = departureDonkey.getSlot(499);
+			if (departureChest == null) throw new IllegalStateException("Departure donkey has no chest SlotAccess 499");
+			if (!departureChest.set(new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.CHEST)))
+				throw new IllegalStateException("Departure donkey rejected chest SlotAccess 499; tamed=" + departureDonkey.isTamed());
+			if (!departureDonkey.hasChest()) throw new IllegalStateException("Departure donkey accepted slot 499 but hasChest() is false");
+			// Donkey cargo slots are created when its chest is equipped; query them afterward.
+			var departureCargo = departureDonkey.getSlot(502);
+			if (departureCargo == null) throw new IllegalStateException("Departure donkey has no cargo SlotAccess 502 after equipping its chest");
+			if (!departureCargo.set(new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.BRICK, 3)))
+				throw new IllegalStateException("Departure donkey rejected cargo SlotAccess 502 after equipping its chest");
+			BlockPos approach = Caravan.safePackDonkeyApproach(level, departureDonkey, dummy);
+			check(approach != null && !Caravan.packAnimalsCanKeepUp(level, departureState, dummy),
+				"a distant loaded pack donkey requires an approach path before departure can continue"); checks++;
+			var positionBeforeGuide = departureDonkey.position();
+			var departurePath = departureDonkey.getNavigation().createPath(approach, 1);
+			check(departurePath != null && departurePath.canReach(),
+				"settled freight donkey has a reachable path to its safe caravan approach [goal=" + approach + "]"); checks++;
+			Caravan.guideDepartingDonkeys(level, departureState, dummy, level.getGameTime());
+			check(departureDonkey.getLeashHolder() == dummy && departureDonkey.getNavigation().isInProgress()
+				&& departureDonkey.position().equals(positionBeforeGuide),
+				"departure guides the real donkey with vanilla navigation and does not teleport it"); checks++;
+			check(Caravan.packAnimalsAtSpawn(level, departureState), "departure waits until the loaded donkey is physically at its destination"); checks++;
+			check(invokeCleanup(level, departureState), "completed departure cleans up after cargo is secured"); checks++;
+			check(departureDonkey.isAlive() && departureDonkey.getLeashHolder() == null
+				&& !departureDonkey.entityTags().contains("vp_caravan")
+				&& !departureDonkey.entityTags().contains("vp_caravan_bell:" + source.asLong())
+				&& !departureState.llamas.contains(departureDonkey.getUUID())
+				&& departureDonkey.getSlot(502).get().getCount() == 3,
+				"destination cleanup releases the freight donkey while preserving its real cargo"); checks++;
+
 			// A stored route may cross unknown chunks. The test destination stays remote and must never be loaded.
 			TradeNetwork.Link remoteLink = new TradeNetwork.Link(dimension, remote, "Fern", 90, true, 0, 0);
 			Network.save(a.bellEntity(), TradeNetwork.create(source).withLinks(List.of(remoteLink, ac)));
@@ -108,7 +200,14 @@ public final class CaravanRoadChecks {
 			BlockPos unloadedFallback = invokeWaypoint(level, a, inboundCurrent, remote, caravanState(dummy, level, a, source));
 			check(unloadedFallback == null && !level.hasChunkAt(remote), "unloaded route section uses vanilla fallback without forced chunk loading"); checks++;
 		} finally {
+			if (dummy != null) removeActive(dummy);
 			if (dummy != null) dummy.discard();
+			if (departureDonkey != null) {
+				var cargo = departureDonkey.getSlot(502);
+				if (cargo != null) cargo.set(net.minecraft.world.item.ItemStack.EMPTY);
+				Caravan.syncCargoVisual(level, departureDonkey);
+				departureDonkey.discard();
+			}
 			restore(level, before);
 			BlockEntity restored = level.getBlockEntity(source);
 			if (restored != null) {
@@ -179,9 +278,10 @@ public final class CaravanRoadChecks {
 	}
 
 	private static void storeCanonical(Map<String, Long> roads, String key, BlockPos a, BlockPos b, List<BlockPos> points) throws Exception {
-		Method store = RoadRoute.class.getDeclaredMethod("store", Map.class, String.class, BlockPos.class, BlockPos.class, List.class, long.class);
+		Method store = RoadRoute.class.getDeclaredMethod("store", Map.class, String.class, BlockPos.class, BlockPos.class,
+			List.class, long.class, Map.class);
 		store.setAccessible(true);
-		store.invoke(null, roads, key, a, b, points, 3L);
+		store.invoke(null, roads, key, a, b, points, 3L, Map.of());
 	}
 
 	private static void unpave(ServerLevel level, Map<String, Long> roads, BlockPos a, BlockPos b, String key) {
@@ -213,6 +313,42 @@ public final class CaravanRoadChecks {
 		return (BlockPos) method.invoke(null, level, ref, current, destination, state);
 	}
 
+	private static void invokePersist(ServerLevel level, Object state) throws Exception {
+		Method method = Caravan.class.getDeclaredMethod("persistVisitState", ServerLevel.class, state.getClass());
+		method.setAccessible(true);
+		method.invoke(null, level, state);
+	}
+
+	private static boolean invokeCleanup(ServerLevel level, Caravan.State state) throws Exception {
+		Method method = Caravan.class.getDeclaredMethod("cleanup", ServerLevel.class, Caravan.State.class);
+		method.setAccessible(true);
+		return Boolean.TRUE.equals(method.invoke(null, level, state));
+	}
+
+	private static Object invokeAdopt(ServerLevel level, WanderingTrader trader) throws Exception {
+		Method method = Caravan.class.getDeclaredMethod("adoptTaggedCaravan", ServerLevel.class,
+			net.minecraft.world.entity.npc.villager.AbstractVillager.class);
+		method.setAccessible(true);
+		if (!Boolean.TRUE.equals(method.invoke(null, level, trader))) return null;
+		return activeState(trader);
+	}
+
+	private static Object activeState(WanderingTrader trader) throws Exception {
+		Field field = Caravan.class.getDeclaredField("ACTIVE");
+		field.setAccessible(true);
+		return ((Map<?, ?>) field.get(null)).get(trader.getUUID());
+	}
+
+	private static void removeActive(WanderingTrader trader) {
+		try {
+			Field field = Caravan.class.getDeclaredField("ACTIVE");
+			field.setAccessible(true);
+			((Map<?, ?>) field.get(null)).remove(trader.getUUID());
+		} catch (ReflectiveOperationException exception) {
+			throw new IllegalStateException("Could not clear adopted caravan fixture", exception);
+		}
+	}
+
 	private static int indexOf(Map<String, Long> state, String key, BlockPos a, BlockPos b, BlockPos waypoint) {
 		if (waypoint == null) return -1;
 		int length = RoadRoute.length(state, key, a, b);
@@ -221,6 +357,18 @@ public final class CaravanRoadChecks {
 			if (point.getX() == waypoint.getX() && point.getZ() == waypoint.getZ()) return i;
 		}
 		return -1;
+	}
+
+	private static String roadKey(Object state) throws Exception {
+		Field field = state.getClass().getDeclaredField("roadKey");
+		field.setAccessible(true);
+		return (String) field.get(state);
+	}
+
+	private static int roadCursor(Object state) throws Exception {
+		Field field = state.getClass().getDeclaredField("roadCursor");
+		field.setAccessible(true);
+		return field.getInt(state);
 	}
 
 	private static void restore(ServerLevel level, Map<BlockPos, Cell> before) {

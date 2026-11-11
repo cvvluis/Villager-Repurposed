@@ -35,17 +35,17 @@ public final class Housing {
 	public static void update(ServerLevel level, Villager v, VillagerMemory mem) {
 		ensureName(v, mem);
 		trackHome(level, v, mem);
-		if (mem.homeBed.isEmpty()) {
-			return;
-		}
-		if (mem.homeDoor.isEmpty() || !(level.getBlockState(mem.homeDoor.get()).getBlock() instanceof DoorBlock)) {
+		if (mem.homeBed.isPresent() && (mem.homeDoor.isEmpty()
+			|| !(level.getBlockState(mem.homeDoor.get()).getBlock() instanceof DoorBlock))) {
 			mem.homeDoor = findDoor(level, mem.homeBed.get());
 			mem.signPos = Optional.empty();
 		}
-		if (mem.homeDoor.isEmpty()) {
+		// Record demand even before Vanilla assigns a bed. The persisted request lets the
+		// normal Housing tick retry as soon as this resident gets a valid home.
+		PrivateChestProvisioning.ensure(level, v, mem, Villages.find(level, v));
+		if (mem.homeBed.isEmpty() || mem.homeDoor.isEmpty()) {
 			return;
 		}
-		ensureChest(level, v, mem);
 		// Das Schild aendert sich selten: ohne Schild sofort, sonst nur etwa alle 1200 Ticks pruefen (die Mitbewohner-Abfrage ist teuer).
 		if (mem.signPos.isEmpty() || (level.getGameTime() / de.villagerplus.Config.HOUSING_INTERVAL + v.getId()) % 6 == 0) {
 			updateSign(level, v, mem);
@@ -76,6 +76,9 @@ public final class Housing {
 			if (mem.homeBed.isEmpty() || !mem.homeBed.get().equals(bed)) {
 				mem.homeBed = Optional.of(bed);
 				mem.homeDoor = Optional.empty();
+				// Keep the prior chest pointer until PrivateChestProvisioning checks its owner and
+				// either accepts it, migrates it safely, or clears the stale pointer. Clearing it
+				// here loses the only durable route to an old chest beyond the new home's scan.
 				mem.signPos = Optional.empty();
 				mem.signText = "";
 			}
@@ -224,73 +227,6 @@ public final class Housing {
 		return Blocks.OAK_WALL_SIGN;
 	}
 
-	/** Privateigentum: eine eigene Kiste im Haus, nahe am Bett, nicht vor der Tuer und nicht neben anderen Kisten. */
-	private static void ensureChest(ServerLevel level, Villager v, VillagerMemory mem) {
-		if (!de.villagerplus.Config.PRIVATE_CHESTS || mem.homeBed.isEmpty()) {
-			return;
-		}
-		if (mem.homeChest.isPresent() && level.getBlockState(mem.homeChest.get()).getBlock() instanceof ChestBlock) {
-			return;
-		}
-		mem.homeChest = Optional.empty();
-		BlockPos bed = mem.homeBed.get();
-		BlockPos door = mem.homeDoor.orElse(null);
-		BlockPos best = null;
-		double bestScore = Double.MAX_VALUE;
-		for (BlockPos p : BlockPos.betweenClosed(bed.offset(-3, 0, -3), bed.offset(3, 0, 3))) {
-			if (!level.getBlockState(p).isAir() || !level.getBlockState(p.above()).isAir() || level.canSeeSky(p)) {
-				continue;
-			}
-			BlockPos below = p.below();
-			if (!level.getBlockState(below).isFaceSturdy(level, below, Direction.UP)) {
-				continue;
-			}
-			if (door != null && p.distSqr(door) < 3) {
-				continue;
-			}
-			boolean nextToChest = false;
-			int walls = 0;
-			for (Direction d : Direction.Plane.HORIZONTAL) {
-				BlockPos n = p.relative(d);
-				BlockState ns = level.getBlockState(n);
-				nextToChest |= ns.getBlock() instanceof ChestBlock;
-				if (ns.isFaceSturdy(level, n, d.getOpposite())) {
-					walls++;
-				}
-			}
-			if (nextToChest) {
-				continue;
-			}
-			double score = p.distSqr(bed) - walls * 3.0;
-			if (score < bestScore) {
-				best = p.immutable();
-				bestScore = score;
-			}
-		}
-		if (best == null) {
-			adoptSharedChest(level, v, mem, bed);
-			return;
-		}
-		Direction face = best.equals(bed) ? Direction.NORTH : Sites.facingTowards(best, bed);
-		level.setBlock(best, Blocks.CHEST.defaultBlockState().setValue(ChestBlock.FACING, face), 3);
-		BlockEntity be = level.getBlockEntity(best);
-		if (be != null) {
-			be.setAttached(VillagerPlus.OWNER, v.getUUID());
-		}
-		mem.homeChest = Optional.of(best);
-	}
-	/** Kein Platz fuer eine eigene Kiste: die Kiste eines Mitbewohners im selben Haus mitbenutzen (Familienkiste). */
-	private static void adoptSharedChest(ServerLevel level, Villager v, VillagerMemory mem, BlockPos bed) {
-		for (BlockPos p : BlockPos.betweenClosed(bed.offset(-4, -1, -4), bed.offset(4, 2, 4))) {
-			if (level.getBlockState(p).getBlock() instanceof ChestBlock) {
-				BlockEntity be = level.getBlockEntity(p);
-				if (be != null && be.getAttached(VillagerPlus.OWNER) != null) {
-					mem.homeChest = Optional.of(p.immutable());
-					return;
-				}
-			}
-		}
-	}
 	/** Zufaelliger Name, der unter den Dorfbewohnern in der Naehe noch nicht vergeben ist (nach 12 Versuchen mit Nummer). */
 	private static String uniqueName(Villager v) {
 		java.util.Set<String> used = new java.util.HashSet<>();

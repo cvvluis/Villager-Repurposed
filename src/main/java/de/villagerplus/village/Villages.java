@@ -1,7 +1,11 @@
 package de.villagerplus.village;
 
 import de.villagerplus.VillagerPlus;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
@@ -9,11 +13,13 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BellBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.ChestType;
 import de.villagerplus.job.JobUtil;
@@ -24,6 +30,15 @@ import de.villagerplus.job.JobUtil;
  */
 public final class Villages {
 	private static final Map<Long, Long> NEXT_CENTER_ATTEMPT = new HashMap<>();
+	private static final Map<ServerLevel, VillagerIndexSnapshot> RESIDENT_INDEX = new IdentityHashMap<>();
+
+	record VillagerIndexSnapshot(long gameTime, List<Villager> villagers) { }
+
+	static {
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register(Villages::invalidateResidentIndex);
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_UNLOAD.register(Villages::invalidateResidentIndex);
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(server -> RESIDENT_INDEX.clear());
+	}
 
 	private Villages() {
 	}
@@ -53,6 +68,8 @@ public final class Villages {
 		noteChunk(level.getChunkAt(ref.bell()));
 		villager.addTag("vp_resident_bell:" + ref.bell().asLong());
 		CACHE.put(villager.getUUID(), new CachedVillage(ref, level.getGameTime() + 400L));
+		// bindResident can change membership after a same-tick resident snapshot was built (notably in live fixtures).
+		RESIDENT_INDEX.remove(level);
 	}
 
 	public static VillageRef find(ServerLevel level, Villager v) {
@@ -91,12 +108,20 @@ public final class Villages {
 		// Rueckfall: noch kein Treffpunkt (neuer Villager) -> naechste bekannte Glocke in der Naehe verwenden.
 		BlockPos best = null;
 		double bestDist = de.villagerplus.Config.VILLAGE_RADIUS * (double)de.villagerplus.Config.VILLAGE_RADIUS;
-		for (long l : bells(level.dimension())) {
+		java.util.Iterator<Long> known = bells(level.dimension()).iterator();
+		while (known.hasNext()) {
+			long l = known.next();
 			BlockPos p = BlockPos.of(l);
 			double d = p.distSqr(v.blockPosition());
 			if (d < bestDist && level.hasChunkAt(p)) {
-				best = p;
-				bestDist = d;
+				BlockEntity candidate = level.getBlockEntity(p);
+				if (candidate instanceof net.minecraft.world.level.block.entity.BellBlockEntity) {
+					best = p;
+					bestDist = d;
+				} else {
+					// A restored/removed bell must not hide a farther valid village from unassigned residents.
+					known.remove();
+				}
 			}
 		}
 		if (best == null) {
@@ -109,8 +134,8 @@ public final class Villages {
 	/** Residents assigned to this bell by village memory, excluding overlapping neighboring settlements. */
 	public static java.util.List<Villager> residents(ServerLevel level, VillageRef ref, int range, java.util.function.Predicate<Villager> filter) {
 		java.util.List<Villager> out = new java.util.ArrayList<>();
-		for (net.minecraft.world.entity.Entity entity : level.getAllEntities()) {
-			if (!(entity instanceof Villager v) || !v.isAlive() || !filter.test(v)) continue;
+		for (Villager v : residentIndex(level).villagers()) {
+			if (!v.isAlive() || !filter.test(v)) continue;
 			Optional<GlobalPos> meeting = v.getBrain().getMemory(MemoryModuleType.MEETING_POINT);
 			if (meeting.isPresent() && meeting.get().dimension() == level.dimension()) {
 				if (meeting.get().pos().equals(ref.bell())) out.add(v);
@@ -121,6 +146,25 @@ public final class Villages {
 			if (assigned != null && assigned.bell().equals(ref.bell())) out.add(v);
 		}
 		return out;
+	}
+
+	/** Per-tick entity-kind index; membership is reevaluated by {@link #residents} on every lookup. */
+	static VillagerIndexSnapshot residentIndex(ServerLevel level) {
+		long now = level.getGameTime();
+		VillagerIndexSnapshot cached = RESIDENT_INDEX.get(level);
+		if (cached != null && cached.gameTime() == now) return cached;
+
+		List<Villager> villagers = new ArrayList<>();
+		for (Entity entity : level.getAllEntities()) {
+			if (entity instanceof Villager villager) villagers.add(villager);
+		}
+		VillagerIndexSnapshot snapshot = new VillagerIndexSnapshot(now, List.copyOf(villagers));
+		RESIDENT_INDEX.put(level, snapshot);
+		return snapshot;
+	}
+
+	private static void invalidateResidentIndex(Entity entity, ServerLevel level) {
+		if (entity instanceof Villager) RESIDENT_INDEX.remove(level);
 	}
 
 	private static final java.util.Map<Long, Long> SWEPT = new java.util.HashMap<>();
@@ -159,14 +203,77 @@ public final class Villages {
 		}
 	}
 
+	/**
+	 * Loaded, still-valid bells previously observed by the normal chunk index, ordered by horizontal distance.
+	 * This is a read view over the existing index; it does not load chunks or create village identities.
+	 */
+	public static List<BlockPos> knownBellsNear(ServerLevel level, BlockPos center, int range) {
+		if (level == null || center == null || range < 0) return List.of();
+		long rangeSquared = (long)range * range;
+		java.util.Set<Long> activeVillageMeetingPoints = new java.util.HashSet<>();
+		for (Villager villager : residentIndex(level).villagers()) {
+			if (!villager.isAlive() || Guests.isGuest(villager)) continue;
+			Optional<GlobalPos> meeting = villager.getBrain().getMemory(MemoryModuleType.MEETING_POINT);
+			if (meeting.isPresent() && meeting.get().dimension().equals(level.dimension())) {
+				BlockPos meetingPos = meeting.get().pos();
+				if (level.hasChunkAt(meetingPos) && level.getBlockEntity(meetingPos) instanceof BellBlockEntity) {
+					activeVillageMeetingPoints.add(meetingPos.asLong());
+				}
+				continue;
+			}
+			// Match residents()' existing fallback for newly loaded villagers without a
+			// same-dimension meeting point: their nearest loaded village bell still counts.
+			long residentRange = (long)range + de.villagerplus.Config.VILLAGE_RADIUS;
+			if (horizontalDistanceSquared(villager.blockPosition(), center) > residentRange * residentRange) continue;
+			VillageRef assigned = find(level, villager);
+			if (assigned != null && level.hasChunkAt(assigned.bell())
+				&& level.getBlockEntity(assigned.bell()) instanceof BellBlockEntity) {
+				activeVillageMeetingPoints.add(assigned.bell().asLong());
+			}
+		}
+		List<BlockPos> nearby = new ArrayList<>();
+		java.util.Iterator<Long> known = bells(level.dimension()).iterator();
+		while (known.hasNext()) {
+			long packed = known.next();
+			BlockPos position = BlockPos.of(packed);
+			if (horizontalDistanceSquared(position, center) > rangeSquared || position.equals(center) || !level.hasChunkAt(position)) continue;
+			if (level.getBlockEntity(position) instanceof BellBlockEntity) {
+				if (activeVillageMeetingPoints.contains(packed)) nearby.add(position.immutable());
+			} else {
+				// A loaded chunk proves this remembered bell is stale; unloaded entries remain harmless and lazy.
+				known.remove();
+			}
+		}
+		nearby.sort(Comparator.comparingLong((BlockPos position) -> horizontalDistanceSquared(position, center))
+			.thenComparingLong(BlockPos::asLong));
+		return List.copyOf(nearby);
+	}
+
+	private static long horizontalDistanceSquared(BlockPos a, BlockPos b) {
+		long dx = (long)a.getX() - b.getX(), dz = (long)a.getZ() - b.getZ();
+		return dx * dx + dz * dz;
+	}
+
 	/** Zu Beginn der Arbeitszeit laeutet die Dorfglocke einmal pro Tag den Arbeitsbeginn ein. */
 	private static void morningBell(ServerLevel level, VillageRef ref) {
 		long tod = Math.floorMod(level.getOverworldClockTime(), 24000L);
 		long day = Math.floorDiv(level.getOverworldClockTime(), 24000L);
-		if (tod >= de.villagerplus.Config.MORNING_END && tod < de.villagerplus.Config.MORNING_END + 600 && claimMorningBell(ref, day)) {
-			level.playSound(null, ref.bell(), net.minecraft.sounds.SoundEvents.BELL_BLOCK, net.minecraft.sounds.SoundSource.BLOCKS, 2.0F, 1.0F);
-			ref.dirty();
+		if (tod >= de.villagerplus.Config.MORNING_END && tod < de.villagerplus.Config.MORNING_END + 600) {
+			ringMorningBell(level, ref, day);
 		}
+	}
+
+	/** Rings and animates the actual village bell once per day; stale village references stay silent. */
+	public static boolean ringMorningBell(ServerLevel level, VillageRef ref, long day) {
+		if (!level.getBlockState(ref.bell()).is(Blocks.BELL)
+			|| !(ref.bellEntity() instanceof BellBlockEntity bell)
+			|| level.getBlockEntity(ref.bell()) != bell) return false;
+		if (!claimMorningBell(ref, day)) return false;
+		bell.onHit(Direction.UP);
+		level.playSound(null, ref.bell(), net.minecraft.sounds.SoundEvents.BELL_BLOCK,
+			net.minecraft.sounds.SoundSource.BLOCKS, 2.0F, 1.0F);
+		ref.dirty();
+		return true;
 	}
 
 	/** Claim the daily cue before playing it, so repeated villager ticks and server restarts cannot duplicate it. */
@@ -203,7 +310,7 @@ public final class Villages {
 		if (now >= SWEPT.getOrDefault(ref.bell().asLong(), 0L)) {
 			SWEPT.put(ref.bell().asLong(), now + 24000L);
 			int n = de.villagerplus.job.Mining.sweepLegacyMarkers(level, ref.bell());
-			de.villagerplus.job.Mining.tidyOldMines(level, ref.data());
+			de.villagerplus.job.Mining.tidyOldMines(level, ref);
 			{
 				org.slf4j.LoggerFactory.getLogger("villagerplus").info("Villagers: Repurposed: {} alte Schilder (Mine/Tafel) aufgeraeumt bei {}", n, ref.bell().toShortString());
 			}
@@ -275,6 +382,7 @@ public final class Villages {
 
 	private static BlockPos findExistingDoubleChest(ServerLevel level, BlockPos bell) {
 		for (BlockPos p : BlockPos.betweenClosed(bell.offset(-12, -4, -12), bell.offset(12, 6, 12))) {
+			if (!level.hasChunkAt(p)) continue;
 			BlockState s = level.getBlockState(p);
 			if (s.getBlock() instanceof ChestBlock && s.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
 				// Kisten mit Beute-Tabelle (Dorf-Loot, z.B. Overhauled Villages) gehoeren nicht den Villagern.
@@ -282,6 +390,9 @@ public final class Villages {
 				if (be instanceof net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity r && r.getLootTable() != null) {
 					continue;
 				}
+				// Eine private Doppelkiste darf auch dann nicht als Dorfmitte registriert werden,
+				// wenn sie im Suchradius neben einer Glocke steht.
+				if (Lager.publicContainerAt(level, p) == null) continue;
 				return p.immutable();
 			}
 		}
@@ -289,19 +400,19 @@ public final class Villages {
 	}
 
 	private static boolean placeCenter(ServerLevel level, VillageRef ref, Villager who) {
-		// CTOV-Weiler haben oft keinen freien 5x5-Platz direkt an der Glocke. Die alte
-		// 30-Punkt-Suche blieb dann dauerhaft ohne Dorfkiste; systematisch weiter draussen
-		// suchen, aber Sites.ok/Sites.findTolerant weiterhin jedes Gebaeude schuetzen lassen.
-		BlockPos c = Sites.find(level, ref.bell(), who.getRandom(), 3, 16, 2, 4, 160);
+		// CTOV can place the bell at an edge of the generated settlement. Anchor the
+		// shared chest (and therefore its board) to the measured village midpoint.
+		BlockPos villageCenter = Development.center(level, ref);
+		BlockPos c = Sites.find(level, villageCenter, who.getRandom(), 3, 16, 2, 4, 160);
 		if (c == null) {
 			// Huegeliges oder aufgelockert gebautes Dorf: leicht unebenes Gelaende ebnen.
 			// Groesserer Radius/mehr Stichproben hilft bei CTOV, ohne Chunks zu erzwingen.
-			BlockPos anchor = Sites.findTolerant(level, ref.bell(), who.getRandom(), 3, 32, -2, 2, -2, 2, 4, 320);
+			BlockPos anchor = Sites.findTolerant(level, villageCenter, who.getRandom(), 3, 32, -2, 2, -2, 2, 4, 320);
 			if (anchor == null) {
 				// In dicht bebauten CTOV-Ortskernen existiert manchmal kein freier 5x5-Platz.
 				// Eine kompakte, nicht invasive Starter-Dorfkiste laesst Bau und Wirtschaft starten;
 				// die eigenstaendige Suche nach einer vollwertigen Plaza laeuft weiter.
-				if (placeCompactCenter(level, ref)) {
+				if (placeCompactCenter(level, ref, villageCenter, who)) {
 					org.slf4j.LoggerFactory.getLogger("villagerplus").info(
 						"Villagers: Repurposed: kompakte Starter-Dorfkiste bei {} errichtet (Plaza folgt bei freier Flaeche)",
 						ref.data().chest.orElse(ref.bell()).toShortString());
@@ -369,23 +480,54 @@ public final class Villages {
 	}
 
 	/** Place only a chest pair on existing clear terrain; never clears generated or player blocks. */
-	private static boolean placeCompactCenter(ServerLevel level, VillageRef ref) {
+	static boolean placeCompactCenter(ServerLevel level, VillageRef ref, BlockPos villageCenter, Villager who) {
+		int searchedColumns = 0;
+		int unloadedColumns = 0;
+		int unsafePairs = 0;
+		int unevenPairs = 0;
+		int levelPairs = 0;
+		int heightRejectedPairs = 0;
+		int homeBlockedPairs = 0;
+		int minSurfaceY = Integer.MAX_VALUE;
+		int maxSurfaceY = Integer.MIN_VALUE;
 		for (int radius = 2; radius <= 12; radius++) {
 			for (int dx = -radius; dx <= radius; dx++) {
 				for (int dz = -radius; dz <= radius; dz++) {
 					if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) continue;
-					BlockPos column = ref.bell().offset(dx, 0, dz);
-					if (!level.hasChunkAt(column)) continue;
+					BlockPos column = villageCenter.offset(dx, 0, dz);
+					if (!level.hasChunkAt(column)) {
+						unloadedColumns++;
+						continue;
+					}
+					searchedColumns++;
 					int y = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
 						column.getX(), column.getZ());
+					minSurfaceY = Math.min(minSurfaceY, y);
+					maxSurfaceY = Math.max(maxSurfaceY, y);
 					BlockPos a = new BlockPos(column.getX(), y, column.getZ());
 					for (Direction face : Direction.Plane.HORIZONTAL) {
 						BlockPos b = a.relative(face.getClockWise());
-						if (!compactCellFree(level, a) || !compactCellFree(level, b)) continue;
+						if (!compactCellFree(level, a) || !compactCellFree(level, b)) {
+							unsafePairs++;
+							continue;
+						}
 						if (level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
-							b.getX(), b.getZ()) != y) continue;
+							b.getX(), b.getZ()) != y) {
+							unevenPairs++;
+							continue;
+						}
+						levelPairs++;
+						// Compact fallback must stay near the residents' actual elevation. The bell Y
+						// can be far below the village terrain, while heightmaps also include rooftops.
+						if (Math.abs(y - who.blockPosition().getY()) > 3) {
+							heightRejectedPairs++;
+							continue;
+						}
 						if (level.getPoiManager().getInRange(h -> h.is(net.minecraft.world.entity.ai.village.poi.PoiTypes.HOME), a, 5,
-							net.minecraft.world.entity.ai.village.poi.PoiManager.Occupancy.ANY).anyMatch(p -> p.getPos().distSqr(a) <= 16)) continue;
+							net.minecraft.world.entity.ai.village.poi.PoiManager.Occupancy.ANY).anyMatch(p -> p.getPos().distSqr(a) <= 16)) {
+							homeBlockedPairs++;
+							continue;
+						}
 						BlockState chest = Blocks.CHEST.defaultBlockState().setValue(ChestBlock.FACING, face);
 						level.setBlock(a, chest.setValue(ChestBlock.TYPE, ChestType.LEFT), 3);
 						level.setBlock(b, chest.setValue(ChestBlock.TYPE, ChestType.RIGHT), 3);
@@ -397,6 +539,11 @@ public final class Villages {
 				}
 			}
 		}
+		org.slf4j.LoggerFactory.getLogger("villagerplus").warn(
+			"Villagers: Repurposed: kompakte Dorfmitte ohne Platz; Mitte {}, Bewohner {}, Spalten geladen/ungeladen {}/{}, Oberflaeche Y {}..{}, sichere Paare {}, Hoehendifferenz abgelehnt {}, uneben {}, unsicher {}, HOME-Schutz {}",
+			villageCenter.toShortString(), who.blockPosition().toShortString(), searchedColumns, unloadedColumns,
+			minSurfaceY == Integer.MAX_VALUE ? "-" : minSurfaceY, maxSurfaceY == Integer.MIN_VALUE ? "-" : maxSurfaceY,
+			levelPairs, heightRejectedPairs, unevenPairs, unsafePairs, homeBlockedPairs);
 		return false;
 	}
 

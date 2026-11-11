@@ -17,8 +17,11 @@ public final class FarmingChecks {
 		check(FarmerJob.foodTarget(0) == 0 && FarmerJob.foodTarget(1) == 5 && FarmerJob.foodTarget(7) == 35
 			&& FarmerJob.belowFoodTarget(14, 3) && !FarmerJob.belowFoodTarget(15, 3),
 			"farm reserve threshold is five stocked food units per resident"); checks++;
-		check(FarmerJob.shouldExpand(1, 4) && !FarmerJob.shouldExpand(2, 4)
-			&& !FarmerJob.shouldExpand(1, 0), "farm demand can add a cluster only below the population farm cap"); checks++;
+		check(FarmerJob.shouldExpand(0, FarmerJob.belowFoodTarget(15, 3))
+			&& FarmerJob.shouldExpand(1, FarmerJob.belowFoodTarget(14, 3))
+			&& !FarmerJob.shouldExpand(1, FarmerJob.belowFoodTarget(15, 3))
+			&& !FarmerJob.shouldExpand(de.villagerplus.Config.MAX_FARMS, true),
+			"the first field can seed food production, later fields respond exactly below five food per resident, and the global farm cap holds"); checks++;
 
 		BlockPos site = ref.bell().offset(80, 0, 80);
 		level.getChunk(site);
@@ -33,7 +36,10 @@ public final class FarmingChecks {
 			level.setBlock(cell.above(), Blocks.AIR.defaultBlockState(), 3);
 		}
 		try {
-			check(FarmerJob.safeClusterSite(level, site), "empty dirt plot accepts irrigated crop and fence geometry"); checks++;
+			BlockPos naturalPlant = site.offset(-2, 0, -2);
+			level.setBlock(naturalPlant, Blocks.POPPY.defaultBlockState(), 3);
+			check(FarmerJob.safeClusterSite(level, site), "empty dirt plot with a naturally growing flower accepts irrigated crop and fence geometry"); checks++;
+			check(FarmerJob.safeStarterClusterSite(level, site), "the compact first field accepts its paid footprint when small natural plants need clearing"); checks++;
 			BlockPos obstacle = site.east(2);
 			level.setBlock(obstacle, Blocks.CHEST.defaultBlockState(), 3);
 			check(!FarmerJob.safeClusterSite(level, site), "farm layout preserves a pre-existing structure block"); checks++;

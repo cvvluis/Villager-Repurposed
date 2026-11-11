@@ -10,7 +10,9 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
 import net.minecraft.nbt.CompoundTag;
@@ -18,6 +20,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
+import net.minecraft.world.Container;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -26,7 +30,7 @@ import net.minecraft.world.level.block.state.BlockState;
 public final class BuildingRelocation {
 	private BuildingRelocation() { }
 	private static final int MOVE_FLAGS = 2 | 16 | 32; // clients, known shape, suppress drops; notify neighbours after the transaction
-	private record Snapshot(BlockPos pos, BlockState state, CompoundTag blockEntity) { }
+	private record Snapshot(BlockPos pos, BlockState state, CompoundTag blockEntity, UUID owner, List<ItemStack> inventory) { }
 	@FunctionalInterface interface Placement { boolean set(BlockPos pos, BlockState state); }
 
 	public static String move(ServerLevel level, VillageRef ref, BlockPos requested, BlockPos destination) {
@@ -55,11 +59,20 @@ public final class BuildingRelocation {
 		}
 		// Furnisher installs chests/workstations after Architect has finished. Include their enclosed floor columns,
 		// including air, so contents move and an obstruction in the destination room is rejected as well.
+		int buildingTop = roof.values().stream().mapToInt(Integer::intValue).max().orElse(built.origin().getY());
+		int structureMinX = roof.keySet().stream().mapToInt(key -> BlockPos.getX(key)).min().orElse(built.origin().getX());
+		int structureMaxX = roof.keySet().stream().mapToInt(key -> BlockPos.getX(key)).max().orElse(built.origin().getX());
+		int structureMinZ = roof.keySet().stream().mapToInt(key -> BlockPos.getZ(key)).min().orElse(built.origin().getZ());
+		int structureMaxZ = roof.keySet().stream().mapToInt(key -> BlockPos.getZ(key)).max().orElse(built.origin().getZ());
 		for (var entry : roof.entrySet()) {
 			BlockPos col = BlockPos.of(entry.getKey());
 			BlockPos floor = new BlockPos(col.getX(), built.origin().getY() - 1, col.getZ());
-			if (!footprint.contains(floor)) continue;
-			for (int y = built.origin().getY(); y <= entry.getValue(); y++) footprint.add(new BlockPos(col.getX(), y, col.getZ()));
+			boolean insideWallLine = col.getX() > structureMinX && col.getX() < structureMaxX
+				&& col.getZ() > structureMinZ && col.getZ() < structureMaxZ;
+			if (!footprint.contains(floor) || !insideWallLine) continue;
+			// Post-build furniture occupies interior air even in columns with no roof/stair step
+			// directly overhead. Cover every enclosed floor column to the shared building top.
+			for (int y = built.origin().getY(); y <= buildingTop; y++) footprint.add(new BlockPos(col.getX(), y, col.getZ()));
 		}
 		if (footprint.size() > 8192) return "Dieses Gebäude ist für eine sichere Versetzung zu groß.";
 		Map<BlockPos, BlockPos> moves = new LinkedHashMap<>();
@@ -87,13 +100,22 @@ public final class BuildingRelocation {
 					+ coordinates(to) + ", Oberfläche " + surface + ", Gebäudehöhe " + built.origin().getY() + ".";
 			}
 		}
+		VillageData.PlanBounds sourceBounds = boundsFor(footprint);
+		VillageData.PlanBounds destinationBounds = boundsFor(moves.values());
+		if (Demolition.overlapsConstructionReservation(ref, sourceBounds)
+			|| Demolition.overlapsConstructionReservation(ref, destinationBounds)) {
+			return "Quelle oder Ziel wird von einem laufenden Bauprojekt reserviert; nichts wurde verändert.";
+		}
 		Map<BlockPos, Snapshot> before = new LinkedHashMap<>();
 		List<Snapshot> source = new ArrayList<>();
 		for (var e : moves.entrySet()) {
-			BlockEntity be = level.getBlockEntity(e.getKey());
-			if (be != null && be.getAttached(VillagerPlus.OWNER) != null) return "Private Kisten dürfen nicht mit einem Dorfgebäude versetzt werden.";
 			Snapshot saved = snapshot(level, e.getKey()); source.add(saved); before.putIfAbsent(saved.pos(), saved);
 			before.computeIfAbsent(e.getValue(), p -> snapshot(level, p));
+		}
+		// Recheck immediately before the first world write, including non-primary and legacy reservations.
+		if (Demolition.overlapsConstructionReservation(ref, sourceBounds)
+			|| Demolition.overlapsConstructionReservation(ref, destinationBounds)) {
+			return "Quelle oder Ziel wird von einem laufenden Bauprojekt reserviert; nichts wurde verändert.";
 		}
 		try {
 			// One union snapshot and a dropless clear handle overlap and containers without cloning live inventories.
@@ -130,6 +152,11 @@ public final class BuildingRelocation {
 		for (Villager resident : Villages.residents(level, ref, 96, v -> true)) {
 			moveMemory(level, resident, MemoryModuleType.HOME, moves);
 			moveMemory(level, resident, MemoryModuleType.JOB_SITE, moves);
+			var memory = resident.getAttachedOrCreate(VillagerPlus.MEMORY);
+			memory.homeBed = movePosition(memory.homeBed, moves);
+			memory.homeDoor = movePosition(memory.homeDoor, moves);
+			memory.homeChest = movePosition(memory.homeChest, moves);
+			memory.signPos = movePosition(memory.signPos, moves);
 		}
 		ref.dirty();
 		notifyNeighbours(level, before.keySet());
@@ -139,6 +166,17 @@ public final class BuildingRelocation {
 	private static void moveMemory(ServerLevel level, Villager resident, MemoryModuleType<GlobalPos> type, Map<BlockPos, BlockPos> moves) {
 		resident.getBrain().getMemory(type).filter(p -> p.dimension() == level.dimension() && moves.containsKey(p.pos()))
 			.ifPresent(p -> resident.getBrain().setMemory(type, GlobalPos.of(level.dimension(), moves.get(p.pos()))));
+	}
+	private static VillageData.PlanBounds boundsFor(Iterable<BlockPos> positions) {
+		int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+		for (BlockPos pos : positions) {
+			minX = Math.min(minX, pos.getX()); maxX = Math.max(maxX, pos.getX());
+			minZ = Math.min(minZ, pos.getZ()); maxZ = Math.max(maxZ, pos.getZ());
+		}
+		return new VillageData.PlanBounds(minX - 3, maxX + 3, minZ - 3, maxZ + 3);
+	}
+	private static Optional<BlockPos> movePosition(Optional<BlockPos> position, Map<BlockPos, BlockPos> moves) {
+		return position.map(pos -> moves.getOrDefault(pos, pos));
 	}
 	private static String coordinates(BlockPos pos) {
 		return pos.getX() + " / " + pos.getY() + " / " + pos.getZ();
@@ -153,7 +191,12 @@ public final class BuildingRelocation {
 	}
 	private static Snapshot snapshot(ServerLevel level, BlockPos pos) {
 		BlockEntity be = level.getBlockEntity(pos);
-		return new Snapshot(pos.immutable(), level.getBlockState(pos), be == null ? null : be.saveWithFullMetadata(level.registryAccess()));
+		List<ItemStack> inventory = new ArrayList<>();
+		if (be instanceof Container container) {
+			for (int slot = 0; slot < container.getContainerSize(); slot++) inventory.add(container.getItem(slot).copy());
+		}
+		return new Snapshot(pos.immutable(), level.getBlockState(pos), be == null ? null : be.saveWithFullMetadata(level.registryAccess()),
+			be == null ? null : be.getAttached(VillagerPlus.OWNER), List.copyOf(inventory));
 	}
 	private static void clear(ServerLevel level, Iterable<BlockPos> positions) {
 		for (BlockPos pos : positions) level.removeBlockEntity(pos);
@@ -164,7 +207,14 @@ public final class BuildingRelocation {
 		if (s.blockEntity() != null) {
 			BlockEntity be = BlockEntity.loadStatic(pos, s.state(), s.blockEntity().copy(), level.registryAccess());
 			if (be == null) throw new IllegalStateException("Cannot restore relocation block entity " + pos);
-			level.setBlockEntity(be); be.setChanged();
+			if (s.owner() != null) be.setAttached(VillagerPlus.OWNER, s.owner());
+			level.setBlockEntity(be);
+			if (be instanceof Container container) {
+				for (int slot = 0; slot < Math.min(container.getContainerSize(), s.inventory().size()); slot++) {
+					container.setItem(slot, s.inventory().get(slot).copy());
+				}
+			}
+			be.setChanged();
 		}
 	}
 	private static void restore(ServerLevel level, Map<BlockPos, Snapshot> snapshots) {
