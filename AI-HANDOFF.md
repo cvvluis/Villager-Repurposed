@@ -642,3 +642,8 @@ Karte/Balken/Tabs (Textausgabe), Expeditionen inkl. Verletzte und Beute, Lagersc
 - Audit bleibt **8/62 implemented, 54/62 partial/offen**. Nächster Schritt: frischen CTOV-Hausbau und Karawanenfahrt auf echter fertiger Straße visuell beobachten; der Bürgermeister als Rathausverwalter ist eine zusätzliche Nutzeridee, aber nicht Teil der 62 Master-Prompt-Punkte.
 
 
+
+## Cloud-Sitzung 11.11.2026 (Branch claude/village-growth-1111, nur lokal committet)
+- Neu: Rueckholung ohne Route (JobUtil StrandWatch + JobManager.rescueStranded, Gruppe `strandrescue`/StrandRescueChecks). Geprueft nur: kompiliert + Scratch-Logiktest (10). Kein Serverlauf (run/eula.txt fehlte), Fixture nicht ausgefuehrt.
+- fabric.mod.json suggests erweitert. Audit-Tabellen und Modpack-Analyse in CLOUD-LOG.md (Agentenberichte, unverifiziert; streng 19/62).
+- Naechster Schritt: EULA setzen, `bash tools/cloud/autotest.sh strandrescue` und `housesearch`, dann Naturlauf. Push war 403 (GitHub-App ohne Schreibzugriff).

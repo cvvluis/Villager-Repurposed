@@ -87,3 +87,37 @@ ungemappt; (6) EMF/ETF/Fresh Animations: nur Client pruefbar (Overlay-Renderer E
 | E03 | OK | Reiter-Darstellung nur manuell |
 | E04 | TEIL | Skins nur 4 Rollen; EMF/ETF/FA ungeprueft |
 Hinweis: UI-Schicht haengt an ClientChecks (nicht in Checks090/AutoTest registriert, braucht Client).
+### D/K/B (Agent-Bericht, unverifiziert)
+| ID | Status | Luecke |
+|---|---|---|
+| D01 | OK | - |
+| D02 | OK | keine eigene Stufe "Unbekannt" in stage(), nur Namensverschleierung |
+| D03 | TEIL | Schwelle >=30 nie als Grenzfall geprueft (route=true umgeht sie); Partner-Bauer nicht bewiesen |
+| D04 | OK | nur 2 Paletten (Sand / Kies-Cobble) |
+| D05 | OK | - |
+| D06 | OK | RailMetropolisChecks veralteter Wrapper |
+| D07 | TEIL | Roads.advanceRail laeuft im Dorf-Tick ohne Arbeiter/Swing/Sound/Partikel |
+| D08 | TEIL | Personenzug (passengerDock) ohne In-world-Check; Fracht nur Eisen belegt |
+| B01 | TEIL | Workstation nur Smith/Cook/Healer/Fletcher; Selbstbeschaffung ungeprueft |
+| B02 | TEIL | keine Aushub-Phase; kein End-to-End-Lauf aller Phasen |
+| B03 | TEIL | kein Check fuer Platzier-Sound/-Partikel/Swing |
+| B04 | TEIL | Schild-Platzierung ungeprueft; Name/Status erst per Rechtsklick |
+| B05 | OK | - |
+| K01 | TEIL | CaravanTraderChecks nur ueber ClientChecks (Client), nicht in Checks090 |
+| K02 | OK | - |
+| K03 | OK | - |
+| K04 | OK | Ueberschuss-Verkauf nur im Hauptlauf, nicht als Einzelgruppe |
+
+### Zaehlung (Widerspruch 18/62 vs. 30/62)
+Agenten-Urteil gesamt: 39 OK / 23 TEIL / 0 FEHLT (G 10 OK, D/K/B 9 OK, J/U/A/R/E 20 OK). Diese Zahl ist zu locker: sie zaehlt u. a. UI-Punkte
+(U02/U06/U07/U08/E03), die nur manuell/Client geprueft sind, sowie OK mit genannter Luecke. Streng = OK ohne genannte Luecke: **19/62**
+(G03, G06, G10, G13, D01, D05, D06, K02, K03, B05, J01, J04, J05, J08, J09, A01, A03, R02, E01), nahe der alten strengen Zahl 18/62.
+Die 30/62-Zaehlung ist damit nicht gedeckt. Einzelbelege wurden von mir nicht stichprobenartig nachgeprueft; die Zahl bleibt ein Hinweis.
+Echte Code-Luecken laut Audit: Hebel (R01), Depot-Sortierung (J07), 3D-Laternen/Pinnwand am dorftafel_gross (U01), Survival-/Leerlauf-Nachweis (A04),
+Personenzug-Check (D08), autonome Stoerbau-Erkennung (G11), Teleport-Fallback im Bergbau (G12).
+
+## Stand / naechste Schritte
+Blocker 1: kein Push (403, Claude-GitHub-App ohne Schreibzugriff auf cvvluis/Villager-Repurposed; auch MCP create_branch 403). Commits liegen nur lokal im Branch claude/village-growth-1111.
+Blocker 2: run/eula.txt fehlt -> keine Serverlaeufe. P0-Referenzwerte, strandrescue-Gruppe, P2-P5 nur mit Server sinnvoll (P2/P3-Ablehnungsstatistik wird
+bereits geloggt: Mining.create-Log "Ablehnungen [ungeladen,Hoehe,Boden,Altmine,Bauplan,Vorschau,Eingangsplatz]", Bauplatz-Diagnose-Logs).
+Naechster Schritt nach Freigabe: `bash tools/cloud/autotest.sh housesearch`, dann `strandrescue`, dann Naturlauf `natural-run.sh vp-natural111-x 10 2400`.
