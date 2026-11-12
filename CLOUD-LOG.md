@@ -228,3 +228,10 @@ FAIL "the next lit section crafts and carries a torch from real public charcoal 
 ## gravelcycle repariert (Agent, von mir nachgelaufen)
 Ursache (Agent, belegt): Mining.lightSection(i) = i>0 && i%6==3 (seit faca3ca); die Fixture in GravelQuarryChecks nutzte noch Abschnitt 12 (und 4/12/20 beim "alternating"-Check). Produktivcode richtig, nur Fixture-Indizes auf 9 bzw. 3/9/15 angepasst.
 Von mir nach dem Merge: gravelcycle 20 (vorher FAIL, auch auf 01db13e), mining 3 von 3 Laeufen 68 (Agent sah im eigenen Worktree 2 von 5 Fehlschlaege "three live work-lane leases ... visible=0"; bei mir nicht reproduziert, Flake-Rate unklar).
+
+## Naturlauf vp-natural111-m4 (frisch, Seed 4242, 2 Etappen ~48k Ticks, voller Merge-Stand inkl. P5, Mine-Kit, Seed-Rueckweg; Einzellauf)
+Etappe 1: Plan gestartet 2 (granary 122,67,-342 @2335, storage 187,70,-431 @3011), fertig 0, gestrandet 7 (route=true 3, deep 4), unreachable route<=4: 7. Etappe 2: Plan 1 (granary @24986), fertig 0, gestrandet 0, unreachable<=4: 8, Steinbruch-Rueckweg verworfen 1, "keine Mine anlegbar" 1, "Stein gebrochen" 3, Tiefe>0: 0.
+Granary 1 stand 3183 Ticks still (Besitzerin Hilde @110,65,-394 'faellt einen Baum'; fehlt: crafting_table, deepslate_bricks x18, scaffolding x7, Kiste Bruchstein/Stein/Ziegel/Kohle 0), wechselte auf Ersatzpalette, Schritt 0 abgebrochen
+("kein Weg zum Bauplatz ... no free reachable stand after 3 probes", worker 110,65,-391) -> naechster granary-Plan @24986. Hilde steht im Teich-/Pavillonbereich (vgl. P4c-Fallen bei 105,65,-393).
+Baumwahl "streng": 154 von 154 Staemmen "im Dorf/Gebaeude" (Dorfgrenzen umfassen den ganzen Suchbereich) - die Fallback-Kette locker/erweitert greift, Hilde faellt Baeume: kein Holzdefekt, aber die Palette (deepslate_bricks x18) ist im Taiga-Dorf kaum beschaffbar.
+Weiterhin: kein Haus/Bau fertig in 48k Ticks.
