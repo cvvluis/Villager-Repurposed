@@ -580,27 +580,71 @@ public class FarmerJob implements Job {
 			column.getX(), column.getZ()), column.getZ());
 	}
 
-	/** Search every column in a fixed local budget so sparse valid grass cannot be missed by random sampling. */
+	/** Grass regions (centre, until-tick) whose cells have no walk-back to the village street: a gully the forager cannot leave again. */
+	private static final List<long[]> SEED_TRAPS = new java.util.ArrayList<>();
+	private static final int SEED_TRAP_RADIUS = 6;
+	private static final long SEED_TRAP_TICKS = 24_000L;
+	private static final int SEED_WALKBACK_CHECKS = 3;
+
+	private static boolean inSeedTrap(BlockPos pos, long now) {
+		for (long[] trap : SEED_TRAPS) {
+			if (trap[3] <= now) continue;
+			long dx = pos.getX() - trap[0], dz = pos.getZ() - trap[1];
+			if (dx * dx + dz * dz <= (long) SEED_TRAP_RADIUS * SEED_TRAP_RADIUS && Math.abs(pos.getY() - trap[2]) <= 2) return true; // a gully floor condemns its own level, not the rim above it
+		}
+		return false;
+	}
+
+	static void clearSeedTraps() {
+		SEED_TRAPS.clear();
+	}
+
+	/**
+	 * Search every column in a fixed local budget so sparse valid grass cannot be missed by random sampling.
+	 * Vanilla navigation walks a forager down into a gully but not out of it (measured: the same farmers were rescued from one
+	 * hollow again and again), so the nearest few candidates must also have a walk-back to the village street.
+	 */
 	static BlockPos findSeedGrass(Ctx c, VillageRef ref) {
 		BlockPos center = c.v().blockPosition();
 		BlockPos bell = ref.bell();
-		BlockPos best = null;
-		long bestDistance = Long.MAX_VALUE;
+		List<BlockPos> candidates = new java.util.ArrayList<>();
+		List<Long> candidateDistance = new java.util.ArrayList<>();
 		for (int index = 0; index < MAX_STARTER_SEED_SEARCH_COLUMNS; index++) {
 			BlockPos column = starterSeedSearchColumn(center, index);
 			long distance = horizontalDistanceSquared(center, column);
 			if (distance > (long) STARTER_SEED_SEARCH_RADIUS * STARTER_SEED_SEARCH_RADIUS) continue;
-			if (distance >= bestDistance) continue;
+			if (candidates.size() >= SEED_WALKBACK_CHECKS && distance >= candidateDistance.get(candidateDistance.size() - 1)) continue;
 			BlockPos pos = seedGrassSurface(c.level(), column);
 			if (pos == null || !c.level().getBlockState(pos).is(Blocks.SHORT_GRASS)) continue;
 			long villageDistance = horizontalDistanceSquared(pos, bell);
 			if (villageDistance < 10L * 10L || villageDistance > (long) Config.VILLAGE_RADIUS * Config.VILLAGE_RADIUS) continue;
 			if (rejectedForageTarget(c.st(), pos) || !safeSeedGrass(c.level(), ref, pos)) continue;
 			if (nearbyHomePoi(c.level(), pos)) continue;
-			best = pos.immutable();
-			bestDistance = distance;
+			if (inSeedTrap(pos, c.now())) continue;
+			int at = candidates.size();
+			while (at > 0 && candidateDistance.get(at - 1) > distance) at--;
+			candidates.add(at, pos.immutable());
+			candidateDistance.add(at, distance);
+			if (candidates.size() > SEED_WALKBACK_CHECKS) {
+				candidates.remove(candidates.size() - 1);
+				candidateDistance.remove(candidateDistance.size() - 1);
+			}
 		}
-		return best;
+		if (candidates.isEmpty()) return null;
+		BlockPos home = de.villagerplus.build.Builder.villageReturn(c.level(), bell);
+		// No street cell known: keep the nearest candidate, as before this check existed.
+		if (home == null) return candidates.get(0);
+		for (BlockPos candidate : candidates) {
+			if (inSeedTrap(candidate, c.now())) continue;
+			BlockPos stand = JobUtil.safeSpot(c.level(), net.minecraft.world.phys.Vec3.atBottomCenterOf(candidate)) == null
+				? candidate : BlockPos.containing(JobUtil.safeSpot(c.level(), net.minecraft.world.phys.Vec3.atBottomCenterOf(candidate)));
+			if (de.villagerplus.village.Sites.walksBackTo(c.level(), stand, home)) return candidate;
+			if (SEED_TRAPS.size() > 64) SEED_TRAPS.remove(0);
+			SEED_TRAPS.add(new long[] { candidate.getX(), candidate.getZ(), candidate.getY(), c.now() + SEED_TRAP_TICKS });
+			org.slf4j.LoggerFactory.getLogger("villagerplus").info("Saatgras {}: Ziel {} verworfen (kein Rueckweg zur Dorfstrasse {})",
+				c.mem().name, candidate.toShortString(), home.toShortString());
+		}
+		return null;
 	}
 
 	/** Stable row-major index into the bounded square; callers skip its four corner triangles. */

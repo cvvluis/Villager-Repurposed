@@ -140,6 +140,29 @@ public final class StrandRescueChecks {
 			for (Direction side : Direction.Plane.HORIZONTAL) for (int dy = 0; dy <= 3; dy++) level.setBlock(post.relative(side).above(dy), air, 3);
 			level.setBlock(post, air, 3);
 
+			// H: starter-seed grass on the pit floor is nearer to the forager than grass on the platform, but there is no way back out of
+			// the pit: the forager must be sent to the platform grass, and the pit region is remembered as a trap.
+			// The ramp from F is still in place: close it again so the pit has no way out.
+			for (int dy = -3; dy <= -1; dy++) level.setBlock(origin.offset(14, dy, 0), stone, 3);
+			for (int dy = -2; dy <= -1; dy++) level.setBlock(origin.offset(13, dy, 0), stone, 3);
+			level.setBlock(origin.offset(12, -1, 0), stone, 3);
+			JobUtil.clearLongRoutes();
+			FarmerJob.clearSeedTraps();
+			BlockPos pitGrass = origin.offset(17, -4, 0);
+			BlockPos platformGrass = origin.offset(13, 0, 3);
+			level.setBlock(pitGrass.below(), Blocks.GRASS_BLOCK.defaultBlockState(), 3);
+			level.setBlock(pitGrass, Blocks.SHORT_GRASS.defaultBlockState(), 3);
+			level.setBlock(platformGrass.below(), Blocks.GRASS_BLOCK.defaultBlockState(), 3);
+			level.setBlock(platformGrass, Blocks.SHORT_GRASS.defaultBlockState(), 3);
+			worker.teleportTo(origin.getX() + 16.5, origin.getY() - 4.0, origin.getZ() + 1.5);
+			BlockPos chosen = FarmerJob.findSeedGrass(ctx(level, worker, state, memory, ref, T0 + 40_000L), ref);
+			require(platformGrass.equals(chosen), "seed grass on a pit floor without a walk-back is skipped for the nearest grass that has one (chose "
+				+ (chosen == null ? "none" : chosen.toShortString()) + ")"); checks++;
+			require(FarmerJob.findSeedGrass(ctx(level, worker, state, memory, ref, T0 + 40_100L), ref) != null
+				&& !pitGrass.equals(FarmerJob.findSeedGrass(ctx(level, worker, state, memory, ref, T0 + 40_200L), ref)),
+				"the pit region stays remembered as a trap"); checks++;
+			FarmerJob.clearSeedTraps();
+
 			// G: moving more than two blocks restarts the count; stale failures restart it too.
 			JobUtil.clearLongRoutes();
 			JobUtil.noteRouteFailure(id, pit, T0 + 9_000L);
