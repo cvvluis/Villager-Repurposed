@@ -258,3 +258,9 @@ Offen: Sturz-Abkuerzung natuerlich nie ausgeloest (nur Fixture); mehr route=true
 Plan gestartet 3 (granary @2316 bei 118,67,-349, storage @2799, granary @8886 bei 115,67,-341; alle "startet mit beschaffbarer Palette", Wunschliste sofort cobblestone#18 + spruce_planks#30, Geruest sofort verworfen), fertig 0.
 granary 1: "Schritt 0 (baut) - Ergebnis false" -> "Schritt 0 wird abgebrochen (Bauplatz nicht erreicht) Stand 118,67,-358" binnen ~400 Ticks; granary 2 aehnlich -> Agent claude/granary-site (Aufgabe: Erreichbarkeit des terrassierten Bauplatzes).
 gestrandet 2 (beide Matthias, route=true, 136,68,-343 bzw. 159,67,-357, Aktivitaet 'wartet auf einen freien Pausenplatz'): Pavillon-Fleck (135,68,-343) bleibt; unreachable gesamt 3 (<=4: 2) - niedrigster Wert aller Laeufe (Einzellauf, kein Beleg). Steinbruch 'Stein gebrochen' 3, keine Mine/Tiefe>0.
+
+## P8 / B04 Hausschild (ich)
+Neu: village/HousingSignChecks.java (Gruppe housesign, 7 Checks: Bett->Zuhause/Tuer, Schild in Tuerwandebene neben der oberen Tuerhaelfte, Farmer-Symbol 1 + 3 Sterne, signText "1:1:3", gemeinsames Haus-Symbol 12 bei zwei Bewohnern, genau 1 Schild).
+Produktivfehler gefunden (nicht nur Check): hatte ein neu einziehender Mitbewohner die kleinere UUID, wurde er Pfleger des gemeinsamen Schilds, kannte es aber nicht (signPos leer) und setzte ein zweites Schild; das alte blieb mit falschem Symbol. 2 von 5 Fixture-Laeufen fielen durch.
+Fix: Housing.updateSign uebernimmt vor placeSign das Schild eines Mitbewohners (signPos + Block ist Dorfschild). updateSign dafuer paketsichtbar. Danach housesign 8 von 8 Laeufen PASS 7; roles 112.
+Lueckenhinweis: im Fixture meldet level.canSeeSky auf BEIDEN Seiten der Wand true; "Schild aussen" ist deshalb NICHT bewiesen (Produktivlogik nimmt bei zwei freien Seiten die zuletzt gepruefte). B04 bleibt TEIL (Name/Status stehen erst per Rechtsklick auf dem Schild).

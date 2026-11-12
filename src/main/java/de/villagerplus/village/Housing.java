@@ -101,7 +101,7 @@ public final class Housing {
 		return Optional.ofNullable(best);
 	}
 
-	private static void updateSign(ServerLevel level, Villager v, VillagerMemory mem) {
+	static void updateSign(ServerLevel level, Villager v, VillagerMemory mem) {
 		BlockPos door = mem.homeDoor.get();
 		List<Villager> residents = level.getEntitiesOfClass(Villager.class, new net.minecraft.world.phys.AABB(door).inflate(24),
 			o -> o.isAlive() && o.getAttachedOrCreate(VillagerPlus.MEMORY).homeDoor.map(door::equals).orElse(false));
@@ -118,7 +118,11 @@ public final class Housing {
 			mem.signText = "";
 		}
 		if (mem.signPos.isEmpty() || !(level.getBlockState(mem.signPos.get()).getBlock() instanceof DorfschildBlock)) {
-			mem.signPos = placeSign(level, door);
+			// A new housemate with the smallest UUID becomes the keeper of the shared sign but does not know it yet:
+			// adopt the sign a housemate already remembers instead of placing a second one next to the door.
+			Optional<BlockPos> existing = residents.stream().map(r -> r.getAttachedOrCreate(VillagerPlus.MEMORY).signPos)
+				.filter(p -> p.isPresent() && level.getBlockState(p.get()).getBlock() instanceof DorfschildBlock).map(Optional::get).findFirst();
+			mem.signPos = existing.isPresent() ? existing : placeSign(level, door);
 			mem.signText = "";
 		}
 		if (mem.signPos.isEmpty() || !(level.getBlockState(mem.signPos.get()).getBlock() instanceof DorfschildBlock)) {

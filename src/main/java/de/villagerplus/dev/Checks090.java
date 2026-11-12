@@ -528,6 +528,10 @@ public final class Checks090 {
    int count=de.villagerplus.job.TreeWalkbackChecks.run(level,new BlockPos(46000,201,46000));
    source.sendSuccess(()->Component.literal("VP090 treewalkback PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("housesign")) {
+   int count=de.villagerplus.village.HousingSignChecks.run(level,new BlockPos(47000,201,47000));
+   source.sendSuccess(()->Component.literal("VP090 housesign PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("strandrescue")) {
    int count=de.villagerplus.job.StrandRescueChecks.run(level,new BlockPos(41000,201,41000));
    source.sendSuccess(()->Component.literal("VP090 strandrescue PASS "+count+" checks"),false);return count;
