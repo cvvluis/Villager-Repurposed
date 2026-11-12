@@ -905,7 +905,16 @@ public final class JobManager {
 		boolean routeStuck = false;
 		if (!far && !deep && !expedition && JobUtil.routeStrandSuspected(c.v().getUUID(), c.v().blockPosition(), c.now())) {
 			arrival = de.villagerplus.build.Builder.villageReturn(c.level(), ref.bell());
-			if (arrival == null || de.villagerplus.village.Sites.walksBackTo(c.level(), c.v().blockPosition(), arrival)) {
+			boolean modelWalksHome = arrival != null && de.villagerplus.village.Sites.walksBackTo(c.level(), c.v().blockPosition(), arrival);
+			// The block model is only a model: a resident perched on a fence post (collision height 1.5) "walks home" in it, while vanilla
+			// navigation finds a single node and never gets off. Real navigation that cannot leave the spot (at most a few nodes, no
+			// complete path) outweighs the model.
+			boolean navigationTrapped = false;
+			if (modelWalksHome) {
+				var home = de.villagerplus.build.Builder.workPath(c, arrival);
+				navigationTrapped = home == null || (!home.canReach() && home.getNodeCount() <= JobUtil.STRAND_MAX_ROUTE_NODES);
+			}
+			if (arrival == null || (modelWalksHome && !navigationTrapped)) {
 				JobUtil.clearRouteFailures(c.v().getUUID());
 			} else {
 				routeStuck = true;

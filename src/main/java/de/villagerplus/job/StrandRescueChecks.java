@@ -118,6 +118,18 @@ public final class StrandRescueChecks {
 				&& !JobUtil.routeStrandSuspected(id, pit, T0 + 5_810L),
 				"a worker that can still walk home is left alone and its failure record is dropped"); checks++;
 
+			// F2: a resident perched on a fence post. The block model may call that a walk home; real navigation finds no way off.
+			JobUtil.clearLongRoutes();
+			BlockPos post = origin.offset(4, 0, 3);
+			level.setBlock(post, Blocks.SPRUCE_FENCE.defaultBlockState(), 3);
+			worker.teleportTo(post.getX() + 0.5, post.getY() + 1.5, post.getZ() + 0.5);
+			BlockPos perched = worker.blockPosition();
+			for (long dt : new long[] { 0L, 200L, 400L, 600L, 800L }) JobUtil.noteRouteFailure(id, perched, T0 + 20_000L + dt);
+			boolean perchRescued = JobManager.rescueStranded(ctx(level, worker, state, memory, ref, T0 + 20_800L));
+			require(perchRescued && worker.getY() < post.getY() + 1.0,
+				"a resident perched on a fence post with persistent route failures is brought down even if the block model finds a way"); checks++;
+			level.setBlock(post, Blocks.AIR.defaultBlockState(), 3);
+
 			// G: moving more than two blocks restarts the count; stale failures restart it too.
 			JobUtil.clearLongRoutes();
 			JobUtil.noteRouteFailure(id, pit, T0 + 9_000L);
