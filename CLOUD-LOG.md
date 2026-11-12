@@ -253,3 +253,8 @@ Fix (JobManager, nur Regel): Karenzzeit 3600 Ticks ununterbrochene Tiefe (Luecke
 Gruppen (von mir, je 1 Lauf nach Merge): deepstrand 17 (neu), strandrescue 19, roles 112, mining 68, a01behavior 20, farmexpand 172, woodcuttinggroup 48, buildhaul 20, miningcycle 199.
 Natur (Agent, je 1 Lauf/Etappe): vorher Etappe1 3 deep, Etappe2 3 deep (Jakob 3x ueber 3 Etappen); nachher Etappe1 1 (route), Etappe2 4 (1 deep, 3 route); kein Bewohner 2x gerettet. Kosten: echter Grubenfall ohne erkannten Sturz wartet jetzt bis 3600 Ticks (Rosa/Lotte).
 Offen: Sturz-Abkuerzung natuerlich nie ausgeloest (nur Fixture); mehr route=true-Faelle im Endlauf ungeklaert; echte Falle Dschungel-Terrasse 1505-1509,87,-361 (Builder "unreachable route=52").
+
+## Naturlauf vp-natural111-m5 (voller Merge-Stand inkl. plan-palette + rescue-loops; Etappe 1 durch fremden Server-Kill ausgefallen, Etappe "cont1" lief ab Tick 16 bis 24324 = ein 24k-Lauf)
+Plan gestartet 3 (granary @2316 bei 118,67,-349, storage @2799, granary @8886 bei 115,67,-341; alle "startet mit beschaffbarer Palette", Wunschliste sofort cobblestone#18 + spruce_planks#30, Geruest sofort verworfen), fertig 0.
+granary 1: "Schritt 0 (baut) - Ergebnis false" -> "Schritt 0 wird abgebrochen (Bauplatz nicht erreicht) Stand 118,67,-358" binnen ~400 Ticks; granary 2 aehnlich -> Agent claude/granary-site (Aufgabe: Erreichbarkeit des terrassierten Bauplatzes).
+gestrandet 2 (beide Matthias, route=true, 136,68,-343 bzw. 159,67,-357, Aktivitaet 'wartet auf einen freien Pausenplatz'): Pavillon-Fleck (135,68,-343) bleibt; unreachable gesamt 3 (<=4: 2) - niedrigster Wert aller Laeufe (Einzellauf, kein Beleg). Steinbruch 'Stein gebrochen' 3, keine Mine/Tiefe>0.
