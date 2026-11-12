@@ -101,6 +101,8 @@ public final class SurfaceStone {
 		level.playSound(null, target, SoundEvents.STONE_BREAK, SoundSource.BLOCKS, 0.8F, 1.0F);
 		JobUtil.swing(c.v());
 		c.mem().jobsDone++;
+		org.slf4j.LoggerFactory.getLogger("villagerplus").info("Steinbruch {}: Stein gebrochen bei {} (Tick {}, {})", c.mem().name,
+			target.toShortString(), c.now(), hasPickaxe ? "Spitzhacke" : "von Hand");
 		c.st().cooldownUntil = c.now() + (hasPickaxe ? PICKAXE_COOLDOWN_TICKS : HAND_COOLDOWN_TICKS);
 		TARGETS.remove(id);
 		return true;
