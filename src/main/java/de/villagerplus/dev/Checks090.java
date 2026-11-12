@@ -680,6 +680,13 @@ public final class Checks090 {
    int count=de.villagerplus.job.PlanStoneSupplyChecks.run(level);
    source.sendSuccess(()->Component.literal("VP090 planstonesupply PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("surfacestone")) {
+   BlockPos at=new BlockPos(33000,201,33000);
+   BlockPos metalAt=new BlockPos(33300,201,33000);
+   int count=de.villagerplus.job.SurfaceStoneChecks.run(level,fixtureForEquipment(level,at),at)
+    +de.villagerplus.job.SurfaceStoneChecks.runMetalPickaxe(level,fixtureForEquipment(level,metalAt),metalAt);
+   source.sendSuccess(()->Component.literal("VP090 surfacestone PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("planmaterialwait")) {
    int count=de.villagerplus.build.PlanMaterialWaitChecks.run();
    source.sendSuccess(()->Component.literal("VP090 planmaterialwait PASS "+count+" checks"),false);return count;
