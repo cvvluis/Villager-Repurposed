@@ -225,3 +225,6 @@ Nach Merge von mir (je 1 Lauf): minekit 9, mining 68, miningcycle 199, minelifec
 Natur: kein belastbarer Vorher/Nachher-Beleg (ungeforcet: kein Steinbedarf/keine Mine in 30 Sprints; erzwungen: Handgrabung dominiert). Offen: Fackelabschnitte ohne Kohle warten bis 12000 Ticks.
 ## Vorbestehender Fehler: Gruppe gravelcycle
 FAIL "the next lit section crafts and carries a torch from real public charcoal and stick stock without advancing e..." - verifiziert von mir: identische Meldung auf dem urspruenglichen Stand 01db13e (eigener Worktree, 1 Lauf) und nach allen Merges. NICHT durch diese Nacht verursacht, nicht behoben, Ursache nicht untersucht.
+## gravelcycle repariert (Agent, von mir nachgelaufen)
+Ursache (Agent, belegt): Mining.lightSection(i) = i>0 && i%6==3 (seit faca3ca); die Fixture in GravelQuarryChecks nutzte noch Abschnitt 12 (und 4/12/20 beim "alternating"-Check). Produktivcode richtig, nur Fixture-Indizes auf 9 bzw. 3/9/15 angepasst.
+Von mir nach dem Merge: gravelcycle 20 (vorher FAIL, auch auf 01db13e), mining 3 von 3 Laeufen 68 (Agent sah im eigenen Worktree 2 von 5 Fehlschlaege "three live work-lane leases ... visible=0"; bei mir nicht reproduziert, Flake-Rate unklar).
