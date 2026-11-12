@@ -532,6 +532,10 @@ public final class Checks090 {
    int count=de.villagerplus.job.StrandRescueChecks.run(level,new BlockPos(41000,201,41000));
    source.sendSuccess(()->Component.literal("VP090 strandrescue PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("deepstrand")) {
+   int count=de.villagerplus.job.DeepStrandChecks.run(level,new BlockPos(47500,201,47500));
+   source.sendSuccess(()->Component.literal("VP090 deepstrand PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("farmexpand")) {
    var ref=fixtureForEquipment(level,A);
    int count=de.villagerplus.job.FarmerExpansionChecks.run(level,ref);
