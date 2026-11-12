@@ -164,3 +164,9 @@ tools/cloud/natural-run.sh (Server-Guard nur noch pro Worktree).
 Agent-Naturlaeufe: Granary-Plan startete in 5/5 Laeufen (~Tick 2400, z. B. 123,67,-349), nie fertiggestellt; 2 Abbrueche "kein Weg zum Bauplatz" (Wald). Dschungel: kein Plan.
 Nach Merge von mir (je 1 Lauf): builderpaths 79, houseplot 140, builderchecks 318, supply 30, planstonesupply 22, milestones 16, constructionsite 21, surfacestone 13, strandrescue 15.
 Offen: Fertigstellung des Kornspeichers, Dschungel, Wirkung auf Schule/Kueche/Station.
+
+## Naturlauf vp-natural111-m1 (frisch, Seed 4242, 10x2400 = ~24k Ticks, gemergter Stand P1+P3+P4)
+Bauplan gestartet 2 (granary 122,67,-348 @Tick 2326; storage 84,68,-336 @2900), fertiggestellt 0, Hausplan-Abbruch 0, Langweg unreachable 12 (davon route<=4: 8), gestrandet 4 (1x deep, 3x route=true), Steinbruch-Rueckweg-verworfen 0, Mine-Fehler 0.
+P1 natuerlich ausgeloest: 3 Rueckholungen route=true (Ludwig 43, Clara 30, Luise 29 Bloecke von der Dorfkiste; Taetigkeiten Holzsuche fuer den Plan / Farmer-Saatsuche), keine bei Expedition/Bergbau.
+ABER: Ludwig (Planbesitzer des Granary) stand kurz danach wieder an derselben Stelle 165,70,-394 (route=1 unreachable zur Dorfkiste und zum Holzziel 186,69,-402) -> Granary "steht seit 3000 Ticks still".
+Die Rueckholung heilt das Symptom, nicht die Falle (Holzziel liegt ausserhalb der Rueckweg-Insel); Ziel-/Baumwahl sollte Rueckwege pruefen (wie SurfaceStone.walksBackTo) - offen.
