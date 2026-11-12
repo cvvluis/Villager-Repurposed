@@ -325,6 +325,10 @@ public final class Checks090 {
    int count=de.villagerplus.build.PaletteChecks.run(level,new BlockPos(30000,201,30000));
    source.sendSuccess(()->Component.literal("VP090 palette PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("palettefallback")) {
+   int count=de.villagerplus.build.PaletteFallbackChecks.run(level,new BlockPos(31600,201,31600));
+   source.sendSuccess(()->Component.literal("VP090 palettefallback PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("buildhaul")) {
    int count=de.villagerplus.job.BuildHaulChecks.run(level,fixtureForEquipment(level,new BlockPos(30200,201,30200)));
    source.sendSuccess(()->Component.literal("VP090 buildhaul PASS "+count+" checks"),false);return count;
