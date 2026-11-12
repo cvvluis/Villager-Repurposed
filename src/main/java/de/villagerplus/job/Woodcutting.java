@@ -467,6 +467,12 @@ public final class Woodcutting {
 		Anim.hold(c, Items.IRON_AXE);
 		if (!(planWoodDemand || reservedCanopyWork ? JobUtil.approachLong(c, base, 2.8) : JobUtil.approach(c, base, 2.8))) {
 			if (planWoodDemand && !reservedCanopyWork && JobUtil.longRouteKnownUnreachable(c.v(), base)) {
+				if (workerStranded(c)) {
+					// The worker itself has no way out (fence top, pit): that is not the tree's fault. Marking every tree he tries would
+					// poison the choice for a day and send him to ever farther trees after the rescue; keep the tree and let the rescue act.
+					st.woodCheckAt = c.now() + 100;
+					return true;
+				}
 				// No walkable way to this tree: remember it and choose another instead of retrying it forever.
 				markTreeUnreachable(c.v().getUUID(), base, c.now());
 				setWork(c, work.abandonTree());
@@ -597,6 +603,15 @@ public final class Woodcutting {
 		if (WALKBACK_CHECKED.size() > 256) WALKBACK_CHECKED.clear();
 		Long previous = WALKBACK_CHECKED.put(worker, root.asLong());
 		return previous == null || previous != root.asLong();
+	}
+
+	/** True when the worker's own long route to the village street fails after at most a few nodes: the signature of a worker stuck in place. */
+	static boolean workerStranded(Ctx c) {
+		if (c.village() == null) return false;
+		BlockPos street = de.villagerplus.build.Builder.villageReturn(c.level(), c.village().bell());
+		if (street == null) return false;
+		var route = de.villagerplus.build.Builder.workPath(c, street);
+		return route != null && !route.canReach() && route.getNodeCount() <= JobUtil.STRAND_MAX_ROUTE_NODES;
 	}
 
 	/** Dev/test hook: forget every remembered verdict. */

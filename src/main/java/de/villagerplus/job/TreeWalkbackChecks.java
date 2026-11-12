@@ -157,6 +157,32 @@ public final class TreeWalkbackChecks {
 			Woodcutting.tick(new Ctx(level, worker, state, memory, ref, level.getGameTime() + 6_000L));
 			require(worker.getAttachedOrElse(VillagerPlus.WOODCUTTER_WORK, WoodcutterWork.empty()).root().filter(open::equals).isPresent(),
 				"a saved cursor on a safe tree is kept"); checks++;
+
+			// A stranded worker (walled in) must not poison the tree memory: his failed route is not the tree's fault.
+			Villager trapped = EntityTypes.VILLAGER.spawn(level, pit.west(), EntitySpawnReason.COMMAND);
+			if (trapped == null) throw new IllegalStateException("TREE WALKBACK CHECK FAILED: could not spawn trapped worker fixture");
+			trapped.addTag("vp090_fixture");
+			trapped.setNoAi(true);
+			trapped.setInvulnerable(true);
+			try {
+				JobState trappedState = JobManager.state(trapped);
+				VillagerMemory trappedMemory = trapped.getAttachedOrCreate(VillagerPlus.MEMORY);
+				long t = level.getGameTime() + 8_000L;
+				require(Woodcutting.workerStranded(new Ctx(level, trapped, trappedState, trappedMemory, ref, t)), "a worker walled into the pit has no long route out"); checks++;
+				require(!Woodcutting.workerStranded(new Ctx(level, worker, state, memory, ref, t)), "a worker on open ground is not stranded"); checks++;
+				trappedState.woodCheckAt = 0L;
+				trapped.setAttached(VillagerPlus.WOODCUTTER_WORK, WoodcutterWork.empty().start(open, "minecraft:oak"));
+				for (int i = 0; i < 3; i++) {
+					trappedState.cooldownUntil = 0L;
+					trappedState.woodCheckAt = 0L;
+					Woodcutting.tick(new Ctx(level, trapped, trappedState, trappedMemory, ref, t + i * 50L));
+				}
+				require(!Woodcutting.treeUnreachable(trapped.getUUID(), open, t + 200L)
+					&& trapped.getAttachedOrElse(VillagerPlus.WOODCUTTER_WORK, WoodcutterWork.empty()).root().filter(open::equals).isPresent(),
+					"a stranded worker's failed route neither marks the safe tree unreachable nor drops it"); checks++;
+			} finally {
+				trapped.discard();
+			}
 			return checks;
 		} finally {
 			Woodcutting.resetWalkBackMemory();
