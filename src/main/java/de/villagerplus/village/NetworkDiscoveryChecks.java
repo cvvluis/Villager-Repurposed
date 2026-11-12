@@ -153,6 +153,13 @@ public final class NetworkDiscoveryChecks {
 		checkStage(100, "Metropolen-Verbund"); checks++;
 
 		BlockPos bell = new BlockPos(120, 70, -45);
+		// D03: road work between two villages starts at the trade-partner threshold (relation >= 30); an explicit route link overrides it.
+		TradeNetwork.Link noRoute = new TradeNetwork.Link("minecraft:overworld", bell, "Grenzort", 0, false, 4, 7);
+		require(!Roads.roadLinkActive(noRoute.withRelation(29)) && Roads.roadLinkActive(noRoute.withRelation(30))
+			&& Roads.roadLinkActive(noRoute.withRelation(100)) && !Roads.roadLinkActive(noRoute.withRelation(-5)),
+			"a neighbour without route link carries road work exactly from relation 30 (29 does not)"); checks++;
+		require(Roads.roadLinkActive(noRoute.withRelation(0).withRoute(true)) && !Roads.roadLinkActive(null),
+			"an explicit route link carries road work at any relation; a missing link never does"); checks++;
 		TradeNetwork.Link base = new TradeNetwork.Link("minecraft:overworld", bell, "Grenzort", 0, true, 4, 7);
 		TradeNetwork.Link clampedHigh = base.withRelation(101);
 		require(clampedHigh.relation() == 100 && clampedHigh.route() && clampedHigh.population() == 4,
