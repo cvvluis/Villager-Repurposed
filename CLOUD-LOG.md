@@ -170,3 +170,15 @@ Bauplan gestartet 2 (granary 122,67,-348 @Tick 2326; storage 84,68,-336 @2900), 
 P1 natuerlich ausgeloest: 3 Rueckholungen route=true (Ludwig 43, Clara 30, Luise 29 Bloecke von der Dorfkiste; Taetigkeiten Holzsuche fuer den Plan / Farmer-Saatsuche), keine bei Expedition/Bergbau.
 ABER: Ludwig (Planbesitzer des Granary) stand kurz danach wieder an derselben Stelle 165,70,-394 (route=1 unreachable zur Dorfkiste und zum Holzziel 186,69,-402) -> Granary "steht seit 3000 Ticks still".
 Die Rueckholung heilt das Symptom, nicht die Falle (Holzziel liegt ausserhalb der Rueckweg-Insel); Ziel-/Baumwahl sollte Rueckwege pruefen (wie SurfaceStone.walksBackTo) - offen.
+
+## P4b Laufstillstand / Mine (Agent claude/walk-stall, gemergt) und P4c Baumwahl (Agent claude/tree-walkback, gemergt)
+P4b Ursachen (Agent, Fixture + Messung): (1) MineMovementMixin/Mining.allowMineMovement verwarf die ganze Bewegung eines Laeufers mit Minen-Tag auf Eingangshoehe (Gravitationsanteil -0,078 -> "unter dem Eingang"),
+Natur-Beleg: 700 Ticks mv=0,00 mit gueltigem Pfad; jetzt Sperre nur noch im Stollenbereich (inMineArea); Terrassen- statt Rampenmodell (routeDeviation, Math.round).
+(2) Zaunpfosten-Falle (Kollisionshoehe 1,5, Teich-/Fischer-Pavillons, z. B. 135,68,-343): Vanilla-Pfad 1 Knoten; neu JobUtil.perchStepOff/stepOffPerch (max 2 seitlich, 3 runter).
+Gruppen (je einzeln, nach Merge von mir): minewalk 27 (neu), mining 68, miningcycle 199, minelifecycle 35, strandrescue 15, surfacestone 13, roles 112. Agent: a01behavior 20.
+Natur (Agent, Einzelketten): in 1 von 2 Ketten Mine Tiefe 7 (Erstgrabung ~20800 Ticks nach Laufstart), mit finalem Code kein Spatenstich: Bergleute pendeln, "holt Stollenmaterial" (ensureMineSupplies, Wartezeit bis 12000 Ticks) ist naechster Blocker.
+P4c: Woodcutting.findTree/Builder.selectPlanWoodTree verwerfen Baeume ohne Rueckweg (24000 Ticks Gedaechtnis, in-memory), TreeWalkbackChecks. Gruppen nach Merge (Konflikt in Checks090 von Hand geloest):
+treewalkback 32, woodcuttinggroup 48, buildhaul 20, planstonesupply 22, supply 30, strandrescue 15, minewalk 27, a01behavior 20, builderchecks 318, mining 68.
+Beide Agents belegen unabhaengig: der Granary-Besitzer sass auf einem Zaunpfosten eines Teich-Pavillons (165,70,-394), Sites.walksBackTo meldet dort true (Modell laeuft ueber das Fass),
+Vanilla-Pfad 1 Knoten -> rescueStranded greift nicht; Baumregel griff im Naturlauf nie. Offen: Rettung/Modell fuer Pavillon-Fallen (Sites/JobManager), JobUtil.approachLong WALK_TARGET erst nach Langweg-Urteil,
+Farmer-Samensuche (gleicher Typ, FarmerJob), Mine "holt Stollenmaterial".
