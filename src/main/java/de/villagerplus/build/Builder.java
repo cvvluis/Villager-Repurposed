@@ -3141,7 +3141,7 @@ public final class Builder {
 						BlockPos anchor = ZoneAwareSites.tolerantAnchor(level, ref, type, candidate, -candidateHalf, candidateHalf,
 							-candidateHalf, candidateHalf, candidateHeadroom);
 						if (anchor == null) continue;
-						Palette palette = Palette.detect(level, ref.bell(), c.v(), seed, anchor);
+						Palette palette = detectForPlan(level, ref, c.v(), seed, anchor);
 						List<Step> candidateSteps = Architect.build(candidateDesign, palette, anchor, candidateDir);
 						List<Step> candidatePlan = candidateSteps;
 						int yardStyle = Paths.yardStyle(level, anchor, candidateDir);
@@ -3257,7 +3257,7 @@ public final class Builder {
 			clearSpecialSiteSearchFailure(ref);
 			site = page.site();
 			dir = siteFacing(level, ref, type, site);
-			Palette palette = Palette.detect(level, ref.bell(), c.v(), variant >>> 2, site);
+			Palette palette = detectForPlan(level, ref, c.v(), variant >>> 2, site);
 			PALETTES.put(site.asLong(), palette);
 			constructionPaletteIds = palette.ids();
 			steps = Architect.build(design, palette, site, dir);
@@ -3320,7 +3320,7 @@ public final class Builder {
 					if (preferred != null) {
 						site = preferred;
 						dir = Sites.facingTowards(site, ref.bell());
-						Palette palette = Palette.detect(level, ref.bell(), c.v(), variant >>> 2, site);
+						Palette palette = detectForPlan(level, ref, c.v(), variant >>> 2, site);
 						PALETTES.put(site.asLong(), palette);
 						constructionPaletteIds = palette.ids();
 						steps = Architect.build(design, palette, site, dir);
@@ -3424,12 +3424,12 @@ public final class Builder {
 				dir = siteFacing(level, ref, type, site);
 			}
 			if (design != null) {
-				Palette palette = Palette.detect(level, ref.bell(), c.v(), variant >>> 2, site);
+				Palette palette = detectForPlan(level, ref, c.v(), variant >>> 2, site);
 				PALETTES.put(site.asLong(), palette);
 				constructionPaletteIds = palette.ids();
 				steps = freshSteps(c, ref, type, variant, style, site, dir);
 			} else if (Landmarks.handles(type)) {
-				Palette palette = Palette.detect(level, ref.bell(), c.v(), variant >>> 2, site);
+				Palette palette = detectForPlan(level, ref, c.v(), variant >>> 2, site);
 				PALETTES.put(site.asLong(), palette);
 				steps = Landmarks.build(type, variant >>> 2, palette, site, dir);
 			} else {
@@ -3567,6 +3567,17 @@ public final class Builder {
 			&& newHouseTemplatePreview(level, ref, type, designForPlan(type, variant), site, dir) != null) {
 			markTemplatePlan(ref, site);
 		}
+		String earlyPalette = source == null ? EARLY_PALETTE_SITES.remove(site.asLong()) : null;
+		if (earlyPalette != null && !ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.<Long>of()).contains(site.asLong())) {
+			// The village cannot obtain part of the detected palette (deepslate, fired bricks ...). The plan starts with the
+			// look-alike palette it can build and carries the material-substitution marker (bit 1), so a restart keeps it and
+			// no caravan wait or 3000-tick stall precedes the switch. Fixed role-marker full blocks follow the local wall.
+			variant |= 2;
+			d.planVariant = variant;
+			steps = substituteUnobtainableFullBlocks(steps, 0);
+			LOGGER.info("Villagers: Repurposed: Bauplan {} startet mit beschaffbarer Palette (Dorfpalette hat unbeschaffbar: {}; Palette jetzt: {})",
+				type, earlyPalette, constructionPaletteIds);
+		}
 		if (!type.equals(Blueprints.FARM)) {
 			// Der Auftrag wird sofort festgelegt (ein Haus, ein Platz); fehlendes Material wird waehrenddessen beschafft.
 			updateWanted(c, ref, type, steps, box, siteStock, cargoManifest, site, 0, true);
@@ -3593,6 +3604,28 @@ public final class Builder {
 		return true;
 	}
 
+	/** Plots whose palette was swapped for an obtainable one while the plan was drawn up (site key -> unobtainable roles). */
+	private static final Map<Long, String> EARLY_PALETTE_SITES = new HashMap<>();
+
+	/**
+	 * Palette for a NEW plan: the one detected from the neighbouring houses, but with every role the village cannot obtain
+	 * itself (deepslate bricks from a foreign house, fired bricks ...) already replaced by its look-alike (stone bricks,
+	 * cobblestone ...). Without this the plan would start with a wish list nobody can fill and only fall back after the
+	 * 3000-tick stall. The detected palette is unchanged when everything is obtainable. Already running plans are not
+	 * re-evaluated: they keep the palette they were saved with.
+	 */
+	static Palette detectForPlan(ServerLevel level, VillageRef ref, Villager hint, long seed, BlockPos site) {
+		Palette detected = Palette.detect(level, ref.bell(), hint, seed, site);
+		List<String> missing = detected.unobtainableRoles();
+		if (missing.isEmpty()) {
+			EARLY_PALETTE_SITES.remove(site.asLong());
+			return detected;
+		}
+		if (EARLY_PALETTE_SITES.size() > 64) EARLY_PALETTE_SITES.clear();
+		EARLY_PALETTE_SITES.put(site.asLong(), missing.toString());
+		return Supply.lookAlikePalette(detected, biomeAt(level, site));
+	}
+
 	/** Build the exact candidate footprint before accepting a zoned site; Palette only changes materials at these coordinates. */
 	private static List<Step> sitingSteps(Ctx c, VillageRef ref, String type, int variant, Architect.Design design, VillageStyle style, BlockPos site, BlockPos facingAnchor) {
 		Direction facing = Sites.facingTowards(site, facingAnchor);
@@ -3611,13 +3644,13 @@ public final class Builder {
 	private static List<Step> freshSteps(Ctx c, VillageRef ref, String type, int variant, VillageStyle style, BlockPos site, Direction dir) {
 		Architect.Design design = architect(type) ? designForPlan(type, variant) : null;
 		if (design != null) {
-			Palette palette = Palette.detect(c.level(), ref.bell(), c.v(), variant >>> 2, site);
+			Palette palette = detectForPlan(c.level(), ref, c.v(), variant >>> 2, site);
 			PALETTES.put(site.asLong(), palette);
 			List<Step> template = newHouseTemplatePreview(c.level(), ref, type, design, site, dir);
 			return template != null ? template : Architect.build(design, palette, site, dir);
 		}
 		if (Landmarks.handles(type)) {
-			Palette palette = Palette.detect(c.level(), ref.bell(), c.v(), variant >>> 2, site);
+			Palette palette = detectForPlan(c.level(), ref, c.v(), variant >>> 2, site);
 			PALETTES.put(site.asLong(), palette);
 			return Landmarks.build(type, variant >>> 2, palette, site, dir);
 		}
@@ -4054,6 +4087,32 @@ public final class Builder {
 		}
 		return false;
 	}
+	/** Plans whose scaffolding availability was already judged (once per plan origin and session). */
+	private static final java.util.Set<Long> SCAFFOLDING_JUDGED = new HashSet<>();
+
+	/**
+	 * Site scaffolding (vanilla: six bamboo and a string) is convenience equipment, but until it is delivered the unprepared
+	 * construction site keeps the whole plan at step 0. If the public stock holds none and cannot craft any (a taiga village has
+	 * neither bamboo nor string), nobody will ever make it: judge that at the first supply check instead of after the
+	 * 3000-tick stall, and let the plan build without scaffolding. Returns the (possibly updated) construction site.
+	 */
+	private static ConstructionSite waiveUncraftableScaffolding(Ctx c, VillageRef ref, BlockPos origin,
+			ConstructionSite construction, Container publicStock) {
+		if (construction == null || !construction.origin().equals(origin) || construction.prepared()
+			|| publicStock == null || c == null || !SCAFFOLDING_JUDGED.add(origin.asLong())) return construction;
+		if (JobUtil.count(publicStock, stack -> stack.is(Items.SCAFFOLDING)) > 0
+			|| de.villagerplus.job.RecipeCrafting.canCraftCraftingOutput(c, publicStock, stack -> stack.is(Items.SCAFFOLDING), 64)) {
+			return construction;
+		}
+		ConstructionSite waived = new ConstructionSite(construction.origin(), construction.temporary(), construction.phaseEnds(),
+			true, construction.paletteIds());
+		ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.CONSTRUCTION, waived);
+		ref.dirty();
+		LOGGER.info("Villagers: Repurposed: Bauplan {} baut ohne Baustellengeruest weiter (Geruest ist im Dorf nicht herstellbar: kein Vorrat, kein Bambus/Schnur)",
+			ref.data().planType);
+		return waived;
+	}
+
 	/** Keep project-local demand equal to its remaining plan/setup need after site stock and marked cargo. */
 	private static boolean updateWanted(Ctx c, VillageRef ref, String type, List<Step> steps, Container publicStock,
 			Container siteStock, List<String> cargoManifest, BlockPos origin, int fromStep, boolean announce) {
@@ -4069,6 +4128,7 @@ public final class Builder {
 			if (gap.item() != null && gap.total() > 0) targets.add(new DemandTarget(gap.item(), gap.tag(), gap.total()));
 		}
 		ConstructionSite construction = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.CONSTRUCTION, null);
+		construction = waiveUncraftableScaffolding(c, ref, origin, construction, publicStock);
 		if (construction != null && construction.origin().equals(origin) && !construction.prepared()) {
 			Map<Item, Integer> setup = ConstructionSite.missingSetupMaterials(c.level(), construction, steps, origin,
 				Direction.from2DDataValue(d.planDir), empty);

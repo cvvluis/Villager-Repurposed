@@ -725,6 +725,19 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 
 	 */
 
+	/** Block ids of the roles this village cannot obtain itself (empty = the whole palette can be built locally). */
+	public List<String> unobtainableRoles() {
+		String[] names = {"wall", "wall2", "frame", "base", "roofFull", "roofStair", "roofSlab", "window", "floor", "door", "fence"};
+		Block[] all = {wall, wall2, frame, base, roofFull, roofStair, roofSlab, window, floor, door, fence};
+		List<String> out = new java.util.ArrayList<>();
+		for (int i = 0; i < all.length; i++) {
+			if (all[i] != null && !Supply.obtainable(all[i])) {
+				out.add(names[i] + "=" + net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(all[i]));
+			}
+		}
+		return out;
+	}
+
 	public Palette obtainable() {
 
 		return new Palette(

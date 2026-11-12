@@ -338,6 +338,76 @@ public final class Supply {
 		return Blocks.COBBLESTONE_SLAB;
 	}
 
+	/** Family of the block (without a shape suffix) -> the village-obtainable family that looks most alike. */
+	private static final java.util.Map<String, String> LOOK_ALIKE = java.util.Map.ofEntries(
+		// Deepslate/blackstone/tuff need a deepslate or nether mine; the village quarries plain stone.
+		java.util.Map.entry("deepslate", "cobblestone"), java.util.Map.entry("cobbled_deepslate", "cobblestone"),
+		java.util.Map.entry("polished_deepslate", "stone"),
+		java.util.Map.entry("deepslate_bricks", "stone_bricks"), java.util.Map.entry("deepslate_brick", "stone_brick"),
+		java.util.Map.entry("cracked_deepslate_bricks", "stone_bricks"),
+		java.util.Map.entry("deepslate_tiles", "stone_bricks"), java.util.Map.entry("deepslate_tile", "stone_brick"),
+		java.util.Map.entry("cracked_deepslate_tiles", "stone_bricks"), java.util.Map.entry("chiseled_deepslate", "stone_bricks"),
+		java.util.Map.entry("blackstone", "cobblestone"), java.util.Map.entry("polished_blackstone", "stone"),
+		java.util.Map.entry("polished_blackstone_bricks", "stone_bricks"), java.util.Map.entry("polished_blackstone_brick", "stone_brick"),
+		java.util.Map.entry("cracked_polished_blackstone_bricks", "stone_bricks"),
+		java.util.Map.entry("chiseled_polished_blackstone", "stone_bricks"), java.util.Map.entry("gilded_blackstone", "cobblestone"),
+		java.util.Map.entry("tuff", "cobblestone"), java.util.Map.entry("polished_tuff", "stone"),
+		java.util.Map.entry("tuff_bricks", "stone_bricks"), java.util.Map.entry("tuff_brick", "stone_brick"),
+		java.util.Map.entry("chiseled_tuff", "stone_bricks"), java.util.Map.entry("chiseled_tuff_bricks", "stone_bricks"),
+		// Fired bricks need clay and a kiln the village does not have; stone bricks look closest.
+		java.util.Map.entry("bricks", "stone_bricks"), java.util.Map.entry("brick", "stone_brick"),
+		java.util.Map.entry("mud_bricks", "stone_bricks"), java.util.Map.entry("mud_brick", "stone_brick"),
+		java.util.Map.entry("nether_bricks", "stone_bricks"), java.util.Map.entry("nether_brick", "stone_brick"),
+		java.util.Map.entry("red_nether_bricks", "stone_bricks"), java.util.Map.entry("red_nether_brick", "stone_brick"),
+		java.util.Map.entry("end_stone_bricks", "stone_bricks"), java.util.Map.entry("end_stone_brick", "stone_brick"),
+		// Stone-brick variants (cracked, mossy, chiseled) differ only by decoration.
+		java.util.Map.entry("cracked_stone_bricks", "stone_bricks"), java.util.Map.entry("mossy_stone_bricks", "stone_bricks"),
+		java.util.Map.entry("mossy_stone_brick", "stone_brick"), java.util.Map.entry("chiseled_stone_bricks", "stone_bricks"),
+		java.util.Map.entry("smooth_stone", "stone"));
+
+	/**
+	 * Obtainable block of the same role and shape that looks most like {@code b} (deepslate bricks -> stone bricks,
+	 * cobbled deepslate -> cobblestone, brick stairs -> stone-brick stairs ...), or null when there is none.
+	 * Obtainable input is returned unchanged.
+	 */
+	public static Block lookAlike(Block b) {
+		if (b == null) return null;
+		if (obtainable(b)) return b;
+		String p = path(b);
+		String shape = "";
+		String core = p;
+		for (String s : SHAPES) {
+			if (p.endsWith(s)) {
+				shape = s;
+				core = p.substring(0, p.length() - s.length());
+				break;
+			}
+		}
+		String target = LOOK_ALIKE.get(core);
+		if (target == null) return null;
+		Block mapped = blockOptional(target + shape);
+		return mapped != null && obtainable(mapped) ? mapped : null;
+	}
+
+	/**
+	 * Palette the village can actually build: every role that is not obtainable is replaced by its look-alike
+	 * ({@link #lookAlike}) when there is one, otherwise by the biome fallback of {@link #obtainablePalette}.
+	 */
+	public static Palette lookAlikePalette(Palette detected, Identifier biomeId) {
+		if (detected == null) return null;
+		Palette mapped = new Palette(
+			alikeOr(detected.wall()), alikeOr(detected.wall2()), alikeOr(detected.frame()), alikeOr(detected.base()),
+			alikeOr(detected.roofFull()), alikeOr(detected.roofStair()), alikeOr(detected.roofSlab()), alikeOr(detected.window()),
+			alikeOr(detected.floor()), alikeOr(detected.door()), alikeOr(detected.fence()));
+		return obtainablePalette(mapped, biomeId);
+	}
+
+	private static Block alikeOr(Block block) {
+		if (block == null) return null;
+		Block alike = lookAlike(block);
+		return alike != null ? alike : block;
+	}
+
 	/** Uebertraegt Ausrichtung/Haelfte/Form von {@code from} auf den Ersatzblock. */
 	public static BlockState transfer(BlockState from, Block to) {
 		BlockState s = to.defaultBlockState();
