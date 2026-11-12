@@ -3602,12 +3602,10 @@ public final class Builder {
 		if (needsNaturalHousePreparation(type, variant, source != null)) {
 			persistProjectView(c, ref, d, null, siteStock, cargoManifest, plannedHouseLotBounds);
 		}
-		if (type.equals(Blueprints.HOUSE)) {
-			LOGGER.info("Villagers: Repurposed: Bauplan house gestartet bei {} (Tick {}, {} Schritte, Variante {}, Vorlage {}, Glocke {})",
-				site.toShortString(), c.now(), steps.size(), variant,
-				ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.of()).contains(site.asLong()),
-				ref.bell().toShortString());
-		}
+		LOGGER.info("Villagers: Repurposed: Bauplan {} gestartet bei {} (Tick {}, {} Schritte, Variante {}, Vorlage {}, Glocke {})",
+			type, site.toShortString(), c.now(), steps.size(), variant,
+			ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.of()).contains(site.asLong()),
+			ref.bell().toShortString());
 		return true;
 	}
 
@@ -3695,6 +3693,8 @@ public final class Builder {
 	/** Upper bound on natural obstacles (trunks, leaves, plants) a civic site preparation may remove. */
 	private static final int MAX_CIVIC_SITE_OBSTACLES = 1024;
 	static final long CIVIC_CLEARANCE_RETRY_TICKS = 0L;
+	/** Diagnostic: natural blocks removed so far per civic plan origin (log throttling only). */
+	private static final java.util.Map<Long, Integer> CIVIC_CLEARED = new java.util.HashMap<>();
 
 	/**
 	 * Work volume of a civic site preparation: the exact plan footprint from the anchor height up to the design's headroom.
@@ -4917,6 +4917,11 @@ public final class Builder {
 			NaturalSitePreparation.Scan civicPrep = NaturalSitePreparation.clearOne(level, prepBox[0], prepBox[1],
 				MAX_CIVIC_SITE_OBSTACLES, c.v());
 			if (civicPrep.status() == NaturalSitePreparation.Status.CLEARED) {
+				int cleared = CIVIC_CLEARED.merge(origin.asLong(), 1, Integer::sum);
+				if (cleared == 1 || cleared % 25 == 0) {
+					LOGGER.info("Villagers: Repurposed: Bauplatz {} fuer '{}' wird geraeumt: {} Naturbloecke entfernt, zuletzt bei {}, vorher {} Hindernisse",
+						origin.toShortString(), d.planType, cleared, civicPrep.next() == null ? "?" : civicPrep.next().toShortString(), civicPrep.obstacleCount());
+				}
 				c.setActivity("raeumt den Bauplatz");
 				d.planProgress = c.now();
 				c.st().cooldownUntil = c.now() + CIVIC_CLEARANCE_RETRY_TICKS;
