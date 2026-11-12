@@ -1915,7 +1915,8 @@ public final class Builder {
 			|| de.villagerplus.village.Guests.isGuest(villager)
 			|| de.villagerplus.village.Expedition.isAway(villager)
 			|| de.villagerplus.village.RailTransport.isPassenger(villager)
-			|| de.villagerplus.village.Market.shop(ref, villager.getUUID()) != null) return false;
+			|| de.villagerplus.village.Market.shop(ref, villager.getUUID()) != null
+			|| planOwnerExcluded(villager.getUUID(), level.getGameTime())) return false;
 		VillageRef assigned = Villages.find(level, villager);
 		return assigned != null && assigned.bell().equals(ref.bell());
 	}
@@ -2650,6 +2651,7 @@ public final class Builder {
 			STAND_MOVE_ANCHOR.remove(planKey);
 			STAND_BEST_NODES.remove(planKey);
 			STAND_FAILURE_SINCE.remove(planKey);
+			forgetStandWatch(planKey);
 			PALETTES.remove(planKey);
 			Map<Long, Integer> dug = PREP_RECORD.remove(planKey);
 			if (dug != null && d.planStep == 0 && ref.bellEntity().getLevel() instanceof ServerLevel sl) {
@@ -4870,6 +4872,10 @@ public final class Builder {
 		if (steps != null) {
 			// Nicht mitten im Bauwerk stehen (sonst mauert sich der Baumeister ein): Standort vor dem Gebaeude.
 			int minimumStandY = villageGroundY(level, ref.bell()) - 12;
+			if (!helper && d.planStep == 0 && noteStandVisit(origin.asLong(), c.now())) {
+				LOGGER.info("Villagers: Repurposed: Bau '{}' Schritt 0: Besitzer kehrt nach Abwesenheit zurueck, Wegverfolgung zum Stand neu begonnen (Arbeiter {})",
+					d.planType, c.v().blockPosition().toShortString());
+			}
 			BlockPos stand = standSlot >= 0
 				? workStand(c, origin, dir, steps, minimumStandY, standSlot)
 				: workStand(c, origin, dir, steps, minimumStandY);
@@ -4896,6 +4902,7 @@ public final class Builder {
 					c.setActivity("geht zur Dorfstrasse und sucht einen Baustand");
 				}
 				if (c.now() - standFailureSince > STAND_GIVE_UP) {
+					if (handOverStuckOwner(c, ref, d, origin, dir, steps, "kein Weg vom Arbeiter zu einem Stand")) return false;
 					why = "kein Weg zum Bauplatz";
 					LOGGER.info("Villagers: Repurposed: Bau '{}' Schritt {} wird abgebrochen ({}) {}", d.planType, d.planStep, why, lastStandReport(c.v()));
 					rejectPlot(ref, origin);
@@ -4905,6 +4912,19 @@ public final class Builder {
 				return true;
 			}
 			if (!helper) STAND_FAILURE_SINCE.remove(origin.asLong());
+			if (!helper && civicSite(d.planType) && d.planStep == 0) {
+				BlockPos previousStand = STAND_LAST.put(origin.asLong(), stand.immutable());
+				long lastDiagAt = STAND_DIAG_AT.getOrDefault(origin.asLong(), Long.MIN_VALUE / 2);
+				if (!stand.equals(previousStand) || c.now() - lastDiagAt >= 200) {
+					STAND_DIAG_AT.put(origin.asLong(), c.now());
+					LOGGER.info("Villagers: Repurposed: Standdiagnose {} {}: Stand {} (vorher {}) Arbeiter {} Abstand {} bester {} Fortschritt vor {} Ticks, Raeumung {} / {} entfernt",
+						d.planType, origin.toShortString(), stand.toShortString(), previousStand == null ? "-" : previousStand.toShortString(),
+						c.v().blockPosition().toShortString(),
+						String.format(java.util.Locale.ROOT, "%.1f", c.v().position().distanceTo(net.minecraft.world.phys.Vec3.atBottomCenterOf(stand))),
+						STAND_BEST.get(origin.asLong()), c.now() - d.planProgress, CIVIC_PREP_STATUS.get(origin.asLong()),
+						CIVIC_CLEARED.getOrDefault(origin.asLong(), 0));
+				}
+			}
 			if (!JobUtil.approach(c, stand, 6.0)) {
 				// Vanilla path searches stop around 16 blocks, so hand the brain the next node on the
 				// already verified route instead of the distant stand itself.
@@ -4929,11 +4949,21 @@ public final class Builder {
 				if (!helper && (best == null || dist < best - 1.5)) {
 					STAND_BEST.put(origin.asLong(), dist);
 					d.planProgress = c.now();
+					noteStandProgress(origin.asLong(), c.now());
 				} else if (movedOnRoute) {
 					d.planProgress = c.now();
-				} else if (!helper && d.planStep == 0 && c.now() - d.planProgress > STAND_GIVE_UP) {
+					noteStandProgress(origin.asLong(), c.now());
+				} else if (!helper && d.planStep == 0 && standProgressAge(origin.asLong(), c.now()) > STAND_GIVE_UP) {
+					if (handOverStuckOwner(c, ref, d, origin, dir, steps, "kein Fortschritt zum Stand " + stand.toShortString())) return false;
 					why = "Bauplatz nicht erreicht";
-					LOGGER.info("Villagers: Repurposed: Bau '{}' Schritt {} wird abgebrochen ({}) Stand {}", d.planType, d.planStep, why, stand.toShortString());
+					LOGGER.info("Villagers: Repurposed: Bau '{}' Schritt {} wird abgebrochen ({}) Stand {} (Arbeiter {}, Abstand {}, bester {}, Fortschritt vor {} Ticks, Routenknoten bester {}, Raeumung {} / {} entfernt, Inventar {}, Beruf {}, Tätigkeit '{}', Wegziel {}) Umgebung des Arbeiters (Westen links, Norden oben):{}",
+						d.planType, d.planStep, why, stand.toShortString(), c.v().blockPosition().toShortString(), dist, best,
+						standProgressAge(origin.asLong(), c.now()), STAND_BEST_NODES.get(origin.asLong()), CIVIC_PREP_STATUS.get(origin.asLong()),
+						CIVIC_CLEARED.getOrDefault(origin.asLong(), 0), JobUtil.hasEmptySlot(c.v().getInventory()) ? "frei" : "voll",
+						c.mem().name, c.st().activity,
+						c.v().getBrain().getMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET)
+							.map(t -> t.getTarget().currentBlockPosition().toShortString()).orElse("keines"),
+						surroundings(level, c.v().blockPosition(), 5));
 					rejectPlot(ref, origin);
 					abort(d, ref, c.now());
 					return false;
@@ -4941,7 +4971,7 @@ public final class Builder {
 				why = "geht zur Baustelle " + stand.toShortString() + " von " + c.v().blockPosition().toShortString();
 				return true;
 			}
-			if (!helper) { STAND_BEST.remove(origin.asLong()); STAND_MOVE_ANCHOR.remove(origin.asLong()); STAND_BEST_NODES.remove(origin.asLong()); }
+			if (!helper) { STAND_BEST.remove(origin.asLong()); STAND_MOVE_ANCHOR.remove(origin.asLong()); STAND_BEST_NODES.remove(origin.asLong()); noteStandProgress(origin.asLong(), c.now()); }
 			if (insideFootprint(c, steps)) {
 				JobUtil.approachLong(c, stand, 1.0);
 				return true;
@@ -5605,6 +5635,142 @@ public final class Builder {
 
 	/** Closest distance to the current stand since the mason last made real progress. Not persisted. */
 	private static final java.util.Map<Long, Double> STAND_BEST = new java.util.HashMap<>();
+	/** Last tick this plan's owner evaluated its work stand; an owner away on other jobs must not look like a stalled walk. */
+	private static final java.util.Map<Long, Long> STAND_SEEN_AT = new java.util.HashMap<>();
+	/** Last tick the owner got closer to the stand (or reset after an absence). Not persisted. */
+	private static final java.util.Map<Long, Long> STAND_PROGRESS_AT = new java.util.HashMap<>();
+	/** Longer than any normal gap between two builder calls (cooldowns are up to 100 ticks), shorter than a supply trip. */
+	static final long STAND_ABSENCE_TICKS = 200L;
+
+	/**
+	 * Called on every stand evaluation of a plan. After an absence (the owner was busy with other jobs, e.g. fetching
+	 * material) the old distance record, route record and timers describe the previous walk, not this one, so they are
+	 * dropped; otherwise the first call after the return reads as "1200 ticks without getting closer" and aborts the plan.
+	 * Returns true when such a reset happened.
+	 */
+	static boolean noteStandVisit(long key, long now) {
+		Long last = STAND_SEEN_AT.put(key, now);
+		if (last == null) {
+			STAND_PROGRESS_AT.put(key, now);
+			return false;
+		}
+		if (now - last <= STAND_ABSENCE_TICKS) return false;
+		STAND_BEST.remove(key);
+		STAND_MOVE_ANCHOR.remove(key);
+		STAND_BEST_NODES.remove(key);
+		STAND_FAILURE_SINCE.remove(key);
+		STAND_PROGRESS_AT.put(key, now);
+		return true;
+	}
+
+	static void noteStandProgress(long key, long now) {
+		STAND_PROGRESS_AT.put(key, now);
+	}
+
+	static long standProgressAge(long key, long now) {
+		return now - STAND_PROGRESS_AT.getOrDefault(key, now);
+	}
+
+	static void forgetStandWatch(long key) {
+		STAND_SEEN_AT.remove(key);
+		STAND_PROGRESS_AT.remove(key);
+		STAND_HANDOVERS.remove(key);
+	}
+
+	/** Owners that could not get to a plan's work stand although the site is walkable from the street (stuck in a pen, boxed in). */
+	private static final java.util.Map<java.util.UUID, Long> PLAN_OWNER_EXCLUDED_UNTIL = new java.util.HashMap<>();
+	private static final java.util.Map<Long, Integer> STAND_HANDOVERS = new java.util.HashMap<>();
+	static final long STUCK_OWNER_EXCLUSION_TICKS = 2400L;
+	static final int MAX_STAND_HANDOVERS = 3;
+
+	static void excludePlanOwner(java.util.UUID owner, long until) {
+		PLAN_OWNER_EXCLUDED_UNTIL.put(owner, until);
+	}
+
+	static boolean planOwnerExcluded(java.util.UUID owner, long now) {
+		Long until = PLAN_OWNER_EXCLUDED_UNTIL.get(owner);
+		if (until == null) return false;
+		if (until <= now) {
+			PLAN_OWNER_EXCLUDED_UNTIL.remove(owner);
+			return false;
+		}
+		return true;
+	}
+
+	/** Some plausible stand column around the plan can be walked back to the village street (the site itself is not the problem). */
+	private static boolean siteWalkableFromStreet(Ctx c, VillageRef ref, BlockPos origin, Direction dir, List<Step> steps) {
+		BlockPos street = villageReturn(c.level(), ref.bell());
+		if (street == null) return false;
+		int minX = origin.getX(), maxX = minX, minZ = origin.getZ(), maxZ = minZ, ext = 2;
+		for (Step step : steps) {
+			BlockPos p = step.pos();
+			minX = Math.min(minX, p.getX()); maxX = Math.max(maxX, p.getX());
+			minZ = Math.min(minZ, p.getZ()); maxZ = Math.max(maxZ, p.getZ());
+			ext = Math.max(ext, (p.getX() - origin.getX()) * dir.getStepX() + (p.getZ() - origin.getZ()) * dir.getStepZ());
+		}
+		BlockPos[] columns = {origin.relative(dir, ext + 3), new BlockPos((minX + maxX) / 2, origin.getY(), minZ - 3),
+			new BlockPos((minX + maxX) / 2, origin.getY(), maxZ + 3), new BlockPos(minX - 3, origin.getY(), (minZ + maxZ) / 2),
+			new BlockPos(maxX + 3, origin.getY(), (minZ + maxZ) / 2)};
+		for (BlockPos column : columns) {
+			BlockPos feet = standOnColumn(c.level(), column.getX(), column.getZ(), origin.getY());
+			if (feet != null && Math.abs(feet.getY() - origin.getY()) <= 4 && Sites.walksBackTo(c.level(), feet, street)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * The owner cannot reach the stand but the site can be walked from the village: the owner, not the plot, is the problem
+	 * (boxed in, caught in a fenced pen). Keep the plot and its cleared trees, bench this owner for a while and let the next
+	 * eligible resident take over. Limited per plan so a genuinely unreachable plot is still dropped.
+	 */
+	private static boolean handOverStuckOwner(Ctx c, VillageRef ref, VillageData d, BlockPos origin, Direction dir, List<Step> steps, String reason) {
+		if (!civicSite(d.planType) || d.planStep != 0 || steps == null) return false;
+		if (STAND_HANDOVERS.getOrDefault(origin.asLong(), 0) >= MAX_STAND_HANDOVERS) return false;
+		if (!siteWalkableFromStreet(c, ref, origin, dir, steps)) return false;
+		int count = STAND_HANDOVERS.merge(origin.asLong(), 1, Integer::sum);
+		excludePlanOwner(c.v().getUUID(), c.now() + STUCK_OWNER_EXCLUSION_TICKS);
+		STAND_BEST.remove(origin.asLong());
+		STAND_MOVE_ANCHOR.remove(origin.asLong());
+		STAND_BEST_NODES.remove(origin.asLong());
+		STAND_FAILURE_SINCE.remove(origin.asLong());
+		noteStandProgress(origin.asLong(), c.now());
+		c.v().getNavigation().stop();
+		c.v().getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
+		LOGGER.info("Villagers: Repurposed: Bau '{}' Schritt 0: Besitzer {} kommt nicht zum Stand ({}), der Bauplatz ist von der Dorfstrasse aus begehbar: Besitzer pausiert {} Ticks, Plan bleibt (Uebergabe {}/{})",
+			d.planType, c.v().blockPosition().toShortString(), reason, STUCK_OWNER_EXCLUSION_TICKS, count, MAX_STAND_HANDOVERS);
+		return true;
+	}
+
+	/** Diagnostic: block map around a worker, one 9x9 layer per row group (feet, head, below), chars: . air, # solid, d door, f fence/wall/gate, l leaves, t trunk, w water, p plant. */
+	static String surroundings(ServerLevel level, BlockPos center, int radius) {
+		StringBuilder out = new StringBuilder();
+		for (int dy : new int[]{0, 1, -1}) {
+			out.append(dy == 0 ? "\nFuesse:" : dy == 1 ? "\nKopf:" : "\nBoden:");
+			for (int dz = -radius; dz <= radius; dz++) {
+				out.append('\n');
+				for (int dx = -radius; dx <= radius; dx++) {
+					BlockPos q = center.offset(dx, dy, dz);
+					BlockState st = level.getBlockState(q);
+					char ch;
+					if (dx == 0 && dz == 0 && dy == 0) ch = '@';
+					else if (st.isAir()) ch = '.';
+					else if (!st.getFluidState().isEmpty()) ch = 'w';
+					else if (st.is(net.minecraft.tags.BlockTags.DOORS) || st.is(net.minecraft.tags.BlockTags.TRAPDOORS)) ch = 'd';
+					else if (st.is(net.minecraft.tags.BlockTags.FENCES) || st.is(net.minecraft.tags.BlockTags.FENCE_GATES) || st.is(net.minecraft.tags.BlockTags.WALLS)) ch = 'f';
+					else if (st.is(net.minecraft.tags.BlockTags.LEAVES)) ch = 'l';
+					else if (st.is(net.minecraft.tags.BlockTags.LOGS)) ch = 't';
+					else if (st.getCollisionShape(level, q).isEmpty()) ch = 'p';
+					else ch = '#';
+					out.append(ch);
+				}
+			}
+		}
+		return out.toString();
+	}
+
+	/** Diagnostic: last stand and last report tick per civic plan origin. */
+	private static final java.util.Map<Long, BlockPos> STAND_LAST = new java.util.HashMap<>();
+	private static final java.util.Map<Long, Long> STAND_DIAG_AT = new java.util.HashMap<>();
 	/** First tick without a reachable stand; reset after recovery or server restart. */
 	private static final java.util.Map<Long, Long> STAND_FAILURE_SINCE = new java.util.HashMap<>();
 	/** Step 0 gives up well before the 20000-tick walk budget when the stand is not getting closer. */
@@ -6170,6 +6336,7 @@ public final class Builder {
 		}
 		PREP_RECORD.remove(origin.asLong());
 		STAND_BEST.remove(origin.asLong());
+		forgetStandWatch(origin.asLong());
 		PLAN_DIAGNOSTICS.remove(origin.asLong());
 		if (REPAIRS.remove(origin.asLong())) {
 			JobUtil.tellNearbyPlayers(c.level(), c.v(), 40, Component.literal("Ausgebessert: " + label(d.planType) + "."));
