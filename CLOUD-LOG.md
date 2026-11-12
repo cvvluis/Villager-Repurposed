@@ -216,3 +216,12 @@ Neu: professionMapping (alle Mod-Berufe mit Compat.jobKey; erwartete Berufe von 
 Gemessenes Mapping Compat.jobKey: morevillagers:explorer->cartographer, hunter->butcher, miner->mason, woodworker->fletcher; porter (ohne Tag/Schluesselwort): enderian, engineer, florist, iceman, netherian, oceanographer,
 village_taverns:bartender, chefsdelight:chef/cook (Koch wird in JobManager.jobFor separat zu COOK, nicht ueber jobKey). Serene Seasons Tags (Members): spring 19, summer 28, autumn 20, winter 11, year_round 8.
 Nicht geaendert: Mapping (Designentscheidung des Nutzers), kein Saison-Verhalten im Farmer. Weiter offen: FD-Adapter (Klassenladerisiko ohne Mod), T&T-Headless, EMF/ETF nur Client.
+
+## P2/P4d Mine-Kit (Agent claude/mine-supplies, gemergt)
+Ursache (Agent, Naturlauf base2, Taiga): das Mine-Kit verlangte pro Abschnitt 1 Eiche-Brett als Gehweg, auch fuer Abschnitte ohne Stuetzen/Fackel; Fichtendorf kann es nicht herstellen -> Rudolf WAITING ab Tick 33138 (req f/p/w/t=0/0/1/0).
+Nach dem 12000-Tick-Fallback lief ensureMineSupplies weiter (Seiteneffekt: Stollen verlassen, Depotweg) gegen den Arbeitsbefehl -> Jakob pendelte ab Tick 51677 am Eingang. Zeitlinie base2: erster Handbruch 27347, erster gegrabener Block 49827, Tiefe 3 bei 51637, dann Stillstand bis >=72600.
+Aenderung (Mining.java, MineKitChecks.java, Checks090): Gehweg blockiert nie (nur Stuetzen/Balken/Fackeln), ein Depotbesuch deckt bis 6 Abschnitte voraus ab (nur was vollstaendig im Depot liegt), Fallback pro Abschnitt ohne Nachschubweg. Neue Gruppe minekit (9).
+Nach Merge von mir (je 1 Lauf): minekit 9, mining 68, miningcycle 199, minelifecycle 35, minewalk 27, surfacestone 13, planstonesupply 22, strandrescue 19, roles 112. (Agent: mining einmal fehlgeschlagen, danach 3/3 gruen - bekannter Flake.)
+Natur: kein belastbarer Vorher/Nachher-Beleg (ungeforcet: kein Steinbedarf/keine Mine in 30 Sprints; erzwungen: Handgrabung dominiert). Offen: Fackelabschnitte ohne Kohle warten bis 12000 Ticks.
+## Vorbestehender Fehler: Gruppe gravelcycle
+FAIL "the next lit section crafts and carries a torch from real public charcoal and stick stock without advancing e..." - verifiziert von mir: identische Meldung auf dem urspruenglichen Stand 01db13e (eigener Worktree, 1 Lauf) und nach allen Merges. NICHT durch diese Nacht verursacht, nicht behoben, Ursache nicht untersucht.
