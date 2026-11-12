@@ -12,6 +12,7 @@ import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -26,6 +27,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.entity.HopperBlockEntity;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 public final class JobUtil {
 	private static final long APPROACH_RETRY_COOLDOWN = 40L;
@@ -51,6 +53,9 @@ public final class JobUtil {
 	static final int STRAND_MAX_ROUTE_NODES = 4;
 	private static final Map<UUID, StrandWatch> STRAND_WATCH = new HashMap<>();
 	private static final Map<UUID, Long> STRAND_QUIET_UNTIL = new HashMap<>();
+	private static final Map<UUID, Long> PERCH_NUDGE_AT = new HashMap<>();
+	private static final Map<UUID, Integer> PERCH_REPEATS = new HashMap<>();
+	static final long PERCH_NUDGE_SPACING = 60L;
 	private record SharedStandReservation(BlockPos target, BlockPos stand, long expiresAt) { }
 
 	private JobUtil() {
@@ -87,6 +92,8 @@ public final class JobUtil {
 		longRouteCacheReuses = 0L;
 		STRAND_WATCH.clear();
 		STRAND_QUIET_UNTIL.clear();
+		PERCH_NUDGE_AT.clear();
+		PERCH_REPEATS.clear();
 	}
 
 	/** Records one failed long route; a move of more than 2 blocks since the first failure restarts the count. */
@@ -147,6 +154,97 @@ public final class JobUtil {
 		}
 	}
 
+	/**
+	 * Stand position (bottom centre of the feet cell) next to a villager that stands ON a tall collision block (fence, wall, closed
+	 * gate: collision height 1.5), or null when it is not perched or no safe spot is near. Vanilla ground navigation cannot start a
+	 * path from such a perch (the start cell counts as blocked, so every route fails with a one-node path) although the villager got
+	 * up there from a neighbouring full block (step height 0.6), so it stays frozen forever. The spot lies within two blocks, needs
+	 * a free body box, a sturdy dry floor that is neither fire, magma, cactus nor a berry bush and at most three blocks lower;
+	 * for distance two the cell in between must be free at perch height. A real drop of one block or more is preferred over the
+	 * top of a neighbouring block (which is within step height of the post again), then the nearer spot.
+	 */
+	static Vec3 perchStepOff(ServerLevel level, Villager v) {
+		BlockPos feet = v.blockPosition();
+		BlockPos support = feet.below();
+		if (!level.hasChunkAt(support)) return null;
+		VoxelShape shape = level.getBlockState(support).getCollisionShape(level, support);
+		if (shape.isEmpty() || shape.max(Direction.Axis.Y) <= 1.0001) return null;
+		double top = support.getY() + shape.max(Direction.Axis.Y);
+		if (Math.abs(v.getY() - top) > 0.1) return null;
+		Vec3 best = null;
+		double bestRank = Double.MAX_VALUE;
+		for (int dx = -2; dx <= 2; dx++) for (int dz = -2; dz <= 2; dz++) {
+			if (dx == 0 && dz == 0) continue;
+			int distance = Math.max(Math.abs(dx), Math.abs(dz));
+			if (distance == 2) {
+				BlockPos mid = feet.offset(dx / 2, 0, dz / 2);
+				if (!level.hasChunkAt(mid) || !level.getBlockState(mid).getCollisionShape(level, mid).isEmpty()
+					|| !level.getBlockState(mid.above()).getCollisionShape(level, mid.above()).isEmpty()) continue;
+			}
+			BlockPos column = feet.offset(dx, 0, dz);
+			if (!level.hasChunkAt(column)) continue;
+			for (int drop = 0; drop <= 3; drop++) {
+				BlockPos stand = column.below(drop);
+				BlockPos floor = stand.below();
+				if (!level.hasChunkAt(floor)) break;
+				if (!level.getBlockState(stand).getFluidState().isEmpty()) break;
+				var floorState = level.getBlockState(floor);
+				VoxelShape floorShape = floorState.getCollisionShape(level, floor);
+				if (floorShape.isEmpty()) {
+					// Nothing to stand on yet: only continue when the body can fall through this cell.
+					if (!level.getBlockState(stand).getCollisionShape(level, stand).isEmpty()) break;
+					continue;
+				}
+				double standY = floor.getY() + floorShape.max(Direction.Axis.Y);
+				boolean safe = floorState.getFluidState().isEmpty() && floorState.isFaceSturdy(level, floor, Direction.UP)
+					&& !floorState.is(net.minecraft.world.level.block.Blocks.MAGMA_BLOCK) && !floorState.is(net.minecraft.world.level.block.Blocks.CACTUS)
+					&& !floorState.is(net.minecraft.world.level.block.Blocks.CAMPFIRE) && !floorState.is(net.minecraft.world.level.block.Blocks.SOUL_CAMPFIRE)
+					&& !floorState.is(net.minecraft.world.level.block.Blocks.SWEET_BERRY_BUSH) && !floorState.is(net.minecraft.tags.BlockTags.FIRE);
+				double cx = stand.getX() + 0.5, cz = stand.getZ() + 0.5;
+				double down = v.getY() - standY;
+				if (safe && down >= -0.01
+					&& level.noCollision(v, v.getBoundingBox().move(cx - v.getX(), standY - v.getY(), cz - v.getZ()))) {
+					double rank = (down >= 1.0 ? 0.0 : 100.0) + distance * 10.0 + Math.abs(down);
+					if (rank < bestRank) {
+						bestRank = rank;
+						best = new Vec3(cx, standY, cz);
+					}
+				}
+				break;
+			}
+		}
+		return best;
+	}
+
+	/**
+	 * Sets a villager that stands on a fence-like perch down on the nearest safe floor (at most two blocks sideways, at most three
+	 * down). Called when a walk makes no progress; rate limited per villager. Returns true when the villager was moved.
+	 */
+	static boolean stepOffPerch(Ctx c) {
+		Villager v = c.v();
+		if (!v.onGround()) return false;
+		UUID id = v.getUUID();
+		long last = PERCH_NUDGE_AT.getOrDefault(id, -1_000_000L);
+		// A villager that climbs back onto a post right after being set down (something keeps sending it there) is moved less and
+		// less often: the spacing doubles with every repeat inside 400 ticks, up to 2400 ticks.
+		int repeats = c.now() - last <= 400L ? PERCH_REPEATS.getOrDefault(id, 0) : 0;
+		if (c.now() - last < Math.min(2400L, PERCH_NUDGE_SPACING << Math.min(repeats, 6))) return false;
+		Vec3 stand = perchStepOff(c.level(), v);
+		if (stand == null) return false;
+		if (PERCH_NUDGE_AT.size() > 512) { PERCH_NUDGE_AT.clear(); PERCH_REPEATS.clear(); }
+		PERCH_NUDGE_AT.put(id, c.now());
+		PERCH_REPEATS.put(id, c.now() - last <= 400L ? repeats + 1 : 1);
+		Vec3 from = v.position();
+		v.getNavigation().stop();
+		v.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
+		v.setDeltaMovement(Vec3.ZERO);
+		v.teleportTo(stand.x, stand.y, stand.z);
+		v.resetFallDistance();
+		org.slf4j.LoggerFactory.getLogger("villagerplus").info("Villagers: Repurposed: {} stand auf einem Zaunpfosten bei {} und wurde auf den Boden bei {} gesetzt",
+			c.mem().name, from, stand);
+		return true;
+	}
+
 	/** A cached failed search must not leave vanilla navigation retrying the same long target each AI tick. */
 	private static void clearUnreachableWalkTarget(Villager villager) {
 		villager.getNavigation().stop();
@@ -184,6 +282,7 @@ public final class JobUtil {
 			st.stuckCount++;
 			c.v().getNavigation().stop();
 			c.v().getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
+			stepOffPerch(c);
 			if (st.stuckCount >= 3) {
 				abortApproach(c, APPROACH_TASK_COOLDOWN);
 				return false;
@@ -356,7 +455,10 @@ public final class JobUtil {
 		var route=de.villagerplus.build.Builder.workPath(c,pos);
 		if(route==null||!route.canReach()) {
 			LONG_ROUTE_ATTEMPTS.put(workerId, new LongRouteAttempt(pos.immutable(), null, c.now() + LONG_ROUTE_CACHE_TICKS));
-			if (route == null || route.getNodeCount() <= STRAND_MAX_ROUTE_NODES) noteRouteFailure(workerId, c.v().blockPosition(), c.now());
+			if (route == null || route.getNodeCount() <= STRAND_MAX_ROUTE_NODES) {
+				noteRouteFailure(workerId, c.v().blockPosition(), c.now());
+				stepOffPerch(c);
+			}
 			clearUnreachableWalkTarget(c.v());
 			rememberLongRouteDiagnostic(c.v(), "unreachable from=" + c.v().blockPosition().toShortString() + " goal=" + pos.toShortString()
 				+ " route=" + (route == null ? "null" : route.getNodeCount() + " nodes"));
