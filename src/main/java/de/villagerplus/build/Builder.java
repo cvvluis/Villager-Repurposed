@@ -2979,12 +2979,17 @@ public final class Builder {
 				PoiManager.Occupancy.ANY);
 			if (d.popAtLastHouse == 0) { d.popAtLastHouse = pop; ref.dirty(); }
 			boolean needHouse = needsHouse(pop, homeless, homes);
+			// Dev hook only: without bed demand (CTOV villages start with more beds than residents) no house is ever planned.
+			boolean forcedHouseDemand = FORCE_HOUSE_STEP_SEARCH && pop >= 2 && !d.hasBuildProjectType(Blueprints.HOUSE);
+			if (forcedHouseDemand) needHouse = true;
 			needsBeds = needHouse;
 			String special = nextSpecial(ref, pop);
 			boolean deferStorageExpansion = Development.deferStorageExpansion(special);
 			boolean firstPublicStorageMissing = firstPublicStorageMissing(level, d);
 			boolean storageNeedsExpansion = Development.needsStorage(box, d, level) && storageFree(c, ref);
-			if (specialSiteSearchStalled(ref, special, c.now(), needHouse, homeless) && !d.hasBuildProjectType(Blueprints.HOUSE)) {
+			if (forcedHouseDemand) {
+				type = Blueprints.HOUSE;
+			} else if (specialSiteSearchStalled(ref, special, c.now(), needHouse, homeless) && !d.hasBuildProjectType(Blueprints.HOUSE)) {
 				// A milestone without any site must not starve the homeless: houses go first while the search keeps trying.
 				type = Blueprints.HOUSE;
 			} else if (shouldExpandStorageUnderPressure(null, special, storageNeedsExpansion, firstPublicStorageMissing, needHouse)
@@ -5233,8 +5238,9 @@ public final class Builder {
 	private static final Map<Long, Long> HOUSE_SITE_DIAG_AT = new HashMap<>();
 	/**
 	 * Dev/test hook: with the environment variable {@code VP_FORCE_HOUSE_STEP_SEARCH=1} a new catalog house skips the random
-	 * and tolerant site paths and goes straight to the step-wise search. Natural runs use it to observe that search, which
-	 * the random paths otherwise pre-empt. Never set in normal play.
+	 * and tolerant site paths and goes straight to the step-wise search, and the mason plans a house first even without bed
+	 * demand. Natural runs use it to observe that search on real terrain; the demand and the random paths otherwise pre-empt
+	 * it. Never set in normal play.
 	 */
 	static final boolean FORCE_HOUSE_STEP_SEARCH = "1".equals(System.getenv("VP_FORCE_HOUSE_STEP_SEARCH"));
 
