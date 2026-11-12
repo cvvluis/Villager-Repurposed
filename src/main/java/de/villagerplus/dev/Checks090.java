@@ -424,6 +424,10 @@ public final class Checks090 {
    int checks=count;
    source.sendSuccess(()->Component.literal("VP090 houseplot PASS "+checks+" checks"),false);return checks;
   }
+  if(mode.equals("housesitesearch")) {
+   int count=de.villagerplus.build.HouseSiteSearchChecks.run(level,new BlockPos(36000,201,36000));
+   source.sendSuccess(()->Component.literal("VP090 housesitesearch PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("houseconnection")) {
    int count=de.villagerplus.build.HouseConnectionChecks.run(level,new BlockPos(24200,201,24200));
    source.sendSuccess(()->Component.literal("VP090 houseconnection PASS "+count+" checks"),false);return count;

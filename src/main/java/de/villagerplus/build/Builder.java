@@ -3263,16 +3263,8 @@ public final class Builder {
 				: type.equals(Blueprints.WELL) ? 14 : type.equals(Blueprints.DECOR) ? 16 : type.equals(Blueprints.TOWNHALL) ? 22 : type.equals(Blueprints.STORAGE) || type.equals(Blueprints.SCHOOL) || Blueprints.special(type) ? 72 : 36;
 			int half = type.equals(Blueprints.FARM) ? variant / 10 : Blueprints.half(type);
 			int headroom = Blueprints.headroom(type);
-			String houseSearchDimension = level.dimension().identifier().toString() + ":";
-			HOUSE_SITE_SEARCHES.entrySet().removeIf(entry -> entry.getKey().startsWith(houseSearchDimension)
-				&& c.now() - entry.getValue().lastUsedAt > 24000L);
 			HouseSiteSearch ongoingHouseSearch = type.equals(Blueprints.HOUSE)
-				? HOUSE_SITE_SEARCHES.get(houseSiteSearchKey(level, ref)) : null;
-			if (ongoingHouseSearch != null && (ongoingHouseSearch.minRadius != houseMinRadiusForPlan
-				|| !needsNaturalHousePreparation(type, ongoingHouseSearch.variant, source != null))) {
-				HOUSE_SITE_SEARCHES.remove(houseSiteSearchKey(level, ref));
-				ongoingHouseSearch = null;
-			}
+				? ongoingHouseSiteSearch(c, ref, houseMinRadiusForPlan, source != null) : null;
 			if (ongoingHouseSearch != null) {
 				variant = ongoingHouseSearch.variant;
 				design = designForPlan(type, variant);
@@ -3313,7 +3305,10 @@ public final class Builder {
 				int searchMax = Math.min(Config.VILLAGE_RADIUS - 8, max + attempt * 8);
 				int normalAttempts = architect(type) ? 48 : 30;
 				int tolerantAttempts = architect(type) ? 96 : 60;
-				if (shouldPreferPreparedExpansionParcel(type, variant, source != null, d.houses, needsBeds,
+				// Dev hook (VP_FORCE_HOUSE_STEP_SEARCH=1): skip every random path so the step-wise search below is exercised.
+				boolean skipRandomHousePaths = FORCE_HOUSE_STEP_SEARCH && Blueprints.HOUSE.equals(type)
+					&& needsNaturalHousePreparation(type, variant, source != null);
+				if (!skipRandomHousePaths && shouldPreferPreparedExpansionParcel(type, variant, source != null, d.houses, needsBeds,
 					preparedExpansionParcel.isPresent())) {
 					BlockPos preferred = preparedExpansionHouseCandidate(c, ref, preparedExpansionParcel.orElseThrow(),
 						variant, design, style, min, searchMax);
@@ -3339,15 +3334,15 @@ public final class Builder {
 					if (site == null) site = ZoneAwareSites.findTolerantCentral(level, ref, type, center, c.v().getRandom(), 32,
 						-half, half, -half, half, headroom + 1, fits);
 				}
-				if (site == null) {
+				if (site == null && !skipRandomHousePaths) {
 						site = ZoneAwareSites.find(level, ref, type, c.v().getRandom(), min, searchMax, half, headroom, normalAttempts, fits);
 				}
-				if (site == null) {
+				if (site == null && !skipRandomHousePaths) {
 					// Huegeliges Gelaende (z.B. Overhauled Villages): leicht unebene Plaetze werden eingeebnet.
 					site = ZoneAwareSites.findTolerant(level, ref, type, c.v().getRandom(), min, searchMax, -half, half, -half, half,
 						headroom + 1, tolerantAttempts, fits);
 				}
-				if (site == null && needsNaturalHousePreparation(type, variant, source != null)) {
+				if (site == null && !skipRandomHousePaths && needsNaturalHousePreparation(type, variant, source != null)) {
 					// Natural tree height makes the generic flat-site scan skip the ground beneath it. Search those
 					// bounded candidates with the rooted-tree-aware house preflight before giving up on this design.
 					site = findHouseLot(c, ref, variant, design, style, min, searchMax, normalAttempts);
@@ -3376,53 +3371,20 @@ public final class Builder {
 				Sites.margin = 3;
 			}
 			if (site == null && needsNaturalHousePreparation(type, variant, source != null)) {
-				HouseSiteSearch search = ongoingHouseSearch;
-				if (search == null) {
-					search = new HouseSiteSearch(variant, c.v().getRandom().nextLong(), houseMinRadiusForPlan, c.now());
-					HOUSE_SITE_SEARCHES.put(houseSiteSearchKey(level, ref), search);
-				}
-				ongoingHouseSearch = search;
-				search.lastUsedAt = c.now();
-				if (c.now() < search.retryAt) {
-					c.st().buildCheckAt = search.retryAt;
+				HouseSiteStep step = stepHouseSiteSearch(c, ref, style, type, ongoingHouseSearch, variant, houseMinRadiusForPlan);
+				ongoingHouseSearch = step.search();
+				if (step.waiting()) {
+					c.st().buildCheckAt = step.search().retryAt;
 					return false;
 				}
-				int searchMax = Math.min(88, Config.VILLAGE_RADIUS - 8);
-				int searchHalf = siteHalf(type, search.variant, designForPlan(type, search.variant));
-				int searchHeadroom = siteHeadroom(type, search.variant, designForPlan(type, search.variant));
-				Architect.Design searchDesign = designForPlan(type, search.variant);
-				int searchVariant = search.variant;
-				String searchType = type;
-				if (templateEligible(searchDesign)) {
-					searchHalf = Math.max(searchHalf, 4);
-					searchHeadroom = Math.max(searchHeadroom, 10);
-				}
-				Sites.margin = 2;
-				Sites.SearchPage page;
-				try {
-					page = Sites.findHouseSitePage(level, ref.bell(), search.minRadius, searchMax,
-						search.nextCandidate, HOUSE_SITE_CANDIDATE_BUDGET, search.phaseSeed, search.visitedColumns,
-						p -> siteCandidateAnchor(c, ref, searchType, searchVariant, searchDesign, style, p, ref.bell()),
-						Sites.villageReferenceY(level, ref.bell()));
-				} finally {
-					Sites.margin = 3;
-				}
-				search.nextCandidate = page.nextCandidate();
-				if (page.site() == null) {
-					if (page.complete()) {
-						long seed = ((long) c.v().getRandom().nextInt(1 << 22) << 6) | Palette.profileCode(level, ref.bell());
-						seed = Architect.withSizeTier(seed, nextSizeTier(ref, type));
-						search.restart(newPlanVariant(type, seed), c.v().getRandom().nextLong(), c.now() + HOUSE_SITE_REPROBE_TICKS);
-					}
-					else search.retryAt = c.now() + HOUSE_SITE_RETRY_TICKS;
-					c.st().buildCheckAt = search.retryAt;
+				if (step.site() == null) {
+					c.st().buildCheckAt = step.search().retryAt;
 				} else {
-					search.retryAt = c.now() + HOUSE_SITE_RETRY_TICKS;
-					site = page.site();
-					variant = search.variant;
-					design = searchDesign;
-					half = searchHalf;
-					headroom = searchHeadroom;
+					site = step.site();
+					variant = step.variant();
+					design = step.design();
+					half = step.half();
+					headroom = step.headroom();
 				}
 			}
 			if (site == null) {
@@ -3608,7 +3570,7 @@ public final class Builder {
 			CIVIC_SITE_SEARCHES.remove(ref.bell().asLong());
 			d.extra.civicSiteSearch = Optional.empty();
 		}
-		if (type.equals(Blueprints.HOUSE)) HOUSE_SITE_SEARCHES.remove(houseSiteSearchKey(level, ref));
+		if (type.equals(Blueprints.HOUSE)) dropHouseSiteSearch(level, ref);
 		if (architect(type) && source == null && !constructionPhaseEnds.isEmpty()) {
 			ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.CONSTRUCTION,
 				new ConstructionSite(site, List.of(), constructionPhaseEnds, false, constructionPaletteIds));
@@ -5264,15 +5226,26 @@ public final class Builder {
 	private static final int HOUSE_SITE_CANDIDATE_BUDGET = 96;
 	private static final long HOUSE_SITE_RETRY_TICKS = 20L;
 	private static final long HOUSE_SITE_REPROBE_TICKS = 1200L;
+	/** An idle house search (no call for this long) is dropped, in memory and in the saved village data. */
+	private static final long HOUSE_SITE_STALE_TICKS = 24000L;
 	private static final Map<String, HouseSiteSearch> HOUSE_SITE_SEARCHES = new HashMap<>();
+	/** Throttle of the "fortgesetzt" progress line per village bell. */
+	private static final Map<Long, Long> HOUSE_SITE_DIAG_AT = new HashMap<>();
+	/**
+	 * Dev/test hook: with the environment variable {@code VP_FORCE_HOUSE_STEP_SEARCH=1} a new catalog house skips the random
+	 * and tolerant site paths and goes straight to the step-wise search. Natural runs use it to observe that search, which
+	 * the random paths otherwise pre-empt. Never set in normal play.
+	 */
+	static final boolean FORCE_HOUSE_STEP_SEARCH = "1".equals(System.getenv("VP_FORCE_HOUSE_STEP_SEARCH"));
 
-	private static final class HouseSiteSearch {
+	static final class HouseSiteSearch {
 		int variant;
 		final int minRadius;
 		long phaseSeed;
 		int nextCandidate;
 		long retryAt;
 		long lastUsedAt;
+		/** Not persisted: only de-duplicates columns inside one session; after a restart the cursor alone resumes the sweep. */
 		final Set<Long> visitedColumns = new HashSet<>();
 
 		HouseSiteSearch(int variant, long phaseSeed, int minRadius, long now) {
@@ -5282,6 +5255,12 @@ public final class Builder {
 			this.lastUsedAt = now;
 		}
 
+		HouseSiteSearch(de.villagerplus.village.VillageData.Extra.HouseSiteSearch saved) {
+			this(saved.variant(), saved.phaseSeed(), saved.minRadius(), saved.lastUsedAt());
+			nextCandidate = saved.nextCandidate();
+			retryAt = saved.retryAt();
+		}
+
 		void restart(int nextVariant, long nextPhaseSeed, long nextRetryAt) {
 			variant = nextVariant;
 			phaseSeed = nextPhaseSeed;
@@ -5289,10 +5268,143 @@ public final class Builder {
 			retryAt = nextRetryAt;
 			visitedColumns.clear();
 		}
+
+		int nextCandidate() { return nextCandidate; }
 	}
 
 	private static String houseSiteSearchKey(ServerLevel level, VillageRef ref) {
 		return level.dimension().identifier().toString() + ":" + ref.bell().asLong();
+	}
+
+	private static void persistHouseSiteSearch(VillageRef ref, HouseSiteSearch search) {
+		ref.data().extra.houseSiteSearch = Optional.of(new de.villagerplus.village.VillageData.Extra.HouseSiteSearch(
+			search.variant, search.minRadius, search.phaseSeed, search.nextCandidate, search.retryAt, search.lastUsedAt));
+		ref.dirty();
+	}
+
+	/** Ends the house search of this village: memory entry and the saved cursor, so nothing is left behind. */
+	static void dropHouseSiteSearch(ServerLevel level, VillageRef ref) {
+		HOUSE_SITE_SEARCHES.remove(houseSiteSearchKey(level, ref));
+		HOUSE_SITE_DIAG_AT.remove(ref.bell().asLong());
+		if (ref.data().extra.houseSiteSearch.isPresent()) {
+			ref.data().extra.houseSiteSearch = Optional.empty();
+			ref.dirty();
+		}
+	}
+
+	/** Test seam: forget the in-memory searches, as a server restart would. The saved cursor stays in the village data. */
+	static void forgetHouseSiteSearchMemory() {
+		HOUSE_SITE_SEARCHES.clear();
+		HOUSE_SITE_DIAG_AT.clear();
+	}
+
+	static boolean hasHouseSiteSearchInMemory(ServerLevel level, VillageRef ref) {
+		return HOUSE_SITE_SEARCHES.containsKey(houseSiteSearchKey(level, ref));
+	}
+
+	/**
+	 * The running step-wise house search of this village, if any: from memory, else resumed from the saved cursor.
+	 * A search for another minimum radius or a non-catalog plan, or one idle for {@link #HOUSE_SITE_STALE_TICKS}, is dropped.
+	 */
+	static HouseSiteSearch ongoingHouseSiteSearch(Ctx c, VillageRef ref, int minRadius, boolean hasLegacySource) {
+		ServerLevel level = c.level();
+		String dimension = level.dimension().identifier().toString() + ":";
+		HOUSE_SITE_SEARCHES.entrySet().removeIf(entry -> entry.getKey().startsWith(dimension)
+			&& c.now() - entry.getValue().lastUsedAt > HOUSE_SITE_STALE_TICKS);
+		HouseSiteSearch search = HOUSE_SITE_SEARCHES.get(houseSiteSearchKey(level, ref));
+		if (search == null && ref.data().extra.houseSiteSearch.isPresent()) {
+			var saved = ref.data().extra.houseSiteSearch.get();
+			if (c.now() - saved.lastUsedAt() > HOUSE_SITE_STALE_TICKS) {
+				dropHouseSiteSearch(level, ref);
+			} else {
+				search = new HouseSiteSearch(saved);
+				HOUSE_SITE_SEARCHES.put(houseSiteSearchKey(level, ref), search);
+				LOGGER.info("Villagers: Repurposed: Bauplatzsuche fuer 'house' (Glocke {}) aus gespeichertem Cursor wiederaufgenommen (Variante {}, Kandidat {}, Mindestradius {})",
+					ref.bell().toShortString(), search.variant, search.nextCandidate, search.minRadius);
+			}
+		}
+		if (search != null && (search.minRadius != minRadius || !needsNaturalHousePreparation(Blueprints.HOUSE, search.variant, hasLegacySource))) {
+			dropHouseSiteSearch(level, ref);
+			search = null;
+		}
+		return search;
+	}
+
+	/**
+	 * Outcome of one bounded step. {@code waiting}: the retry time has not come, nothing was scanned.
+	 * {@code site} null and not waiting: this page found nothing; {@code search.retryAt} says when the next page runs.
+	 */
+	record HouseSiteStep(HouseSiteSearch search, BlockPos site, int variant, Architect.Design design, int half, int headroom,
+		boolean waiting, boolean pageComplete, int evaluated) { }
+
+	/** One step of the persisted house site search; at most {@link #HOUSE_SITE_CANDIDATE_BUDGET} candidates are checked. */
+	static HouseSiteStep stepHouseSiteSearch(Ctx c, VillageRef ref, VillageStyle style, String type, HouseSiteSearch ongoing,
+			int newVariant, int minRadius) {
+		return stepHouseSiteSearch(c, ref, style, type, ongoing, newVariant, minRadius,
+			Math.min(88, Config.VILLAGE_RADIUS - 8), HOUSE_SITE_CANDIDATE_BUDGET);
+	}
+
+	/** {@code maxRadius} is a test seam (smaller fixture terrain); production always passes the village search radius. */
+	static HouseSiteStep stepHouseSiteSearch(Ctx c, VillageRef ref, VillageStyle style, String type, HouseSiteSearch ongoing,
+			int newVariant, int minRadius, int maxRadius, int budget) {
+		ServerLevel level = c.level();
+		HouseSiteSearch search = ongoing;
+		if (search == null) {
+			search = new HouseSiteSearch(newVariant, c.v().getRandom().nextLong(), minRadius, c.now());
+			HOUSE_SITE_SEARCHES.put(houseSiteSearchKey(level, ref), search);
+			LOGGER.info("Villagers: Repurposed: Bauplatzsuche fuer 'house' (Glocke {}) begonnen (Variante {}, Mindestradius {}): Zufalls- und Toleranzsuche ohne Treffer",
+				ref.bell().toShortString(), search.variant, search.minRadius);
+			persistHouseSiteSearch(ref, search);
+		}
+		search.lastUsedAt = c.now();
+		if (c.now() < search.retryAt) {
+			return new HouseSiteStep(search, null, search.variant, null, 0, 0, true, false, 0);
+		}
+		int searchMax = maxRadius;
+		Architect.Design searchDesign = designForPlan(type, search.variant);
+		int searchHalf = siteHalf(type, search.variant, searchDesign);
+		int searchHeadroom = siteHeadroom(type, search.variant, searchDesign);
+		int searchVariant = search.variant;
+		if (templateEligible(searchDesign)) {
+			searchHalf = Math.max(searchHalf, 4);
+			searchHeadroom = Math.max(searchHeadroom, 10);
+		}
+		int oldMargin = Sites.margin;
+		int evaluatedBefore = SITE_REJECT[0];
+		Sites.margin = 2;
+		Sites.SearchPage page;
+		try {
+			page = Sites.findHouseSitePage(level, ref.bell(), search.minRadius, searchMax,
+				search.nextCandidate, budget, search.phaseSeed, search.visitedColumns,
+				p -> siteCandidateAnchor(c, ref, type, searchVariant, searchDesign, style, p, ref.bell()),
+				Sites.villageReferenceY(level, ref.bell()));
+		} finally {
+			Sites.margin = oldMargin;
+		}
+		search.nextCandidate = page.nextCandidate();
+		if (page.site() == null) {
+			if (page.complete()) {
+				long seed = ((long) c.v().getRandom().nextInt(1 << 22) << 6) | Palette.profileCode(level, ref.bell());
+				seed = Architect.withSizeTier(seed, nextSizeTier(ref, type));
+				search.restart(newPlanVariant(type, seed), c.v().getRandom().nextLong(), c.now() + HOUSE_SITE_REPROBE_TICKS);
+			} else {
+				search.retryAt = c.now() + HOUSE_SITE_RETRY_TICKS;
+			}
+			persistHouseSiteSearch(ref, search);
+			if (c.now() - HOUSE_SITE_DIAG_AT.getOrDefault(ref.bell().asLong(), Long.MIN_VALUE / 2) > 1200) {
+				HOUSE_SITE_DIAG_AT.put(ref.bell().asLong(), c.now());
+				LOGGER.info("Villagers: Repurposed: Bauplatzsuche fuer 'house' (Glocke {}) fortgesetzt (Variante {}, Kandidat {}/{}, besuchte Spalten {}, halbe Kante {}, Hoehe {}, Mindestradius {}), noch kein passender Standort (Bezugshoehe {}, Glocke y {})",
+					ref.bell().toShortString(), searchVariant, page.nextCandidate(), Sites.systematicCandidateCount(search.minRadius, searchMax),
+					search.visitedColumns.size(), searchHalf, searchHeadroom, search.minRadius,
+					Sites.villageReferenceY(level, ref.bell()), ref.bell().getY());
+			}
+			return new HouseSiteStep(search, null, searchVariant, searchDesign, searchHalf, searchHeadroom, false, page.complete(), SITE_REJECT[0] - evaluatedBefore);
+		}
+		search.retryAt = c.now() + HOUSE_SITE_RETRY_TICKS;
+		persistHouseSiteSearch(ref, search);
+		LOGGER.info("Villagers: Repurposed: Bauplatzsuche fuer 'house' (Glocke {}) hat Standort {} gefunden (Variante {}, Kandidat {})",
+			ref.bell().toShortString(), page.site().toShortString(), searchVariant, page.nextCandidate());
+		return new HouseSiteStep(search, page.site(), searchVariant, searchDesign, searchHalf, searchHeadroom, false, false, SITE_REJECT[0] - evaluatedBefore);
 	}
 
 	private static final int CIVIC_SITE_CANDIDATE_BUDGET = 96;
