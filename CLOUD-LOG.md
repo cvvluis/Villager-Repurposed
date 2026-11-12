@@ -235,3 +235,12 @@ Granary 1 stand 3183 Ticks still (Besitzerin Hilde @110,65,-394 'faellt einen Ba
 ("kein Weg zum Bauplatz ... no free reachable stand after 3 probes", worker 110,65,-391) -> naechster granary-Plan @24986. Hilde steht im Teich-/Pavillonbereich (vgl. P4c-Fallen bei 105,65,-393).
 Baumwahl "streng": 154 von 154 Staemmen "im Dorf/Gebaeude" (Dorfgrenzen umfassen den ganzen Suchbereich) - die Fallback-Kette locker/erweitert greift, Hilde faellt Baeume: kein Holzdefekt, aber die Palette (deepslate_bricks x18) ist im Taiga-Dorf kaum beschaffbar.
 Weiterhin: kein Haus/Bau fertig in 48k Ticks.
+
+## P4e Palette beim Planstart (Agent claude/plan-palette, gemergt)
+Ursache (Agent, Naturlauf palbase): Palette.detect liest die CTOV-Haeuser (Waende light_blue/lime_terracotta, Sockel deepslate_bricks, Fenster white_stained_glass_pane) - alle vier Rollen laut Supply.obtainable nicht beschaffbar; Plan startet mit der rohen Palette,
+Beschaffbarkeitspruefung (Supply.obtainablePalette) nur nach Karawanenbesuch oder nach 3000 Ticks Stillstand. Erste 3148 Ticks (Start 2385, Fallback ~5533): Wunschliste unveraendert (crafting_table 1, deepslate_bricks 18, scaffolding 4, spruce_planks 30), Geruest (Bambus/Schnur) nicht herstellbar,
+Holz: Baum 85 Bloecke entfernt unerreichbar. Zweitplan storage stand 14614 Ticks still.
+Aenderung: Builder.detectForPlan ersetzt unbeschaffbare Rollen beim Planstart (Supply.lookAlike: deepslate_bricks->stone_bricks, cobbled_deepslate->cobblestone, bricks->stone_bricks ...; Terrakotta -> Biompalette), ohne Schmelzmoeglichkeit Steinziegel->Bruchstein,
+Variantenbit 2 (Ersatzpalette), Geruest sofort verworfen wenn weder Vorrat noch Rezept (waiveUncraftableScaffolding). Dateien: build/Supply.java, Palette.java, Builder.java, PaletteFallbackChecks.java (Gruppe palettefallback 21), Checks090.
+Nach Merge von mir (je 1 Lauf): palettefallback 21, builderchecks 318, supply 30, planstonesupply 22, builderpaths 79, houseplot 140, milestones 16, constructionsite 21, housesitesearch 36, strandrescue 19. Agent: houses 12748.
+Natur (Agent, Einzellaeufe): palfix2 Wunschliste sofort cobblestone 18 + spruce_planks 30; erster Stein 2097 Ticks nach Planstart (Zweitplan); KEIN Block gesetzt in allen Laeufen; spruce_planks 30 blieb ~17000 Ticks offen (Baeume unerreichbar). Offen: Holzbeschaffung, Terrakotta-Optik -> Bruchstein.
