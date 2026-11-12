@@ -179,7 +179,12 @@ public class VillageData {
 
 		/** Small persisted cursor for resuming a bounded civic building-site scan after reload. */
 		public record CivicSiteSearch(String type, List<Integer> variants, long phaseSeed, int variantIndex,
-			int nextCandidate, boolean tolerant, long retryAt) {
+			int nextCandidate, boolean tolerant, long retryAt, boolean terraced) {
+			public CivicSiteSearch(String type, List<Integer> variants, long phaseSeed, int variantIndex,
+				int nextCandidate, boolean tolerant, long retryAt) {
+				this(type, variants, phaseSeed, variantIndex, nextCandidate, tolerant, retryAt, false);
+			}
+
 			public static final Codec<CivicSiteSearch> CODEC = RecordCodecBuilder.create(i -> i.group(
 				Codec.STRING.optionalFieldOf("type", "").forGetter(CivicSiteSearch::type),
 				Codec.INT.listOf().optionalFieldOf("variants", List.of(0)).forGetter(CivicSiteSearch::variants),
@@ -187,7 +192,8 @@ public class VillageData {
 				Codec.INT.optionalFieldOf("variant_index", 0).forGetter(CivicSiteSearch::variantIndex),
 				Codec.INT.optionalFieldOf("next_candidate", 0).forGetter(CivicSiteSearch::nextCandidate),
 				Codec.BOOL.optionalFieldOf("tolerant", false).forGetter(CivicSiteSearch::tolerant),
-				Codec.LONG.optionalFieldOf("retry_at", 0L).forGetter(CivicSiteSearch::retryAt)
+				Codec.LONG.optionalFieldOf("retry_at", 0L).forGetter(CivicSiteSearch::retryAt),
+				Codec.BOOL.optionalFieldOf("terraced", false).forGetter(CivicSiteSearch::terraced)
 			).apply(i, CivicSiteSearch::new));
 
 			public CivicSiteSearch {
