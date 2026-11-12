@@ -182,3 +182,17 @@ treewalkback 32, woodcuttinggroup 48, buildhaul 20, planstonesupply 22, supply 3
 Beide Agents belegen unabhaengig: der Granary-Besitzer sass auf einem Zaunpfosten eines Teich-Pavillons (165,70,-394), Sites.walksBackTo meldet dort true (Modell laeuft ueber das Fass),
 Vanilla-Pfad 1 Knoten -> rescueStranded greift nicht; Baumregel griff im Naturlauf nie. Offen: Rettung/Modell fuer Pavillon-Fallen (Sites/JobManager), JobUtil.approachLong WALK_TARGET erst nach Langweg-Urteil,
 Farmer-Samensuche (gleicher Typ, FarmerJob), Mine "holt Stollenmaterial".
+
+## Weitere Aenderungen von mir (nach den Agent-Merges)
+- JobManager.rescueStranded: echte Navigation (Builder.workPath zur Strasse: <=4 Knoten, kein kompletter Pfad) schlaegt das Block-Modell Sites.walksBackTo. strandrescue-F2: Pfosten mit komplettem Vanilla-Pfad
+  wird in Ruhe gelassen (Messung: route true/10 Knoten; meine erste Erwartung "Rettung" war falsch, Produktivcode richtig), eingemauerter Pfosten wird gerettet. Echte Pavillon-Falle (Fass-Oberseite, Modell true / Navigation 1 Knoten) NICHT als Fixture nachgebaut.
+- FarmerJob.findSeedGrass: die 3 naechsten Kandidaten brauchen einen Rueckweg (walksBackTo), Mulden-Regionen (Radius 6, +-2 Hoehe) werden 24000 Ticks gemerkt. Anlass: Theo/Martha wurden im Naturlauf m2 je 2x aus derselben Mulde (135,65,-352) geholt.
+  Fixture-Fund: erste Fassung (+-6 Hoehe) verwarf auch erreichbares Randgras -> auf +-2 verkleinert. Zahlen: strandrescue 19 (15 + F2 x2 + Saatgras x2), farmexpand 172.
+## Naturlaeufe auf dem Endstand (je frisch, Seed 4242, 2 Etappen = ~48k Ticks; Einzelwerte, kein Beleg fuer Verbesserung)
+| Lauf | Plan gestartet (Etappe 1 / 2) | fertig | gestrandet (route=true / deep) | unreachable route<=4 |
+|---|---|---|---|---|
+| m2 (vor Saatgras-Fix) | granary+storage / (Etappe 2: 0 Plaene, 12 Rueckholungen, 5x route=true) | 0 | 6 / 12 | 2 / 8 |
+| m3 (Endstand) | granary, storage, granary / storage, farm | 0 | 3 (0x route) / 7 (1x route=true) | 1 / 4 |
+Wiederholte Rueckholung derselben Personen: m2 Theo 2x, Martha 2x, Heinz 4x (Dschungel); m3 Hanna 3x (deep=true, Taiga).
+Ergebnis: P4 (fertiges Haus ohne Fixture) NICHT erreicht; in 48k Ticks nur Planstarts (granary 2349, storage 3007, farm 32418), 1 "Stein gebrochen" in m3 Etappe 2.
+Verbleibende Engpaesse (Zahlen oben und in den Agent-Abschnitten): Steinmenge/-wege, Holz/Gerüst, "holt Stollenmaterial" (Mine grub nur in 1 von 2 Agent-Ketten), wiederholte deep=true-Rueckholungen (Hanna), Dschungel ohne Granary-Plan.
