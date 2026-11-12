@@ -3695,6 +3695,7 @@ public final class Builder {
 	static final long CIVIC_CLEARANCE_RETRY_TICKS = 0L;
 	/** Diagnostic: natural blocks removed so far per civic plan origin (log throttling only). */
 	private static final java.util.Map<Long, Integer> CIVIC_CLEARED = new java.util.HashMap<>();
+	private static final java.util.Map<Long, NaturalSitePreparation.Status> CIVIC_PREP_STATUS = new java.util.HashMap<>();
 
 	/**
 	 * Work volume of a civic site preparation: the exact plan footprint from the anchor height up to the design's headroom.
@@ -4910,38 +4911,49 @@ public final class Builder {
 		List<Step> prepSteps = d.planType.equals(Blueprints.HOUSE)
 			? steps.stream().filter(step -> !Paths.isYardStep(level, origin, dir, step.pos())).toList() : steps;
 		java.util.Set<Long> fp = d.planType.equals(Blueprints.FARM) ? null : FOOT.computeIfAbsent(origin.asLong(), k -> Prep.footprint(prepSteps, origin));
-		if (!helper && d.planStep == 0 && civicSite(d.planType) && architect(d.planType) && !REPAIRS.contains(origin.asLong())) {
+		if (d.planStep == 0 && civicSite(d.planType) && architect(d.planType) && !REPAIRS.contains(origin.asLong())) {
 			// Trees inside a last-resort civic site are removed by the same verified natural-site clearing the house lots use.
 			// A site without natural obstacles reports READY and costs nothing; anything it cannot clear keeps the old behaviour.
 			BlockPos[] prepBox = civicPrepBox(origin, steps, designForPlan(d.planType, d.planVariant).headroom());
-			NaturalSitePreparation.Scan civicPrep = NaturalSitePreparation.clearOne(level, prepBox[0], prepBox[1],
-				MAX_CIVIC_SITE_OBSTACLES, c.v());
-			if (civicPrep.status() == NaturalSitePreparation.Status.CLEARED) {
-				int cleared = CIVIC_CLEARED.merge(origin.asLong(), 1, Integer::sum);
-				if (cleared == 1 || cleared % 25 == 0) {
-					LOGGER.info("Villagers: Repurposed: Bauplatz {} fuer '{}' wird geraeumt: {} Naturbloecke entfernt, zuletzt bei {}, vorher {} Hindernisse",
-						origin.toShortString(), d.planType, cleared, civicPrep.next() == null ? "?" : civicPrep.next().toShortString(), civicPrep.obstacleCount());
+			if (helper) {
+				// Helpers must not start the (free) foundation steps over standing trees; the plan owner clears them first.
+				NaturalSitePreparation.Status pending = NaturalSitePreparation.inspect(level, prepBox[0], prepBox[1], MAX_CIVIC_SITE_OBSTACLES).status();
+				if (pending == NaturalSitePreparation.Status.CLEARABLE || pending == NaturalSitePreparation.Status.WAITING_FOR_CHUNK) return false;
+			} else {
+				NaturalSitePreparation.Scan civicPrep = NaturalSitePreparation.clearOne(level, prepBox[0], prepBox[1],
+					MAX_CIVIC_SITE_OBSTACLES, c.v());
+				if (CIVIC_PREP_STATUS.put(origin.asLong(), civicPrep.status()) != civicPrep.status()) {
+					LOGGER.info("Villagers: Repurposed: Bauplatz {} fuer '{}': Raeumung {} (naechstes Hindernis {}, {} offen)", origin.toShortString(),
+						d.planType, civicPrep.status(), civicPrep.next() == null ? "-" : civicPrep.next().toShortString()
+							+ " " + level.getBlockState(civicPrep.next()).getBlock().getDescriptionId(), civicPrep.obstacleCount());
 				}
-				c.setActivity("raeumt den Bauplatz");
-				d.planProgress = c.now();
-				c.st().cooldownUntil = c.now() + CIVIC_CLEARANCE_RETRY_TICKS;
-				ref.dirty();
-				return true;
-			}
-			if (civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_CHUNK
-				|| civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_ENTITY
-				|| civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_TOOL) {
-				c.setActivity("wartet auf einen freien Bauplatz");
-				d.planProgress = c.now();
-				c.st().cooldownUntil = c.now() + 100;
-				ref.dirty();
-				return true;
-			}
-			if (civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_INVENTORY) {
-				c.setActivity("schafft Platz fuer die Ernte vom Bauplatz");
-				d.planProgress = c.now();
-				ref.dirty();
-				return false;
+				if (civicPrep.status() == NaturalSitePreparation.Status.CLEARED) {
+					int cleared = CIVIC_CLEARED.merge(origin.asLong(), 1, Integer::sum);
+					if (cleared == 1 || cleared % 25 == 0) {
+						LOGGER.info("Villagers: Repurposed: Bauplatz {} fuer '{}' wird geraeumt: {} Naturbloecke entfernt, zuletzt bei {}, vorher {} Hindernisse",
+							origin.toShortString(), d.planType, cleared, civicPrep.next() == null ? "?" : civicPrep.next().toShortString(), civicPrep.obstacleCount());
+					}
+					c.setActivity("raeumt den Bauplatz");
+					d.planProgress = c.now();
+					c.st().cooldownUntil = c.now() + CIVIC_CLEARANCE_RETRY_TICKS;
+					ref.dirty();
+					return true;
+				}
+				if (civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_CHUNK
+					|| civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_ENTITY
+					|| civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_TOOL) {
+					c.setActivity("wartet auf einen freien Bauplatz");
+					d.planProgress = c.now();
+					c.st().cooldownUntil = c.now() + 100;
+					ref.dirty();
+					return true;
+				}
+				if (civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_INVENTORY) {
+					c.setActivity("schafft Platz fuer die Ernte vom Bauplatz");
+					d.planProgress = c.now();
+					ref.dirty();
+					return false;
+				}
 			}
 		}
 		if (d.planStep == 0 && needsNaturalHousePreparation(d.planType, d.planVariant, d.planSource.isPresent())) {
