@@ -2333,9 +2333,12 @@ public final class Builder {
 					boolean insideVillage = savedRoot.getX() >= villageBounds.minX() && savedRoot.getX() <= villageBounds.maxX()
 						&& savedRoot.getY() >= villageBounds.minY() && savedRoot.getY() <= villageBounds.maxY()
 						&& savedRoot.getZ() >= villageBounds.minZ() && savedRoot.getZ() <= villageBounds.maxZ();
+					de.villagerplus.job.Woodcutting.startWalkBackSelection();
 					if (insideVillage || !de.villagerplus.job.Woodcutting.matchesRequestedLog(
 						c.level().getBlockState(savedRoot).getBlock(), demandedLogs)
-						|| planTreeOnRoad(c.level(), savedRoot) || planTreeClaimed(c.level(), c.v(), savedRoot)) {
+						|| planTreeOnRoad(c.level(), savedRoot) || planTreeClaimed(c.level(), c.v(), savedRoot)
+						|| (work.log().isEmpty() && work.stage() < 0 && de.villagerplus.job.Woodcutting.walkBackUnsafe(c.level(),
+							de.villagerplus.job.Woodcutting.walkBackStreet(c.level(), ref), savedRoot))) {
 						work = work.abandonTree();
 						c.v().setAttached(de.villagerplus.VillagerPlus.WOODCUTTER_WORK, work);
 						c.st().clearTarget();
@@ -2466,14 +2469,13 @@ public final class Builder {
 		var village = Development.bounds(level, ref);
 		var sites = relaxed ? de.villagerplus.job.Woodcutting.buildingSites(level, ref) : null;
 		BlockPos.MutableBlockPos probe = new BlockPos.MutableBlockPos();
-		BlockPos best = null;
-		long bestDistance = Long.MAX_VALUE;
-		int seenLogs = 0, inVillage = 0, wrongSpecies = 0, notHarvestable = 0, blocked = 0, unreachable = 0, unloaded = 0;
+		// Cheap filters while scanning; the costly ones (canopy, road, claim, walk-back search) run on the nearest candidates only, nearest first.
+		java.util.List<BlockPos> candidates = new java.util.ArrayList<>();
+		int seenLogs = 0, inVillage = 0, wrongSpecies = 0, notHarvestable = 0, blocked = 0, unreachable = 0, unloaded = 0, noWayBack = 0, deferred = 0;
 		long nearestWrong = Long.MAX_VALUE;
 		String nearestWrongStem = null;
 		for (int dx = -radius; dx <= radius; dx++) for (int dz = -radius; dz <= radius; dz++) {
 			long distance = (long)dx * dx + (long)dz * dz;
-			if (distance >= bestDistance) continue;
 			int x = center.getX() + dx, z = center.getZ() + dz;
 			if (!level.hasChunk(x >> 4, z >> 4)) continue;
 			int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
@@ -2497,17 +2499,32 @@ public final class Builder {
 				}
 				continue;
 			}
+			if (de.villagerplus.job.Woodcutting.treeUnreachable(worker.getUUID(), root, level.getGameTime())) { unreachable++; continue; }
+			candidates.add(root.immutable());
+		}
+		candidates.sort(java.util.Comparator.comparingLong(root -> {
+			long ddx = root.getX() - center.getX(), ddz = root.getZ() - center.getZ();
+			return ddx * ddx + ddz * ddz;
+		}));
+		BlockPos street = de.villagerplus.job.Woodcutting.walkBackStreet(level, ref);
+		de.villagerplus.job.Woodcutting.startWalkBackSelection();
+		BlockPos best = null;
+		for (BlockPos root : candidates) {
 			if (!de.villagerplus.job.Woodcutting.isHarvestableTree(level, root)) { notHarvestable++; continue; }
 			if (planTreeOnRoad(level, root) || planTreeClaimed(level, worker, root)) { blocked++; continue; }
-			if (de.villagerplus.job.Woodcutting.treeUnreachable(worker.getUUID(), root, level.getGameTime())) { unreachable++; continue; }
-			best = root.immutable();
-			bestDistance = distance;
+			// A tree whose stand cells cannot walk back to the village street is a strand trap (remembered, not offered again).
+			if (!de.villagerplus.job.Woodcutting.walkBackAcceptable(level, street, root)) {
+				if (de.villagerplus.job.Woodcutting.walkBackUnsafe(level, street, root)) noWayBack++; else deferred++;
+				continue;
+			}
+			best = root;
+			break;
 		}
 		lastWrongStem = best == null ? nearestWrongStem : null;
 		if (best == null && level.getGameTime() >= TREE_SELECT_LOG.getOrDefault(worker.getUUID(), 0L)) {
 			TREE_SELECT_LOG.put(worker.getUUID(), level.getGameTime() + 2400L);
-			LOGGER.info("Villagers: Repurposed: Baumwahl {} (Radius {}, {}): Staemme {}, geladen-nein {}, im Dorf/Gebaeude {}, falsche Art {}, nicht erntbar {}, Weg/belegt {}, unerreichbar {}, gesucht {}",
-				worker.getName().getString(), radius, relaxed ? "locker" : "streng", seenLogs, unloaded, inVillage, wrongSpecies, notHarvestable, blocked, unreachable, demandedLogs);
+			LOGGER.info("Villagers: Repurposed: Baumwahl {} (Radius {}, {}): Staemme {}, geladen-nein {}, im Dorf/Gebaeude {}, falsche Art {}, nicht erntbar {}, Weg/belegt {}, unerreichbar {}, kein Rueckweg {}, zurueckgestellt {}, gesucht {}",
+				worker.getName().getString(), radius, relaxed ? "locker" : "streng", seenLogs, unloaded, inVillage, wrongSpecies, notHarvestable, blocked, unreachable, noWayBack, deferred, demandedLogs);
 		}
 		return best;
 	}

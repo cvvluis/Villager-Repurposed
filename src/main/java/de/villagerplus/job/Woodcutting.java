@@ -5,6 +5,7 @@ import de.villagerplus.village.VillageRef;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -444,6 +445,17 @@ public final class Woodcutting {
 			st.woodCheckAt = c.now() + 1200;
 			return true;
 		}
+		// A saved or just chosen tree whose stand cells have no walk-back to the village street is a strand trap: drop it before the first cut.
+		if (!reservedCanopyWork && work.log().isEmpty() && work.stage() < 0
+			&& firstWalkBackCheck(c.v().getUUID(), base)) {
+			walkBackBudget = WALKBACK_BFS_PER_CALL;
+			if (walkBackUnsafe(level, de.villagerplus.build.Builder.villageReturn(level, ref.bell()), base)) {
+				setWork(c, work.abandonTree());
+				st.clearTarget();
+				st.woodCheckAt = c.now() + 20;
+				return true;
+			}
+		}
 		if (!base.equals(st.target) || st.targetEntity != null) {
 			st.clearTarget();
 			st.stuckCount = 0;
@@ -498,33 +510,34 @@ public final class Woodcutting {
 	 * Spalte nur die oberste Hoehe gelesen (Heightmap ohne Laub): Liegt dort ein Stamm, wird er bis zum Fuss verfolgt.
 	 */
 	private static BlockPos findTree(Ctx c, boolean restrictToPlan, Set<String> demandedLogs) {
-		BlockPos tree = findTree(c, restrictToPlan, demandedLogs, searchRadius(restrictToPlan), false);
+		walkBackBudget = WALKBACK_BFS_PER_CALL;
+		BlockPos street = c.village() == null ? null : de.villagerplus.build.Builder.villageReturn(c.level(), c.village().bell());
+		BlockPos tree = findTree(c, restrictToPlan, demandedLogs, searchRadius(restrictToPlan), false, street);
 		if (!restrictToPlan) return tree;
 		// Plan wood: strict village footprint near, then only buildings protected near, then the same further out.
-		if (tree == null) tree = findTree(c, true, demandedLogs, searchRadius(true), true);
-		if (tree == null) tree = findTree(c, true, demandedLogs, EXTENDED_PLAN_RADIUS, false);
-		if (tree == null) tree = findTree(c, true, demandedLogs, EXTENDED_PLAN_RADIUS, true);
+		if (tree == null) tree = findTree(c, true, demandedLogs, searchRadius(true), true, street);
+		if (tree == null) tree = findTree(c, true, demandedLogs, EXTENDED_PLAN_RADIUS, false, street);
+		if (tree == null) tree = findTree(c, true, demandedLogs, EXTENDED_PLAN_RADIUS, true, street);
 		return tree;
 	}
 
 	/** Second, wider ring for construction wood when no reachable tree is left within {@link #PLAN_RADIUS}. */
 	public static final int EXTENDED_PLAN_RADIUS = 112;
 
-	private static BlockPos findTree(Ctx c, boolean restrictToPlan, Set<String> demandedLogs, int radius, boolean relaxed) {
+	private record TreeCandidate(BlockPos root, int d2) { }
+
+	private static BlockPos findTree(Ctx c, boolean restrictToPlan, Set<String> demandedLogs, int radius, boolean relaxed, BlockPos street) {
 		ServerLevel level = c.level();
 		BlockPos center = c.v().blockPosition();
 		BoundingBox village = c.village() == null ? null : de.villagerplus.village.Development.bounds(level, c.village());
 		// Plan wood only keeps clear of actual buildings, not of the (huge) bounding box around the whole village.
 		List<BlockPos> sites = relaxed && c.village() != null ? buildingSites(level, c.village()) : null;
 		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-		BlockPos best = null;
-		int bestD2 = Integer.MAX_VALUE;
+		// Cheap filters first; the costly ones (canopy, walk-back search) only run on the nearest candidates, nearest first.
+		List<TreeCandidate> candidates = new ArrayList<>();
 		for (int dx = -radius; dx <= radius; dx++) {
 			for (int dz = -radius; dz <= radius; dz++) {
 				int d2 = dx * dx + dz * dz;
-				if (d2 >= bestD2) {
-					continue;
-				}
 				int x = center.getX() + dx;
 				int z = center.getZ() + dz;
 				if (!level.hasChunk(x >> 4, z >> 4)) {
@@ -543,13 +556,175 @@ public final class Woodcutting {
 				&& root.getY() >= village.minY() && root.getY() <= village.maxY()
 				&& root.getZ() >= village.minZ() && root.getZ() <= village.maxZ();
 			if (!inVillage && (!restrictToPlan || matchesRequestedLog(level.getBlockState(root).getBlock(), demandedLogs))
-				&& !treeUnreachable(c.v().getUUID(), root, c.now()) && isHarvestableTree(level, root)) {
-					best = root;
-					bestD2 = d2;
+				&& !treeUnreachable(c.v().getUUID(), root, c.now())) {
+					candidates.add(new TreeCandidate(root, d2));
 				}
 			}
 		}
-		return best;
+		candidates.sort(Comparator.comparingInt(TreeCandidate::d2));
+		for (TreeCandidate candidate : candidates) {
+			BlockPos root = candidate.root();
+			if (!isHarvestableTree(level, root)) continue;
+			int verdict = street == null ? WALKBACK_SAFE : walkBack(level, street, root, level.getGameTime());
+			if (verdict == WALKBACK_SAFE) return root;
+		}
+		return null;
+	}
+
+	// ---- Walk-back safety of a tree's stand cells -------------------------------------------------------------
+	// A worker that fells a tree stands on the cell next to its trunk. Vanilla routes happily drop down a ledge, so the way TO a tree says
+	// nothing about the way home: a trunk at the foot of a cliff, inside a pit or on a bank cut off by water strands the worker (Langweg:
+	// unreachable, 1-5 nodes) and, after the rescue brought him back, he walks to the same tree again. A tree whose stand cells all fail the
+	// bounded walk-back search toward the village street is rejected and remembered (in memory only, expiring, bounded) so it is not offered again.
+
+	/** Verdicts of {@link #walkBack}: the tree is acceptable (also when it cannot be judged), proven unsafe, or still unjudged this call. */
+	static final int WALKBACK_SAFE = 1, WALKBACK_UNSAFE = 0, WALKBACK_DEFERRED = -1;
+	/** An unsafe verdict is a property of the terrain: kept for a day. A safe one is re-proven now and then because blocks change. */
+	static final long WALKBACK_BAD_TICKS = 24_000L, WALKBACK_OK_TICKS = 3_000L;
+	/** Fresh walk-back searches (up to 12 000 nodes each) one selection call may spend; the rest is judged on the next call. */
+	static final int WALKBACK_BFS_PER_CALL = 4;
+	static final int WALKBACK_MEMORY_LIMIT = 512;
+	/** Sites.walksBackTo explores about 77 steps on open ground (12 000 nodes); a stand further than this from the street is checked against a nearer goal. */
+	static final int WALKBACK_NEAR = 48, WALKBACK_FAR_STEP = 40;
+	private static final int WALKBACK_STANDS = 3;
+	private static final Map<Long, Long> WALKBACK_BAD = new HashMap<>();
+	private static final Map<Long, Long> WALKBACK_OK = new HashMap<>();
+	private static int walkBackBudget = WALKBACK_BFS_PER_CALL;
+	/** The tree each worker's cursor was last checked for, so the saved-cursor check runs once per tree and not every tick. */
+	private static final Map<java.util.UUID, Long> WALKBACK_CHECKED = new HashMap<>();
+
+	private static boolean firstWalkBackCheck(java.util.UUID worker, BlockPos root) {
+		if (WALKBACK_CHECKED.size() > 256) WALKBACK_CHECKED.clear();
+		Long previous = WALKBACK_CHECKED.put(worker, root.asLong());
+		return previous == null || previous != root.asLong();
+	}
+
+	/** Dev/test hook: forget every remembered verdict. */
+	static void resetWalkBackMemory() {
+		WALKBACK_BAD.clear();
+		WALKBACK_OK.clear();
+		WALKBACK_CHECKED.clear();
+		walkBackBudget = WALKBACK_BFS_PER_CALL;
+	}
+
+	/** Test hook: the per-call search budget is spent. */
+	static void walkBackSpendBudgetForTest() {
+		walkBackBudget = 0;
+	}
+
+	static int walkBackMemorySize() {
+		return WALKBACK_BAD.size() + WALKBACK_OK.size();
+	}
+
+	/** True once {@code root} was proven walk-back unsafe and the memory has not expired. */
+	static boolean walkBackRemembered(BlockPos root, long now) {
+		Long until = WALKBACK_BAD.get(root.asLong());
+		if (until == null) return false;
+		if (now >= until) { WALKBACK_BAD.remove(root.asLong()); return false; }
+		return true;
+	}
+
+	/** Public for the builder's saved-cursor check: true only when the tree is PROVEN to have no walk-back (unknown counts as fine). */
+	public static boolean walkBackUnsafe(ServerLevel level, BlockPos street, BlockPos root) {
+		return street != null && walkBack(level, street, root, level.getGameTime()) == WALKBACK_UNSAFE;
+	}
+
+	/** Public for the builder's tree selection: the street the stands are checked against (null: no judgement possible). */
+	public static BlockPos walkBackStreet(ServerLevel level, VillageRef ref) {
+		return ref == null ? null : de.villagerplus.build.Builder.villageReturn(level, ref.bell());
+	}
+
+	/** Public for the builder's tree selection: the per-call search budget starts over. */
+	public static void startWalkBackSelection() {
+		walkBackBudget = WALKBACK_BFS_PER_CALL;
+	}
+
+	/** Public for the builder's tree selection: true only when {@code root} may be offered (safe, or not judgeable); unsafe and deferred are not. */
+	public static boolean walkBackAcceptable(ServerLevel level, BlockPos street, BlockPos root) {
+		return street == null || walkBack(level, street, root, level.getGameTime()) == WALKBACK_SAFE;
+	}
+
+	static int walkBack(ServerLevel level, BlockPos street, BlockPos root, long now) {
+		if (street == null) return WALKBACK_SAFE;
+		long key = root.asLong();
+		if (walkBackRemembered(root, now)) return WALKBACK_UNSAFE;
+		Long okUntil = WALKBACK_OK.get(key);
+		if (okUntil != null) {
+			if (now < okUntil) return WALKBACK_SAFE;
+			WALKBACK_OK.remove(key);
+		}
+		List<BlockPos> stands = treeStands(level, root, street);
+		// No standable cell next to the trunk (dense canopy): the way there decides, as before.
+		if (stands.isEmpty()) return remember(WALKBACK_OK, key, now, WALKBACK_OK_TICKS, WALKBACK_SAFE);
+		boolean judged = false;
+		for (BlockPos stand : stands) {
+			BlockPos goal = walkBackGoal(level, stand, street);
+			// Not judgeable (goal region water or unloaded): never reject on a guess.
+			if (goal == null) return remember(WALKBACK_OK, key, now, WALKBACK_OK_TICKS, WALKBACK_SAFE);
+			if (walkBackBudget <= 0) return WALKBACK_DEFERRED;
+			walkBackBudget--;
+			judged = true;
+			if (de.villagerplus.village.Sites.walksBackTo(level, stand, goal)) {
+				return remember(WALKBACK_OK, key, now, WALKBACK_OK_TICKS, WALKBACK_SAFE);
+			}
+		}
+		if (!judged) return remember(WALKBACK_OK, key, now, WALKBACK_OK_TICKS, WALKBACK_SAFE);
+		org.slf4j.LoggerFactory.getLogger("villagerplus").info("Holzfaeller: Baum {} verworfen (kein Rueckweg von den Standplaetzen {} zur Dorfstrasse {})",
+			root.toShortString(), stands.stream().map(BlockPos::toShortString).toList(), street.toShortString());
+		return remember(WALKBACK_BAD, key, now, WALKBACK_BAD_TICKS, WALKBACK_UNSAFE);
+	}
+
+	private static int remember(Map<Long, Long> memory, long key, long now, long ticks, int verdict) {
+		if (memory.size() >= WALKBACK_MEMORY_LIMIT) {
+			memory.values().removeIf(expiry -> expiry <= now);
+			if (memory.size() >= WALKBACK_MEMORY_LIMIT) memory.clear();
+		}
+		memory.put(key, now + ticks);
+		return verdict;
+	}
+
+	/** Feet cells within two blocks of the trunk (same level, one below, one above) a woodcutter can stand on, those nearest the street first. */
+	static List<BlockPos> treeStands(ServerLevel level, BlockPos root, BlockPos street) {
+		List<BlockPos> stands = new ArrayList<>();
+		for (int dx = -2; dx <= 2; dx++) for (int dz = -2; dz <= 2; dz++) {
+			if (dx == 0 && dz == 0) continue;
+			for (int dy : new int[] { 0, -1, 1 }) {
+				BlockPos feet = root.offset(dx, dy, dz);
+				if (standableCell(level, feet)) { stands.add(feet.immutable()); break; }
+			}
+		}
+		stands.sort(Comparator.comparingLong((BlockPos p) -> {
+			long ddx = p.getX() - street.getX(), ddz = p.getZ() - street.getZ();
+			return ddx * ddx + ddz * ddz;
+		}));
+		return stands.size() <= WALKBACK_STANDS ? stands : new ArrayList<>(stands.subList(0, WALKBACK_STANDS));
+	}
+
+	/** Goal for the walk-back search from {@code stand}: the street itself when near, otherwise a standable cell {@link #WALKBACK_FAR_STEP} blocks towards it. */
+	static BlockPos walkBackGoal(ServerLevel level, BlockPos stand, BlockPos street) {
+		long dx = street.getX() - stand.getX(), dz = street.getZ() - stand.getZ();
+		double distance = Math.sqrt((double) (dx * dx + dz * dz));
+		if (distance <= WALKBACK_NEAR) return street;
+		double factor = WALKBACK_FAR_STEP / distance;
+		int gx = stand.getX() + (int) Math.round(dx * factor), gz = stand.getZ() + (int) Math.round(dz * factor);
+		for (int ox = -2; ox <= 2; ox++) for (int oz = -2; oz <= 2; oz++) {
+			int x = gx + ox, z = gz + oz;
+			if (!level.hasChunk(x >> 4, z >> 4)) continue;
+			BlockPos feet = new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
+			if (standableCell(level, feet)) return feet;
+		}
+		return null;
+	}
+
+	/** Two clear blocks, solid floor that is neither fluid nor a fence top (fences are not stood on: vanilla cannot path off them). */
+	private static boolean standableCell(ServerLevel level, BlockPos feet) {
+		BlockPos floor = feet.below(), head = feet.above();
+		if (!level.hasChunkAt(feet) || !level.hasChunkAt(floor) || !level.hasChunkAt(head)) return false;
+		BlockState ground = level.getBlockState(floor);
+		return ground.getFluidState().isEmpty() && ground.isFaceSturdy(level, floor, net.minecraft.core.Direction.UP)
+			&& level.getBlockState(feet).getFluidState().isEmpty() && level.getBlockState(head).getFluidState().isEmpty()
+			&& level.getBlockState(feet).getCollisionShape(level, feet).isEmpty()
+			&& level.getBlockState(head).getCollisionShape(level, head).isEmpty();
 	}
 
 	/** Trees a worker could not path to (water, cliffs); skipped for a day so it picks a reachable one instead. */
