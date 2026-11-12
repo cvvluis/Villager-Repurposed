@@ -144,3 +144,12 @@ Befunde: (1) P1-Route-Rueckholung wurde natuerlich nicht ausgeloest (route<=4 nu
 (3) P4: Haus bekam nie sein Material (21 Bruchstein fehlten; 3000 Ticks Stillstand, Geruest-Fallback); Elsa verwirft Schluchten-Steinbrueche (ca. 50 Bloecke noerdlich)
 reihenweise, baut dann "von Hand" in der Mine -> Steinkette ist der Engpass - Agent claude/stone-supply. Bauplaetze liegen 68-81 Bloecke von der Glocke.
 (4) Dschungel: viele Bergleute "keine Spitzhacke" (Bedarf METAL), sonst "Bedarf verneint".
+
+## P4/P2 Steinkette (Agent claude/stone-supply, gemergt; Diff von mir gelesen)
+Geaendert: job/SurfaceStone.java (4 naechste Kandidaten ab Arbeiterposition, Region-Ablehnung Radius 10 fuer 24000 Ticks bei "kein Rueckweg" / 3000 bei "Weg nicht begehbar",
+3 Pruefungen je Tick, Retry 40 statt 200 Ticks, Handabbau 160->100 Ticks, Log "Stein gebrochen"), job/Mining.java (METAL ohne Spitzhacke: Werkzeugkammer/PlanStoneSupply.supplyMiningPickaxe),
+job/SurfaceStoneChecks.java (Gruppe surfacestone, neu), dev/Checks090.java.
+Messung (Agent): im Radius 64 nur 3 erreichbare freiliegende Steinzellen + 10-13 in der Schlucht (alle "kein Rueckweg"); erster Stein 650-1640 Ticks nach Planstart; Mine grub im Naturlauf nie
+(Tiefe 0); Bewohner bleiben auf dem Weg zum Mineneingang 700-1750 Ticks stehen (Ursache ungeklaert, vermutlich JobUtil.approach/Laufziel). Holz (27 Bretter, Geruest) fehlt zusaetzlich.
+Nach Merge von mir erneut gelaufen (je 1 Lauf): surfacestone 13, planstonesupply 22, strandrescue 15, mining 68, miningcycle 199. Agent-Zahlen: minelifecycle 35, woodcuttinggroup 48, roles 112.
+Naturlauf (Agent, 30x2400 Ticks): Planstart 24006, erster Stein 24716, dritter 25336, Schluchtziele verworfen 2 statt 10-13, KEIN Haus fertig -> P4 NICHT geloest. Plan-Starts schwanken stark (24k bis >48k).
