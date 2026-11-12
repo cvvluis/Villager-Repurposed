@@ -2650,6 +2650,7 @@ public final class Builder {
 			STAND_MOVE_ANCHOR.remove(planKey);
 			STAND_BEST_NODES.remove(planKey);
 			STAND_FAILURE_SINCE.remove(planKey);
+			forgetStandWatch(planKey);
 			PALETTES.remove(planKey);
 			Map<Long, Integer> dug = PREP_RECORD.remove(planKey);
 			if (dug != null && d.planStep == 0 && ref.bellEntity().getLevel() instanceof ServerLevel sl) {
@@ -4870,6 +4871,10 @@ public final class Builder {
 		if (steps != null) {
 			// Nicht mitten im Bauwerk stehen (sonst mauert sich der Baumeister ein): Standort vor dem Gebaeude.
 			int minimumStandY = villageGroundY(level, ref.bell()) - 12;
+			if (!helper && d.planStep == 0 && noteStandVisit(origin.asLong(), c.now())) {
+				LOGGER.info("Villagers: Repurposed: Bau '{}' Schritt 0: Besitzer kehrt nach Abwesenheit zurueck, Wegverfolgung zum Stand neu begonnen (Arbeiter {})",
+					d.planType, c.v().blockPosition().toShortString());
+			}
 			BlockPos stand = standSlot >= 0
 				? workStand(c, origin, dir, steps, minimumStandY, standSlot)
 				: workStand(c, origin, dir, steps, minimumStandY);
@@ -4942,13 +4947,15 @@ public final class Builder {
 				if (!helper && (best == null || dist < best - 1.5)) {
 					STAND_BEST.put(origin.asLong(), dist);
 					d.planProgress = c.now();
+					noteStandProgress(origin.asLong(), c.now());
 				} else if (movedOnRoute) {
 					d.planProgress = c.now();
-				} else if (!helper && d.planStep == 0 && c.now() - d.planProgress > STAND_GIVE_UP) {
+					noteStandProgress(origin.asLong(), c.now());
+				} else if (!helper && d.planStep == 0 && standProgressAge(origin.asLong(), c.now()) > STAND_GIVE_UP) {
 					why = "Bauplatz nicht erreicht";
 					LOGGER.info("Villagers: Repurposed: Bau '{}' Schritt {} wird abgebrochen ({}) Stand {} (Arbeiter {}, Abstand {}, bester {}, Fortschritt vor {} Ticks, Routenknoten bester {}, Raeumung {} / {} entfernt, Inventar {})",
 						d.planType, d.planStep, why, stand.toShortString(), c.v().blockPosition().toShortString(), dist, best,
-						c.now() - d.planProgress, STAND_BEST_NODES.get(origin.asLong()), CIVIC_PREP_STATUS.get(origin.asLong()),
+						standProgressAge(origin.asLong(), c.now()), STAND_BEST_NODES.get(origin.asLong()), CIVIC_PREP_STATUS.get(origin.asLong()),
 						CIVIC_CLEARED.getOrDefault(origin.asLong(), 0), JobUtil.hasEmptySlot(c.v().getInventory()) ? "frei" : "voll");
 					rejectPlot(ref, origin);
 					abort(d, ref, c.now());
@@ -4957,7 +4964,7 @@ public final class Builder {
 				why = "geht zur Baustelle " + stand.toShortString() + " von " + c.v().blockPosition().toShortString();
 				return true;
 			}
-			if (!helper) { STAND_BEST.remove(origin.asLong()); STAND_MOVE_ANCHOR.remove(origin.asLong()); STAND_BEST_NODES.remove(origin.asLong()); }
+			if (!helper) { STAND_BEST.remove(origin.asLong()); STAND_MOVE_ANCHOR.remove(origin.asLong()); STAND_BEST_NODES.remove(origin.asLong()); noteStandProgress(origin.asLong(), c.now()); }
 			if (insideFootprint(c, steps)) {
 				JobUtil.approachLong(c, stand, 1.0);
 				return true;
@@ -5621,6 +5628,47 @@ public final class Builder {
 
 	/** Closest distance to the current stand since the mason last made real progress. Not persisted. */
 	private static final java.util.Map<Long, Double> STAND_BEST = new java.util.HashMap<>();
+	/** Last tick this plan's owner evaluated its work stand; an owner away on other jobs must not look like a stalled walk. */
+	private static final java.util.Map<Long, Long> STAND_SEEN_AT = new java.util.HashMap<>();
+	/** Last tick the owner got closer to the stand (or reset after an absence). Not persisted. */
+	private static final java.util.Map<Long, Long> STAND_PROGRESS_AT = new java.util.HashMap<>();
+	/** Longer than any normal gap between two builder calls (cooldowns are up to 100 ticks), shorter than a supply trip. */
+	static final long STAND_ABSENCE_TICKS = 200L;
+
+	/**
+	 * Called on every stand evaluation of a plan. After an absence (the owner was busy with other jobs, e.g. fetching
+	 * material) the old distance record, route record and timers describe the previous walk, not this one, so they are
+	 * dropped; otherwise the first call after the return reads as "1200 ticks without getting closer" and aborts the plan.
+	 * Returns true when such a reset happened.
+	 */
+	static boolean noteStandVisit(long key, long now) {
+		Long last = STAND_SEEN_AT.put(key, now);
+		if (last == null) {
+			STAND_PROGRESS_AT.put(key, now);
+			return false;
+		}
+		if (now - last <= STAND_ABSENCE_TICKS) return false;
+		STAND_BEST.remove(key);
+		STAND_MOVE_ANCHOR.remove(key);
+		STAND_BEST_NODES.remove(key);
+		STAND_FAILURE_SINCE.remove(key);
+		STAND_PROGRESS_AT.put(key, now);
+		return true;
+	}
+
+	static void noteStandProgress(long key, long now) {
+		STAND_PROGRESS_AT.put(key, now);
+	}
+
+	static long standProgressAge(long key, long now) {
+		return now - STAND_PROGRESS_AT.getOrDefault(key, now);
+	}
+
+	static void forgetStandWatch(long key) {
+		STAND_SEEN_AT.remove(key);
+		STAND_PROGRESS_AT.remove(key);
+	}
+
 	/** Diagnostic: last stand and last report tick per civic plan origin. */
 	private static final java.util.Map<Long, BlockPos> STAND_LAST = new java.util.HashMap<>();
 	private static final java.util.Map<Long, Long> STAND_DIAG_AT = new java.util.HashMap<>();
@@ -6189,6 +6237,7 @@ public final class Builder {
 		}
 		PREP_RECORD.remove(origin.asLong());
 		STAND_BEST.remove(origin.asLong());
+		forgetStandWatch(origin.asLong());
 		PLAN_DIAGNOSTICS.remove(origin.asLong());
 		if (REPAIRS.remove(origin.asLong())) {
 			JobUtil.tellNearbyPlayers(c.level(), c.v(), 40, Component.literal("Ausgebessert: " + label(d.planType) + "."));

@@ -324,6 +324,7 @@ public final class BuilderPathChecks {
                 "the lone lamp is centered behind the walkway inside the existing plot");
             checks += paletteLifecycleChecks(level, savedRef, origin);
             checks += terracedCivicSiteChecks(level, origin);
+            checks += standAbsenceChecks();
             return checks;
         } finally {
             for (BlockPos pos : before.keySet()) level.removeBlockEntity(pos);
@@ -456,6 +457,37 @@ public final class BuilderPathChecks {
         level.setBlock(root.above(5), Blocks.SPRUCE_LEAVES.defaultBlockState(), 3);
         level.setBlock(root.above(4).east(), Blocks.SPRUCE_LEAVES.defaultBlockState(), 3);
         level.setBlock(root.above(4).west(), Blocks.SPRUCE_LEAVES.defaultBlockState(), 3);
+    }
+
+    /**
+     * Natural-run regression: the plan owner walked off for supplies, came back after 1200+ ticks and the stale "no progress"
+     * records aborted the plan at step 0. An absence must restart the walk tracking instead.
+     */
+    private static int standAbsenceChecks() {
+        {
+            long key = 0x5A17L;
+            Map<Long, Double> best = staticMap("STAND_BEST");
+            Map<Long, Long> failure = staticMap("STAND_FAILURE_SINCE");
+            Map<Long, Integer> nodes = staticMap("STAND_BEST_NODES");
+            best.put(key, 6.0);
+            nodes.put(key, 9);
+            failure.put(key, 1L);
+            int checks = 0;
+            checks += require(!Builder.noteStandVisit(key, 1000L) && Builder.standProgressAge(key, 1000L) == 0L,
+                "the first stand evaluation of a plan starts a fresh progress clock");
+            checks += require(!Builder.noteStandVisit(key, 1050L) && best.containsKey(key) && Builder.standProgressAge(key, 1250L) == 250L,
+                "consecutive evaluations keep the distance record and the running clock");
+            checks += require(Builder.standProgressAge(key, 1050L + 1200L) > 1200L,
+                "without an absence a walk that makes no progress for 1200 ticks still counts as stalled");
+            checks += require(Builder.noteStandVisit(key, 1050L + 1210L) && !best.containsKey(key) && !nodes.containsKey(key)
+                && !failure.containsKey(key) && Builder.standProgressAge(key, 1050L + 1210L) == 0L,
+                "an owner returning after an absence of 1200+ ticks starts its walk tracking over (no abort on the first call back)");
+            checks += require(Builder.standProgressAge(key, 1050L + 1210L + 1201L) > 1200L,
+                "after the reset a genuine stall of 1200 ticks still aborts the plan");
+            Builder.forgetStandWatch(key);
+            best.remove(key); nodes.remove(key); failure.remove(key);
+            return checks;
+        }
     }
 
     private record Cell(BlockState state, CompoundTag data) { }
