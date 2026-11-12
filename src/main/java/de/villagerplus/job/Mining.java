@@ -216,6 +216,11 @@ public final class Mining {
 			tool = new ItemStack(net.minecraft.world.item.Items.WOODEN_PICKAXE);
 			byHand = true;
 		}
+		if (tool.isEmpty() && need == Need.METAL && PlanStoneSupply.supplyMiningPickaxe(c, box, true)) {
+			// Metal cannot be chipped out by hand: take a pickaxe from the village toolshed, or craft a plain one from public village stock,
+			// exactly as the plan stone chain does, instead of waiting for a tool that nobody hands out.
+			return true;
+		}
 		if (tool.isEmpty()) {
 			mineDiag(c, "keine Spitzhacke");
 			st.mineCheckAt = c.now() + 200;
