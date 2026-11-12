@@ -196,3 +196,7 @@ Farmer-Samensuche (gleicher Typ, FarmerJob), Mine "holt Stollenmaterial".
 Wiederholte Rueckholung derselben Personen: m2 Theo 2x, Martha 2x, Heinz 4x (Dschungel); m3 Hanna 3x (deep=true, Taiga).
 Ergebnis: P4 (fertiges Haus ohne Fixture) NICHT erreicht; in 48k Ticks nur Planstarts (granary 2349, storage 3007, farm 32418), 1 "Stein gebrochen" in m3 Etappe 2.
 Verbleibende Engpaesse (Zahlen oben und in den Agent-Abschnitten): Steinmenge/-wege, Holz/Gerüst, "holt Stollenmaterial" (Mine grub nur in 1 von 2 Agent-Ketten), wiederholte deep=true-Rueckholungen (Hanna), Dschungel ohne Granary-Plan.
+
+## P8 / D03 (12.11., ich)
+Roads.roadLinkActive(Link) ersetzt 3 inline-Bedingungen (route || relation >= 30); Verhalten unveraendert. 2 neue Checks in NetworkDiscoveryChecks (29/30-Grenze, Routen-Override, null).
+Gruppen: networkdiscovery 42 (inkl. 2 neue), roadbuild 53 (je 1 Lauf). D03 bleibt TEIL: kein Check, dass der Strassenbauer des Partnerdorfs seine Haelfte tatsaechlich baut.
