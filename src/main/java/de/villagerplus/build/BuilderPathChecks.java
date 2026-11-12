@@ -484,6 +484,13 @@ public final class BuilderPathChecks {
                 "an owner returning after an absence of 1200+ ticks starts its walk tracking over (no abort on the first call back)");
             checks += require(Builder.standProgressAge(key, 1050L + 1210L + 1201L) > 1200L,
                 "after the reset a genuine stall of 1200 ticks still aborts the plan");
+            java.util.UUID stuck = java.util.UUID.nameUUIDFromBytes("stuck-owner-check".getBytes());
+            checks += require(!Builder.planOwnerExcluded(stuck, 100L), "an owner that was never benched is not excluded");
+            Builder.excludePlanOwner(stuck, 100L + Builder.STUCK_OWNER_EXCLUSION_TICKS);
+            checks += require(Builder.planOwnerExcluded(stuck, 100L + Builder.STUCK_OWNER_EXCLUSION_TICKS - 1)
+                && !Builder.planOwnerExcluded(stuck, 100L + Builder.STUCK_OWNER_EXCLUSION_TICKS)
+                && !Builder.planOwnerExcluded(stuck, 100L + Builder.STUCK_OWNER_EXCLUSION_TICKS + 5),
+                "a benched owner is excluded from plan work exactly until the exclusion expires, then eligible again");
             Builder.forgetStandWatch(key);
             best.remove(key); nodes.remove(key); failure.remove(key);
             return checks;
