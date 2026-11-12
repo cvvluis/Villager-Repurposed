@@ -81,9 +81,15 @@ public final class Mining {
 		Blocks.GLASS_PANE, Blocks.SPRUCE_PLANKS, Blocks.SPRUCE_DOOR, Blocks.SPRUCE_FENCE);
 	private record MineSupplies(int fences, int framePlanks, int walkwayPlanks, int torches) {
 		boolean empty() { return fences == 0 && framePlanks == 0 && walkwayPlanks == 0 && torches == 0; }
+		/** Only what the gallery needs to stand and be lit: the paved walkway strip is cosmetic and never stops the digging. */
+		MineSupplies structural() { return new MineSupplies(fences, framePlanks, 0, torches); }
+		MineSupplies plus(MineSupplies other) {
+			return new MineSupplies(fences + other.fences, framePlanks + other.framePlanks,
+				walkwayPlanks + other.walkwayPlanks, torches + other.torches);
+		}
 	}
 	static record MineFrameMaterials(Block fence, Item fenceItem, Block planks, Item plankItem) { }
-	private enum SupplyStatus { READY, BUSY, WAITING }
+	enum SupplyStatus { READY, BUSY, WAITING }
 	private record MineSectionPlan(boolean loaded, boolean safe, List<BlockPos> blocks) { }
 	static record MineSurfaceSealPlan(boolean loaded, List<BlockPos> coverCells, List<BlockPos> roofCells) { }
 	private record PaidMineSlot(Container container, int slot) { }
@@ -174,6 +180,12 @@ public final class Mining {
 
 	/** true = beschaeftigt. */
 	private static final java.util.Map<Long, Long> KIT_WAIT_SINCE = new java.util.HashMap<>();
+	/** Section the running kit wait belongs to: a new section starts a fresh wait, so one timeout never unlocks the whole mine. */
+	private static final java.util.Map<Long, Integer> KIT_WAIT_INDEX = new java.util.HashMap<>();
+	/** Timber or coal may simply not exist near a village: after ten minutes of waiting for one section's kit the miners work that section without it. */
+	static final long KIT_WAIT_TICKS = 12000L;
+	/** The supply trip also covers the next few sections (only what the depot holds), so a trip is not made for every support or torch. */
+	static final int KIT_LOOKAHEAD_SECTIONS = 6;
 	private static final java.util.Map<java.util.UUID, Long> NOSTART_DIAG = new java.util.HashMap<>();
 
 	/** True when mineDiag would log for this resident now (lets callers skip building expensive messages). */
@@ -355,19 +367,7 @@ public final class Mining {
 			return true;
 		}
 		// Hand mining happens where no wood exists for supports and torches: it works the stone face without a kit.
-		SupplyStatus supplies = byHand ? SupplyStatus.READY : ensureMineSupplies(c, ref, m);
-		// Timber for supports and torches may simply not exist near a badlands village: after ten minutes of waiting for the kit
-		// the miners work without it instead of standing at the chest forever.
-		if (!byHand) {
-			long entranceKey = m.entrance.asLong();
-			if (supplies == SupplyStatus.READY) {
-				KIT_WAIT_SINCE.remove(entranceKey);
-			} else {
-				long since = KIT_WAIT_SINCE.computeIfAbsent(entranceKey, k -> c.now());
-				if (since > c.now()) { since = c.now(); KIT_WAIT_SINCE.put(entranceKey, since); } // stale entry from another world/session
-				if (c.now() - since > 12000L) supplies = SupplyStatus.READY;
-			}
-		}
+		SupplyStatus supplies = byHand ? SupplyStatus.READY : kitStatus(c, ref, m);
 		if (supplies == SupplyStatus.WAITING) {
 			st.mineCheckAt = c.now() + 200;
 			return false;
@@ -478,7 +478,7 @@ public final class Mining {
 			? planks : null;
 	}
 
-	private static MineFrameMaterials mineFrameMaterials(Ctx c, VillageData.Mine mine) {
+	static MineFrameMaterials mineFrameMaterials(Ctx c, VillageData.Mine mine) {
 		Map<Long, MineFrameMaterials> byEntrance = MINE_FRAME_MATERIALS.computeIfAbsent(c.level(), ignored -> new LinkedHashMap<>());
 		return byEntrance.computeIfAbsent(mine.entrance.asLong(), ignored -> {
 			BlockPos bell = c.village() == null ? mine.entrance : c.village().bell();
@@ -1896,13 +1896,49 @@ public final class Mining {
 			|| craftMineSupply(c, chest, chestPos, inventory, Items.TORCH, required.torches());
 	}
 
+	/**
+	 * Supply state of the next section including the ten-minute fallback. Once the fallback fired for a section the restock
+	 * logic is not called at all: its trips (leave the gallery, walk to the depot) used to run in the same tick as the order to
+	 * walk to the work cell, and the resident shuttled between the entrance and the depot without ever digging.
+	 */
+	static void resetKitWaitForTest() {
+		KIT_WAIT_SINCE.clear();
+		KIT_WAIT_INDEX.clear();
+	}
+
+	static SupplyStatus kitStatus(Ctx c, VillageRef ref, VillageData.Mine m) {
+		long entranceKey = m.entrance.asLong();
+		Integer waitIndex = KIT_WAIT_INDEX.get(entranceKey);
+		if (waitIndex != null && waitIndex != m.index) {
+			KIT_WAIT_SINCE.remove(entranceKey);
+			KIT_WAIT_INDEX.remove(entranceKey);
+		}
+		Long since = KIT_WAIT_SINCE.get(entranceKey);
+		if (since != null && since > c.now()) { // stale entry from another world/session
+			KIT_WAIT_SINCE.remove(entranceKey);
+			since = null;
+		}
+		if (since != null && c.now() - since > KIT_WAIT_TICKS) return SupplyStatus.READY;
+		SupplyStatus supplies = ensureMineSupplies(c, ref, m);
+		if (supplies == SupplyStatus.READY) {
+			KIT_WAIT_SINCE.remove(entranceKey);
+			KIT_WAIT_INDEX.remove(entranceKey);
+		} else {
+			KIT_WAIT_SINCE.putIfAbsent(entranceKey, c.now());
+			KIT_WAIT_INDEX.put(entranceKey, m.index);
+		}
+		return supplies;
+	}
+
 	/** Restock at the village chest before the next structural section; excavation never conjures its supports or light. */
 	private static SupplyStatus ensureMineSupplies(Ctx c, VillageRef ref, VillageData.Mine mine) {
 		MineFrameMaterials materials = mineFrameMaterials(c, mine);
 		MineSupplies required = mineSuppliesForNextSection(c.level(), mine, materials);
 		Container inventory = c.v().getInventory();
 		MineSupplies missing = missingMineSupplies(inventory, required, materials);
-		if (missing.empty()) return SupplyStatus.READY;
+		// Supports, ribs and torches stop the digging; the paved walkway strip does not (a village without oak planks must not
+		// wait ten minutes for one), so a section that needs no structure is dug at once with what the resident carries.
+		if (missing.structural().empty()) return SupplyStatus.READY;
 		if (c.v().getY() < mine.entrance.getY() - 0.5 && nearest(mine, c.v().position()) >= 1) {
 			// Leave by the saved route first; the movement guard keeps the return trip inside the gallery.
 			c.st().miningUntil = c.now();
@@ -1917,7 +1953,7 @@ public final class Mining {
 			c.setActivity("wartet auf Stützen- und Fackelmaterial im Dorflager");
 			return SupplyStatus.WAITING;
 		}
-		List<ItemStack> transfer = mineSupplyStacks(missing, materials);
+		List<ItemStack> transfer = mineSupplyStacks(missing.structural(), materials);
 		if (!fits(inventory, transfer)) {
 			if (JobUtil.depositSurplus(c, Mining::mineOutputForKitRoom, 1, 0)) {
 				c.setActivity("bringt Minenerträge zum Lager, um Platz für Stollenmaterial zu schaffen");
@@ -1931,37 +1967,91 @@ public final class Mining {
 			return SupplyStatus.BUSY;
 		}
 		// Recheck at the chest so a changed plan/cursor cannot withdraw an obsolete kit.
-		required = mineSuppliesForNextSection(c.level(), ref.data().mine.orElse(mine), materials);
+		VillageData.Mine current = ref.data().mine.orElse(mine);
+		required = mineSuppliesForNextSection(c.level(), current, materials);
 		missing = missingMineSupplies(inventory, required, materials);
-		if (missing.empty()) return SupplyStatus.READY;
-		if (!hasMineSupplies(chest, missing, materials)) {
+		if (missing.structural().empty()) return SupplyStatus.READY;
+		if (!hasMineSupplies(chest, missing.structural(), materials)) {
 			// Small villages often have logs/coal but no pre-made fence/torch stock. Build just
 			// the next missing input through loaded recipes while keeping the saved mine cursor
 			// parked; intermediate crafting progress is real chest inventory and survives saves.
-			if (craftMineSupplies(c, chest, chestPos, inventory, required, materials)) {
+			// The walkway strip is only crafted where it is made of the frame's own planks (oak villages).
+			MineSupplies craftFor = materials.plankItem() == Items.OAK_PLANKS ? required : required.structural();
+			if (craftMineSupplies(c, chest, chestPos, inventory, craftFor, materials)) {
 				missing = missingMineSupplies(inventory, required, materials);
-				if (!hasMineSupplies(chest, missing, materials)) return SupplyStatus.BUSY;
+				if (!hasMineSupplies(chest, missing.structural(), materials)) return SupplyStatus.BUSY;
 			} else {
 				c.setActivity("wartet auf Stützen- und Fackelmaterial im Dorflager");
 				return SupplyStatus.WAITING;
 			}
 		}
-		if (!fits(inventory, mineSupplyStacks(missing, materials))) {
+		// One trip serves the next sections too: besides the next section's structure it takes, as far as the depot holds them
+		// COMPLETE, the structures of the following few sections and the walkway planks. Nothing is crafted or reserved for that.
+		Map<Item, Integer> need = mineSupplyItems(missing.structural(), materials);
+		Map<Item, Integer> grab = new LinkedHashMap<>(need);
+		MineSupplies cumulative = required.structural();
+		int last = Math.min(current.index + KIT_LOOKAHEAD_SECTIONS, descent(current) + MAX_HORIZONTAL);
+		for (int i = current.index + 1; i < last; i++) {
+			VillageData.Mine ahead = new VillageData.Mine(current.entrance, current.dir, i, current.targetY, false);
+			MineSupplies section = mineSuppliesForNextSection(c.level(), ahead, materials).structural();
+			if (section.empty()) continue;
+			MineSupplies candidate = cumulative.plus(section);
+			Map<Item, Integer> items = mineSupplyItems(missingMineSupplies(inventory, candidate, materials), materials);
+			boolean stocked = true;
+			for (Map.Entry<Item, Integer> entry : items.entrySet()) {
+				if (JobUtil.count(chest, stack -> stack.is(entry.getKey())) < entry.getValue()) stocked = false;
+			}
+			if (!stocked) break;
+			cumulative = candidate;
+			grab = items;
+		}
+		int walkway = missing.walkwayPlanks();
+		if (walkway > 0) {
+			int spare = JobUtil.count(chest, stack -> stack.is(Items.OAK_PLANKS)) - grab.getOrDefault(Items.OAK_PLANKS, 0);
+			if (spare > 0) grab.merge(Items.OAK_PLANKS, Math.min(walkway, spare), Integer::sum);
+		}
+		if (!fits(inventory, stacksOf(grab))) grab = need;
+		if (!fits(inventory, stacksOf(grab))) {
 			c.setActivity("wartet auf freien Platz für Stollenmaterial");
 			return SupplyStatus.WAITING;
 		}
-		if (!takeMineSupplies(chest, missing, materials)) {
+		if (!takeMineItems(chest, grab)) {
 			c.setActivity("wartet auf Stützen- und Fackelmaterial im Dorflager");
 			return SupplyStatus.WAITING;
 		}
-		for (ItemStack stack : mineSupplyStacks(missing, materials)) JobUtil.give(c.level(), c.v(), stack);
+		for (ItemStack stack : stacksOf(grab)) JobUtil.give(c.level(), c.v(), stack);
 		ref.dirty();
 		Anim.hold(c, missing.fences() > 0 ? materials.fenceItem()
-			: missing.framePlanks() > 0 ? materials.plankItem()
-			: missing.walkwayPlanks() > 0 ? Items.OAK_PLANKS : Items.TORCH);
+			: missing.framePlanks() > 0 ? materials.plankItem() : Items.TORCH);
 		c.st().cooldownUntil = c.now() + 10;
 		c.setActivity("nimmt echte Stollenstützen und Fackeln mit");
 		return SupplyStatus.BUSY;
+	}
+
+	private static Map<Item, Integer> mineSupplyItems(MineSupplies supplies, MineFrameMaterials materials) {
+		Map<Item, Integer> counts = new LinkedHashMap<>();
+		for (ItemStack stack : mineSupplyStacks(supplies, materials)) counts.merge(stack.getItem(), stack.getCount(), Integer::sum);
+		return counts;
+	}
+
+	private static List<ItemStack> stacksOf(Map<Item, Integer> counts) {
+		List<ItemStack> stacks = new ArrayList<>(counts.size());
+		counts.forEach((item, count) -> { if (count > 0) stacks.add(new ItemStack(item, count)); });
+		return stacks;
+	}
+
+	/** Takes exactly these items from the shared chest or nothing at all. */
+	private static boolean takeMineItems(Container chest, Map<Item, Integer> items) {
+		List<ItemStack> before = new ArrayList<>(chest.getContainerSize());
+		for (int i = 0; i < chest.getContainerSize(); i++) before.add(chest.getItem(i).copy());
+		for (Map.Entry<Item, Integer> entry : items.entrySet()) {
+			if (entry.getValue() <= 0) continue;
+			if (JobUtil.take(chest, stack -> stack.is(entry.getKey()), entry.getValue()) != entry.getValue()) {
+				for (int i = 0; i < before.size(); i++) chest.setItem(i, before.get(i));
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private static boolean hasMineSupplies(Container chest, MineSupplies supplies, MineFrameMaterials materials) {
@@ -1977,24 +2067,6 @@ public final class Mining {
 	static boolean mineOutputForKitRoom(ItemStack stack) {
 		// Keep cobblestone available for the paid one-block terrace repairs later in this route.
 		return !stack.is(Items.COBBLESTONE) && matchesMiningOutput(stack, List.of());
-	}
-
-	private static boolean takeMineSupplies(Container chest, MineSupplies supplies, MineFrameMaterials materials) {
-		if (!hasMineSupplies(chest, supplies, materials)) return false;
-		List<ItemStack> before = new ArrayList<>(chest.getContainerSize());
-		for (int i = 0; i < chest.getContainerSize(); i++) before.add(chest.getItem(i).copy());
-		int matchingPlanks = supplies.framePlanks()
-			+ (materials.plankItem() == Items.OAK_PLANKS ? supplies.walkwayPlanks() : 0);
-		boolean complete = JobUtil.take(chest, stack -> stack.is(materials.fenceItem()), supplies.fences()) == supplies.fences()
-			&& JobUtil.take(chest, stack -> stack.is(materials.plankItem()), matchingPlanks) == matchingPlanks
-			&& (materials.plankItem() == Items.OAK_PLANKS
-				|| JobUtil.take(chest, stack -> stack.is(Items.OAK_PLANKS), supplies.walkwayPlanks()) == supplies.walkwayPlanks())
-			&& JobUtil.take(chest, stack -> stack.is(Items.TORCH), supplies.torches()) == supplies.torches();
-		if (!complete) {
-			for (int i = 0; i < before.size(); i++) chest.setItem(i, before.get(i));
-			return false;
-		}
-		return true;
 	}
 
 	/**
