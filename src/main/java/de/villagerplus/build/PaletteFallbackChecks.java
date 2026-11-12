@@ -74,6 +74,15 @@ public final class PaletteFallbackChecks {
 		require(local.wall2() == Blocks.COBBLESTONE && local.frame() == Blocks.SPRUCE_LOG && local.floor() == Blocks.SPRUCE_PLANKS
 			&& local.door() == Blocks.SPRUCE_DOOR && local.fence() == Blocks.SPRUCE_FENCE,
 			"already obtainable roles are untouched"); checks++;
+		Palette rustic = Supply.lookAlikePalette(raw, taiga, false);
+		require(rustic.unobtainableRoles().isEmpty() && rustic.base() == Blocks.COBBLESTONE && rustic.wall() == Blocks.COBBLESTONE
+			&& rustic.roofStair() == Blocks.COBBLESTONE_STAIRS && rustic.roofSlab() == Blocks.COBBLESTONE_SLAB,
+			"without smelting the stone-brick look-alikes become cobblestone of the same shape: " + rustic.ids()); checks++;
+		Palette ownBricks = Supply.lookAlikePalette(new Palette(Blocks.STONE_BRICKS, Blocks.COBBLESTONE, Blocks.SPRUCE_LOG,
+			Blocks.DEEPSLATE_BRICKS, Blocks.SPRUCE_PLANKS, Blocks.SPRUCE_STAIRS, Blocks.SPRUCE_SLAB, Blocks.GLASS_PANE,
+			Blocks.SPRUCE_PLANKS, Blocks.SPRUCE_DOOR, Blocks.SPRUCE_FENCE), taiga, false);
+		require(ownBricks.wall() == Blocks.STONE_BRICKS && ownBricks.base() == Blocks.COBBLESTONE,
+			"roles the village already builds from stay as they are; only the substituted role goes without smelting"); checks++;
 		Palette sameAfterSave = Palette.ofIds(local.ids());
 		require(sameAfterSave != null && sameAfterSave.ids().equals(local.ids()), "the substitute palette survives the saved palette ids"); checks++;
 		Palette idempotent = Supply.obtainablePalette(local, taiga);
@@ -89,6 +98,9 @@ public final class PaletteFallbackChecks {
 		List<Step> localSteps = Builder.substituteUnobtainableFullBlocks(Architect.build(design, local, origin, Direction.NORTH), 0);
 		require(paidUnobtainable(localSteps).isEmpty(), "the granary built from the substitute palette needs nothing unobtainable: "
 			+ paidUnobtainable(localSteps)); checks++;
+		List<Step> rusticSteps = Builder.substituteUnobtainableFullBlocks(Architect.build(design, rustic, origin, Direction.NORTH), 0);
+		require(paidUnobtainable(rusticSteps).isEmpty() && rusticSteps.stream().noneMatch(step -> step.item() == net.minecraft.world.item.Items.STONE_BRICKS),
+			"the granary without smelting needs neither unobtainable blocks nor stone bricks"); checks++;
 		require(localSteps.size() == rawSteps.size()
 			&& java.util.stream.IntStream.range(0, rawSteps.size()).allMatch(i -> rawSteps.get(i).pos().equals(localSteps.get(i).pos())
 				&& rawSteps.get(i).cost() == localSteps.get(i).cost()),

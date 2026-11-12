@@ -392,20 +392,48 @@ public final class Supply {
 	/**
 	 * Palette the village can actually build: every role that is not obtainable is replaced by its look-alike
 	 * ({@link #lookAlike}) when there is one, otherwise by the biome fallback of {@link #obtainablePalette}.
+	 * Stone bricks need a furnace and fuel; use {@link #lookAlikePalette(Palette, Identifier, boolean)} for a village without them.
 	 */
 	public static Palette lookAlikePalette(Palette detected, Identifier biomeId) {
+		return lookAlikePalette(detected, biomeId, true);
+	}
+
+	/**
+	 * @param smelting false when the village has no way to smelt yet: the stone-brick look-alikes then become plain cobblestone
+	 *                 (same shape), which quarrying delivers without a furnace. Roles that were already obtainable never change.
+	 */
+	public static Palette lookAlikePalette(Palette detected, Identifier biomeId, boolean smelting) {
 		if (detected == null) return null;
 		Palette mapped = new Palette(
-			alikeOr(detected.wall()), alikeOr(detected.wall2()), alikeOr(detected.frame()), alikeOr(detected.base()),
-			alikeOr(detected.roofFull()), alikeOr(detected.roofStair()), alikeOr(detected.roofSlab()), alikeOr(detected.window()),
-			alikeOr(detected.floor()), alikeOr(detected.door()), alikeOr(detected.fence()));
+			alikeOr(detected.wall(), smelting), alikeOr(detected.wall2(), smelting), alikeOr(detected.frame(), smelting),
+			alikeOr(detected.base(), smelting), alikeOr(detected.roofFull(), smelting), alikeOr(detected.roofStair(), smelting),
+			alikeOr(detected.roofSlab(), smelting), alikeOr(detected.window(), smelting), alikeOr(detected.floor(), smelting),
+			alikeOr(detected.door(), smelting), alikeOr(detected.fence(), smelting));
 		return obtainablePalette(mapped, biomeId);
 	}
 
-	private static Block alikeOr(Block block) {
+	private static Block alikeOr(Block block, boolean smelting) {
 		if (block == null) return null;
 		Block alike = lookAlike(block);
-		return alike != null ? alike : block;
+		if (alike == null) return block;
+		return smelting || alike == block ? alike : unsmelted(alike);
+	}
+
+	/** Cobblestone counterpart (same shape) of a smelted stone or stone-brick block; other blocks are returned unchanged. */
+	private static Block unsmelted(Block block) {
+		String p = path(block);
+		String shape = "";
+		String core = p;
+		for (String s : SHAPES) {
+			if (p.endsWith(s)) {
+				shape = s;
+				core = p.substring(0, p.length() - s.length());
+				break;
+			}
+		}
+		if (!core.equals("stone") && !core.equals("stone_bricks") && !core.equals("stone_brick")) return block;
+		Block rustic = blockOptional("cobblestone" + shape);
+		return rustic != null && obtainable(rustic) ? rustic : block;
 	}
 
 	/** Uebertraegt Ausrichtung/Haelfte/Form von {@code from} auf den Ersatzblock. */

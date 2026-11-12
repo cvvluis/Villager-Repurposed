@@ -3623,7 +3623,13 @@ public final class Builder {
 		}
 		if (EARLY_PALETTE_SITES.size() > 64) EARLY_PALETTE_SITES.clear();
 		EARLY_PALETTE_SITES.put(site.asLong(), missing.toString());
-		return Supply.lookAlikePalette(detected, biomeAt(level, site));
+		// Stone bricks need a furnace and fuel the young village does not have: without a smelting stock in the public chest
+		// (and unless the village already switched to rustic stone) the look-alike stays plain cobblestone.
+		Container chest = ref.chest(level);
+		boolean smelting = chest != null && !de.villagerplus.village.VillageAdmin.rusticStone(ref)
+			&& JobUtil.count(chest, stack -> stack.is(Items.STONE_BRICKS) || stack.is(Items.STONE)
+				|| stack.is(Items.COAL) || stack.is(Items.CHARCOAL)) > 0;
+		return Supply.lookAlikePalette(detected, biomeAt(level, site), smelting);
 	}
 
 	/** Build the exact candidate footprint before accepting a zoned site; Palette only changes materials at these coordinates. */
