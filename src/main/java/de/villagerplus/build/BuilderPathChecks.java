@@ -146,8 +146,18 @@ public final class BuilderPathChecks {
                 searchSave).getOrThrow();
             var restoredSearchSave = de.villagerplus.village.VillageData.CODEC.parse(com.mojang.serialization.JsonOps.INSTANCE,
                 encodedSearchSave).getOrThrow();
-            checks += require(restoredSearchSave.extra.civicSiteSearch.orElseThrow().equals(savedSearch),
+            checks += require(restoredSearchSave.extra.civicSiteSearch.orElseThrow().equals(savedSearch)
+                && !restoredSearchSave.extra.civicSiteSearch.orElseThrow().terraced(),
                 "civic site phase, variants, pass and candidate cursor persist through village save/load");
+            var savedTerraced = new de.villagerplus.village.VillageData.Extra.CivicSiteSearch(
+                Blueprints.GRANARY, List.of(13, 29, 41, 57), 912345L, 1, 40, true, 123456L, true);
+            var terracedSave = new de.villagerplus.village.VillageData();
+            terracedSave.extra.civicSiteSearch = java.util.Optional.of(savedTerraced);
+            var restoredTerraced = de.villagerplus.village.VillageData.CODEC.parse(com.mojang.serialization.JsonOps.INSTANCE,
+                de.villagerplus.village.VillageData.CODEC.encodeStart(com.mojang.serialization.JsonOps.INSTANCE,
+                    terracedSave).getOrThrow()).getOrThrow();
+            checks += require(restoredTerraced.extra.civicSiteSearch.orElseThrow().equals(savedTerraced),
+                "the last-resort terraced civic pass persists through village save/load (old saves default to not terraced)");
             // Natural CTOV regression: Builder.tick clears the plan view before every worker call while no project
             // is active; that must not rewind the civic sweep to its innermost 96 candidates each time.
             searchSave.clearPlanViewForProjectSlot();
@@ -313,6 +323,7 @@ public final class BuilderPathChecks {
             checks += require(lanterns.get(0).equals(origin.offset(0, 2, 1)),
                 "the lone lamp is centered behind the walkway inside the existing plot");
             checks += paletteLifecycleChecks(level, savedRef, origin);
+            checks += terracedCivicSiteChecks(level, origin);
             return checks;
         } finally {
             for (BlockPos pos : before.keySet()) level.removeBlockEntity(pos);
@@ -325,6 +336,126 @@ public final class BuilderPathChecks {
                 }
             });
         }
+    }
+
+    /**
+     * Last-resort civic site: a 3-block slope that the flat and one-block-tolerant scans reject, with and without a rooted tree.
+     * Verifies the scan, the safety of the anchor (highest column, no digging) and the verified tree clearing.
+     */
+    private static int terracedCivicSiteChecks(ServerLevel level, BlockPos origin) {
+        BlockPos center = origin.offset(0, 0, 60);
+        int baseY = origin.getY();
+        int radius = 12;
+        Map<BlockPos, BlockState> saved = new LinkedHashMap<>();
+        for (int x = -radius; x <= radius; x++) for (int z = -radius; z <= radius; z++) for (int y = -6; y <= 28; y++) {
+            BlockPos pos = new BlockPos(center.getX() + x, baseY + y, center.getZ() + z);
+            level.getChunkAt(pos);
+            saved.put(pos, level.getBlockState(pos));
+        }
+        net.minecraft.world.entity.npc.villager.Villager worker = null;
+        try {
+            int checks = 0;
+            int headroom = 6;
+            int referenceY = baseY + 5;
+            java.util.function.Predicate<BlockPos> any = p -> true;
+            // Slope rising one block every three columns along x: x = -4..4 spans exactly three blocks of relief.
+            buildSlope(level, center, baseY, radius);
+            checks += require(de.villagerplus.village.Sites.findSystematicPage(level, center, 0, 0, -4, 4, -4, 4, headroom, 0, 0, 1, 7L,
+                new HashSet<>(), any, referenceY).site() == null, "a three-block slope fails the flat civic scan");
+            checks += require(de.villagerplus.village.Sites.findSystematicPage(level, center, 0, 0, -4, 4, -4, 4, headroom, 1, 0, 1, 7L,
+                new HashSet<>(), any, referenceY).site() == null, "a three-block slope fails the one-block-tolerant civic scan");
+            BlockPos terrace = de.villagerplus.village.Sites.findSystematicPage(level, center, 0, 0, -4, 4, -4, 4, headroom,
+                de.villagerplus.village.Sites.TERRACED_CIVIC_RELIEF, 0, 1, 7L, new HashSet<>(), any, referenceY).site();
+            checks += require(terrace != null && terrace.getY() == baseY + 5,
+                "the terraced civic scan accepts the slope and anchors at its highest column (nothing is dug into the hill)");
+
+            // A rooted natural spruce on the highest columns: trunk and canopy count as terrain unless trees are clearable.
+            Map<BlockPos, BlockState> ground = new LinkedHashMap<>();
+            for (int x = -4; x <= 4; x++) for (int z = -4; z <= 4; z++)
+                for (int y = baseY - 3; y <= baseY + 5; y++) {
+                    BlockPos pos = new BlockPos(center.getX() + x, y, center.getZ() + z);
+                    ground.put(pos, level.getBlockState(pos));
+                }
+            BlockPos root = new BlockPos(center.getX() + 3, baseY + 5, center.getZ());
+            placeSpruce(level, root);
+            checks += require(de.villagerplus.village.Sites.findSystematicPage(level, center, 0, 0, -4, 4, -4, 4, headroom,
+                de.villagerplus.village.Sites.TERRACED_CIVIC_RELIEF, 0, 1, 7L, new HashSet<>(), any, referenceY).site() == null,
+                "without clearable trees a spruce on the slope keeps the terraced scan from accepting it");
+            BlockPos treeSite = de.villagerplus.village.Sites.findSystematicPage(level, center, 0, 0, -4, 4, -4, 4, headroom,
+                de.villagerplus.village.Sites.TERRACED_CIVIC_RELIEF, true, 0, 1, 7L, new HashSet<>(), any, referenceY).site();
+            checks += require(treeSite != null && treeSite.getY() == baseY + 5,
+                "with clearable trees the rooted spruce is measured at its soil and the slope is accepted");
+            List<Step> footprint = List.of(
+                Step.free(treeSite.offset(-4, 0, -4), Blocks.AIR.defaultBlockState()),
+                Step.free(treeSite.offset(4, 0, 4), Blocks.AIR.defaultBlockState()));
+            BlockPos[] box = Builder.civicPrepBox(treeSite, footprint, headroom);
+            checks += require(box[0].getY() == treeSite.getY() && box[0].getX() == center.getX() - 4 && box[1].getX() == center.getX() + 4,
+                "the civic work volume is the exact plan footprint starting at the anchor height (never below it)");
+            checks += require(de.villagerplus.village.NaturalSitePreparation.inspect(level, box[0], box[1], 1024).status()
+                == de.villagerplus.village.NaturalSitePreparation.Status.CLEARABLE,
+                "the verified natural-site inspection accepts the rooted spruce as clearable");
+            worker = net.minecraft.world.entity.EntityTypes.VILLAGER.spawn(level, center.offset(0, 8, 0),
+                net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+            if (worker == null) throw new IllegalStateException("Builder path: could not spawn a civic clearing worker");
+            worker.setNoAi(true);
+            worker.setInvulnerable(true);
+            worker.getInventory().clearContent();
+            var status = de.villagerplus.village.NaturalSitePreparation.Status.CLEARED;
+            int cleared = 0;
+            for (int i = 0; i < 400 && status == de.villagerplus.village.NaturalSitePreparation.Status.CLEARED; i++) {
+                status = de.villagerplus.village.NaturalSitePreparation.clearOne(level, box[0], box[1], 1024, worker).status();
+                if (status == de.villagerplus.village.NaturalSitePreparation.Status.CLEARED) cleared++;
+            }
+            checks += require(status == de.villagerplus.village.NaturalSitePreparation.Status.READY && cleared >= 6,
+                "one verified natural obstacle per call clears the whole spruce until the footprint reports READY");
+            boolean treeGone = true;
+            for (BlockPos pos : BlockPos.betweenClosed(box[0], box[1])) {
+                BlockState state = level.getBlockState(pos);
+                if (state.is(net.minecraft.tags.BlockTags.LOGS) || state.is(net.minecraft.tags.BlockTags.LEAVES)) treeGone = false;
+            }
+            checks += require(treeGone, "no trunk or leaf block remains inside the cleared civic work volume");
+            boolean soilIntact = true;
+            for (Map.Entry<BlockPos, BlockState> entry : ground.entrySet()) {
+                if (entry.getKey().getY() < baseY + 5 && !level.getBlockState(entry.getKey()).equals(entry.getValue())) soilIntact = false;
+            }
+            checks += require(soilIntact, "clearing removes only the tree: the soil under the slope is never dug");
+
+            // A tree rooted on a lower column starts below the work volume: not verifiably clearable, so the site is refused.
+            buildSlope(level, center, baseY, radius);
+            placeSpruce(level, new BlockPos(center.getX() - 2, baseY + 3, center.getZ()));
+            BlockPos[] lowBox = Builder.civicPrepBox(treeSite, footprint, headroom);
+            checks += require(de.villagerplus.village.NaturalSitePreparation.inspect(level, lowBox[0], lowBox[1], 1024).status()
+                != de.villagerplus.village.NaturalSitePreparation.Status.READY
+                && de.villagerplus.village.NaturalSitePreparation.inspect(level, lowBox[0], lowBox[1], 1024).status()
+                != de.villagerplus.village.NaturalSitePreparation.Status.CLEARABLE,
+                "a tree rooted below the work volume is refused instead of being half-cleared");
+            return checks;
+        } finally {
+            if (worker != null) worker.discard();
+            saved.forEach((pos, state) -> level.setBlock(pos, state, 3));
+        }
+    }
+
+    private static void buildSlope(ServerLevel level, BlockPos center, int baseY, int radius) {
+        for (int x = -radius; x <= radius; x++) for (int z = -radius; z <= radius; z++) {
+            int top = baseY + Math.floorDiv(x + 9, 3);
+            for (int y = baseY - 6; y <= baseY + 28; y++) {
+                BlockPos pos = new BlockPos(center.getX() + x, y, center.getZ() + z);
+                level.removeBlockEntity(pos);
+                level.setBlock(pos, y < top ? Blocks.DIRT.defaultBlockState()
+                    : y == top ? Blocks.GRASS_BLOCK.defaultBlockState() : Blocks.AIR.defaultBlockState(), 3);
+            }
+        }
+    }
+
+    private static void placeSpruce(ServerLevel level, BlockPos root) {
+        for (int dy = 0; dy < 5; dy++) level.setBlock(root.above(dy), Blocks.SPRUCE_LOG.defaultBlockState(), 3);
+        for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) {
+            if (dx != 0 || dz != 0) level.setBlock(root.offset(dx, 3, dz), Blocks.SPRUCE_LEAVES.defaultBlockState(), 3);
+        }
+        level.setBlock(root.above(5), Blocks.SPRUCE_LEAVES.defaultBlockState(), 3);
+        level.setBlock(root.above(4).east(), Blocks.SPRUCE_LEAVES.defaultBlockState(), 3);
+        level.setBlock(root.above(4).west(), Blocks.SPRUCE_LEAVES.defaultBlockState(), 3);
     }
 
     private record Cell(BlockState state, CompoundTag data) { }
@@ -340,13 +471,19 @@ public final class BuilderPathChecks {
             Object search = constructor.newInstance(Blueprints.GRANARY, new int[]{13, 29}, 912345L);
             var flatField = searchType.getDeclaredField("flatVisited");
             var tolerantField = searchType.getDeclaredField("tolerantVisited");
+            var terracedField = searchType.getDeclaredField("terracedVisited");
+            var terracedFlag = searchType.getDeclaredField("terraced");
             flatField.setAccessible(true);
             tolerantField.setAccessible(true);
+            terracedField.setAccessible(true);
+            terracedFlag.setAccessible(true);
             List<Set<Long>> flat = (List<Set<Long>>) flatField.get(search);
             List<Set<Long>> tolerant = (List<Set<Long>>) tolerantField.get(search);
+            List<Set<Long>> terraced = (List<Set<Long>>) terracedField.get(search);
             for (int i = 0; i < flat.size(); i++) {
                 flat.get(i).add(100L + i);
                 tolerant.get(i).add(200L + i);
+                terraced.get(i).add(300L + i);
             }
             var advance = searchType.getDeclaredMethod("advancePass", long.class);
             advance.setAccessible(true);
@@ -354,11 +491,20 @@ public final class BuilderPathChecks {
             int checks = require(!firstPassCompleted && flat.get(0).contains(100L)
                 && tolerant.get(0).contains(200L),
                 "civic visited columns remain cached between search passes");
-            boolean fullCycleCompleted = false;
-            for (int i = 0; i < 3; i++) fullCycleCompleted = (boolean) advance.invoke(search, 200L + i);
-            boolean cachesCleared = flat.stream().allMatch(Set::isEmpty) && tolerant.stream().allMatch(Set::isEmpty);
-            checks += require(fullCycleCompleted && cachesCleared,
+            // Per variant: flat, tolerant. Only after every variant failed on both: one terraced pass per variant, then the cycle ends.
+            boolean[] results = new boolean[5];
+            boolean[] terracedAfter = new boolean[5];
+            for (int i = 0; i < 5; i++) {
+                results[i] = (boolean) advance.invoke(search, 200L + i);
+                terracedAfter[i] = terracedFlag.getBoolean(search);
+            }
+            boolean fullCycleCompleted = results[4];
+            boolean cachesCleared = flat.stream().allMatch(Set::isEmpty) && tolerant.stream().allMatch(Set::isEmpty)
+                && terraced.stream().allMatch(Set::isEmpty);
+            checks += require(!results[0] && !results[1] && !results[2] && !results[3] && fullCycleCompleted && cachesCleared,
                 "a full civic re-scan clears visited columns so changed plots are reevaluated");
+            checks += require(!terracedAfter[0] && !terracedAfter[1] && terracedAfter[2] && terracedAfter[3] && !terracedAfter[4],
+                "the terraced civic pass only starts after every variant failed on flat and one-block-tolerant ground");
             return checks;
         } catch (ReflectiveOperationException failure) {
             throw new IllegalStateException("Builder path: could not inspect civic search cycle", failure);
