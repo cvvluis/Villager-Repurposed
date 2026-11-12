@@ -210,3 +210,9 @@ Dev-Hooks (nur per Umgebungsvariable, im Normalbetrieb aus): VP_FORCE_HOUSE_STEP
 Natur (erzwungen per Hook): Taiga: begonnen/fortgesetzt/gefunden, Standort 97/66/-315 spaeter von prepareHouseLot verworfen (Luecke zwischen Standortpruefung und Lotvorbereitung); Dschungel: kein Standort bei Mindestradius 68; echter Neustart: "aus gespeichertem Cursor wiederaufgenommen (Kandidat 456)".
 Ohne Hook natuerlich NICHT ausgeloest (kein Hausbedarf) - P5-Abnahme "Check + Log im Naturlauf" nur mit Hook erfuellt.
 Nach Merge von mir (je 1 Lauf): housesitesearch 36, houseplot 140, builderchecks 318, builderpaths 79, supply 30, planstonesupply 22, milestones 16, constructionsite 21, strandrescue 19. Agent: houses 12748.
+
+## P6 Laufzeit-Checks (CompatChecks.runStrict, Gruppe compat = 41 Checks, 1 Lauf, Dev-Pack mit allen Mods ausser Actually 3D Stuff)
+Neu: professionMapping (alle Mod-Berufe mit Compat.jobKey; erwartete Berufe von morevillagers/village_taverns muessen registriert sein) und seasonTags (Serene-Seasons-Block-Tags muessen aufloesbar sein).
+Gemessenes Mapping Compat.jobKey: morevillagers:explorer->cartographer, hunter->butcher, miner->mason, woodworker->fletcher; porter (ohne Tag/Schluesselwort): enderian, engineer, florist, iceman, netherian, oceanographer,
+village_taverns:bartender, chefsdelight:chef/cook (Koch wird in JobManager.jobFor separat zu COOK, nicht ueber jobKey). Serene Seasons Tags (Members): spring 19, summer 28, autumn 20, winter 11, year_round 8.
+Nicht geaendert: Mapping (Designentscheidung des Nutzers), kein Saison-Verhalten im Farmer. Weiter offen: FD-Adapter (Klassenladerisiko ohne Mod), T&T-Headless, EMF/ETF nur Client.

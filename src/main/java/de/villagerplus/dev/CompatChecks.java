@@ -51,6 +51,58 @@ public final class CompatChecks {
 		var registry = level.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.VILLAGER_PROFESSION);
 		long modded = registry.listElements().filter(h -> !h.key().identifier().getNamespace().equals("minecraft")).count();
 		check(modded > 0, "dev pack exposes at least one modded villager profession"); checks++;
+		checks += professionMapping(registry);
+		checks += seasonTags(level);
+		return checks;
+	}
+
+	/** Professions of More Villagers (ids read from its acquirable_job_site POI list) and Village Taverns that must exist once the mod is present. */
+	private static final String[] EXPECTED_PROFESSIONS = {
+		"morevillagers:oceanographer", "morevillagers:netherian", "morevillagers:woodworker", "morevillagers:enderian", "morevillagers:engineer",
+		"morevillagers:florist", "morevillagers:hunter", "morevillagers:miner", "morevillagers:iceman", "morevillagers:explorer",
+		"village_taverns:bartender"
+	};
+
+	/**
+	 * Runtime view of the profession mapping: every modded profession is listed with the job {@link Compat#jobKey} derives (null = porter),
+	 * and each expected profession of a loaded mod must be registered. The mapping itself is reported, not asserted: it is a design choice
+	 * (see CLOUD-LOG.md: Compat.counterpart can replace Vanilla professions by modded ones with the same job).
+	 */
+	private static int professionMapping(net.minecraft.core.HolderLookup.RegistryLookup<VillagerProfession> registry) {
+		int checks = 0;
+		java.util.List<String> lines = new java.util.ArrayList<>();
+		registry.listElements().filter(h -> !h.key().identifier().getNamespace().equals("minecraft")).forEach(h -> {
+			String job = Compat.jobKey(h);
+			lines.add(h.key().identifier() + " -> " + (job == null ? "porter (kein Tag/Schluesselwort)" : job));
+		});
+		java.util.Collections.sort(lines);
+		for (String line : lines) System.out.println("COMPAT profession " + line);
+		for (String id : EXPECTED_PROFESSIONS) {
+			String namespace = id.substring(0, id.indexOf(':'));
+			if (!modPresent(namespace)) continue;
+			boolean registered = registry.get(net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.VILLAGER_PROFESSION,
+				Identifier.parse(id))).isPresent();
+			check(registered, "profession " + id + " is registered while " + namespace + " is loaded"); checks++;
+		}
+		for (String line : lines) {
+			String job = line.substring(line.indexOf("-> ") + 3);
+			check(job.startsWith("porter") || java.util.Arrays.asList(Compat.JOBS).contains(job), "modded profession maps to a known job: " + line); checks++;
+		}
+		return checks;
+	}
+
+	/** Serene Seasons ships crop tags per season; with the mod loaded they must resolve to real blocks (soil for seasonal farming decisions). */
+	private static int seasonTags(ServerLevel level) {
+		if (!modPresent("sereneseasons")) return 0;
+		int checks = 0;
+		var blocks = level.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.BLOCK);
+		for (String season : new String[] { "spring", "summer", "autumn", "winter", "year_round" }) {
+			var tag = net.minecraft.tags.TagKey.create(net.minecraft.core.registries.Registries.BLOCK,
+				Identifier.parse("sereneseasons:" + season + "_crops"));
+			long members = blocks.get(tag).map(t -> t.stream().count()).orElse(0L);
+			System.out.println("COMPAT season crop tag " + tag.location() + " members=" + members);
+			check(blocks.get(tag).isPresent(), "block tag " + tag.location() + " is registered"); checks++;
+		}
 		return checks;
 	}
 
