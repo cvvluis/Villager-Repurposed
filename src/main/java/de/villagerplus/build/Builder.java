@@ -5244,6 +5244,15 @@ public final class Builder {
 	 */
 	static final boolean FORCE_HOUSE_STEP_SEARCH = "1".equals(System.getenv("VP_FORCE_HOUSE_STEP_SEARCH"));
 
+	/** Dev hook companion: {@code VP_HOUSE_SEARCH_BUDGET} shrinks the page budget so a natural run needs several pages. */
+	private static int forcedHouseSearchBudget() {
+		try {
+			return Math.max(1, Math.min(HOUSE_SITE_CANDIDATE_BUDGET, Integer.parseInt(System.getenv("VP_HOUSE_SEARCH_BUDGET"))));
+		} catch (RuntimeException ignored) {
+			return HOUSE_SITE_CANDIDATE_BUDGET;
+		}
+	}
+
 	static final class HouseSiteSearch {
 		int variant;
 		final int minRadius;
@@ -5347,7 +5356,7 @@ public final class Builder {
 	static HouseSiteStep stepHouseSiteSearch(Ctx c, VillageRef ref, VillageStyle style, String type, HouseSiteSearch ongoing,
 			int newVariant, int minRadius) {
 		return stepHouseSiteSearch(c, ref, style, type, ongoing, newVariant, minRadius,
-			Math.min(88, Config.VILLAGE_RADIUS - 8), HOUSE_SITE_CANDIDATE_BUDGET);
+			Math.min(88, Config.VILLAGE_RADIUS - 8), FORCE_HOUSE_STEP_SEARCH ? forcedHouseSearchBudget() : HOUSE_SITE_CANDIDATE_BUDGET);
 	}
 
 	/** {@code maxRadius} is a test seam (smaller fixture terrain); production always passes the village search radius. */
