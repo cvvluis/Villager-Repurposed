@@ -153,3 +153,14 @@ Messung (Agent): im Radius 64 nur 3 erreichbare freiliegende Steinzellen + 10-13
 (Tiefe 0); Bewohner bleiben auf dem Weg zum Mineneingang 700-1750 Ticks stehen (Ursache ungeklaert, vermutlich JobUtil.approach/Laufziel). Holz (27 Bretter, Geruest) fehlt zusaetzlich.
 Nach Merge von mir erneut gelaufen (je 1 Lauf): surfacestone 13, planstonesupply 22, strandrescue 15, mining 68, miningcycle 199. Agent-Zahlen: minelifecycle 35, woodcuttinggroup 48, roles 112.
 Naturlauf (Agent, 30x2400 Ticks): Planstart 24006, erster Stein 24716, dritter 25336, Schluchtziele verworfen 2 statt 10-13, KEIN Haus fertig -> P4 NICHT geloest. Plan-Starts schwanken stark (24k bis >48k).
+
+## P3 Kornspeicher (Agent claude/granary-site, gemergt)
+Ursache (Agent, Zaehler "Sites.SCAN_REJECT"): im Taiga-Dorf scheitern ALLE Kandidaten schon in der Spaltenpruefung (Plan-Pruefung "geprueft"=0); der Entwurf braucht 13x13 mit 9 Hoehe.
+Ablehnungen im ebenen Lauf: ~52% echte Spreizung >5, ~12% nur wegen Baumstaemmen; Hanglage ist Hauptgrund. Dschungel gleich.
+Regel (nicht Fixture) geaendert: letzter-Ausweg-Pass fuer zivile Sonderbauten: nach flach/tolerant ein terrassierter Pass (3 Bloecke Relief, Anker an hoechster Spalte, tiefere Spalten per fillSupport,
+nichts abgegraben), wurzelnde Naturbaeume raeumbar (NaturalSitePreparation.inspect READY/CLEARABLE), Planbesitzer raeumt vor dem Bau, Helfer warten. Hausplatz-/12-Block-/Grubenregeln unveraendert.
+Dateien: build/Builder.java, village/Sites.java, village/VillageData.java (optionales Codec-Feld `terraced`, alte Staende laufen), build/BuilderPathChecks.java (+13 Checks, ein Zyklus-Check an die neue Laenge angepasst),
+tools/cloud/natural-run.sh (Server-Guard nur noch pro Worktree).
+Agent-Naturlaeufe: Granary-Plan startete in 5/5 Laeufen (~Tick 2400, z. B. 123,67,-349), nie fertiggestellt; 2 Abbrueche "kein Weg zum Bauplatz" (Wald). Dschungel: kein Plan.
+Nach Merge von mir (je 1 Lauf): builderpaths 79, houseplot 140, builderchecks 318, supply 30, planstonesupply 22, milestones 16, constructionsite 21, surfacestone 13, strandrescue 15.
+Offen: Fertigstellung des Kornspeichers, Dschungel, Wirkung auf Schule/Kueche/Station.
