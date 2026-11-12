@@ -911,8 +911,8 @@ public final class JobManager {
 			// complete path) outweighs the model.
 			boolean navigationTrapped = false;
 			if (modelWalksHome) {
-				var home = de.villagerplus.build.Builder.workPath(c, arrival);
-				navigationTrapped = home == null || (!home.canReach() && home.getNodeCount() <= JobUtil.STRAND_MAX_ROUTE_NODES);
+				var homeRoute = de.villagerplus.build.Builder.workPath(c, arrival);
+				navigationTrapped = homeRoute == null || (!homeRoute.canReach() && homeRoute.getNodeCount() <= JobUtil.STRAND_MAX_ROUTE_NODES);
 			}
 			if (arrival == null || (modelWalksHome && !navigationTrapped)) {
 				JobUtil.clearRouteFailures(c.v().getUUID());
