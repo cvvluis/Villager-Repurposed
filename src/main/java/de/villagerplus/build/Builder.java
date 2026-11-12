@@ -4905,6 +4905,19 @@ public final class Builder {
 				return true;
 			}
 			if (!helper) STAND_FAILURE_SINCE.remove(origin.asLong());
+			if (!helper && civicSite(d.planType) && d.planStep == 0) {
+				BlockPos previousStand = STAND_LAST.put(origin.asLong(), stand.immutable());
+				long lastDiagAt = STAND_DIAG_AT.getOrDefault(origin.asLong(), Long.MIN_VALUE / 2);
+				if (!stand.equals(previousStand) || c.now() - lastDiagAt >= 200) {
+					STAND_DIAG_AT.put(origin.asLong(), c.now());
+					LOGGER.info("Villagers: Repurposed: Standdiagnose {} {}: Stand {} (vorher {}) Arbeiter {} Abstand {} bester {} Fortschritt vor {} Ticks, Raeumung {} / {} entfernt",
+						d.planType, origin.toShortString(), stand.toShortString(), previousStand == null ? "-" : previousStand.toShortString(),
+						c.v().blockPosition().toShortString(),
+						String.format(java.util.Locale.ROOT, "%.1f", c.v().position().distanceTo(net.minecraft.world.phys.Vec3.atBottomCenterOf(stand))),
+						STAND_BEST.get(origin.asLong()), c.now() - d.planProgress, CIVIC_PREP_STATUS.get(origin.asLong()),
+						CIVIC_CLEARED.getOrDefault(origin.asLong(), 0));
+				}
+			}
 			if (!JobUtil.approach(c, stand, 6.0)) {
 				// Vanilla path searches stop around 16 blocks, so hand the brain the next node on the
 				// already verified route instead of the distant stand itself.
@@ -4933,7 +4946,10 @@ public final class Builder {
 					d.planProgress = c.now();
 				} else if (!helper && d.planStep == 0 && c.now() - d.planProgress > STAND_GIVE_UP) {
 					why = "Bauplatz nicht erreicht";
-					LOGGER.info("Villagers: Repurposed: Bau '{}' Schritt {} wird abgebrochen ({}) Stand {}", d.planType, d.planStep, why, stand.toShortString());
+					LOGGER.info("Villagers: Repurposed: Bau '{}' Schritt {} wird abgebrochen ({}) Stand {} (Arbeiter {}, Abstand {}, bester {}, Fortschritt vor {} Ticks, Routenknoten bester {}, Raeumung {} / {} entfernt, Inventar {})",
+						d.planType, d.planStep, why, stand.toShortString(), c.v().blockPosition().toShortString(), dist, best,
+						c.now() - d.planProgress, STAND_BEST_NODES.get(origin.asLong()), CIVIC_PREP_STATUS.get(origin.asLong()),
+						CIVIC_CLEARED.getOrDefault(origin.asLong(), 0), JobUtil.hasEmptySlot(c.v().getInventory()) ? "frei" : "voll");
 					rejectPlot(ref, origin);
 					abort(d, ref, c.now());
 					return false;
@@ -5605,6 +5621,9 @@ public final class Builder {
 
 	/** Closest distance to the current stand since the mason last made real progress. Not persisted. */
 	private static final java.util.Map<Long, Double> STAND_BEST = new java.util.HashMap<>();
+	/** Diagnostic: last stand and last report tick per civic plan origin. */
+	private static final java.util.Map<Long, BlockPos> STAND_LAST = new java.util.HashMap<>();
+	private static final java.util.Map<Long, Long> STAND_DIAG_AT = new java.util.HashMap<>();
 	/** First tick without a reachable stand; reset after recovery or server restart. */
 	private static final java.util.Map<Long, Long> STAND_FAILURE_SINCE = new java.util.HashMap<>();
 	/** Step 0 gives up well before the 20000-tick walk budget when the stand is not getting closer. */
