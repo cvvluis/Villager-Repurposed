@@ -896,12 +896,25 @@ public final class JobManager {
 		return now - watch.since() >= DEEP_STRAND_GRACE_TICKS;
 	}
 
+	/** A fall of more than 3.5 blocks into deep terrain (vanilla paths never drop that far) leaves no way back up: no grace period. */
+	static final long DEEP_FALL_WINDOW_TICKS = 600L;
+
+	static void noteFall(UUID id, long now) {
+		FALL_LOG.put(id, now);
+	}
+
+	static boolean fellRecently(UUID id, long now) {
+		Long at = FALL_LOG.get(id);
+		return at != null && now >= at && now - at <= DEEP_FALL_WINDOW_TICKS;
+	}
+
 	static void clearDeepWatch(UUID id) {
 		DEEP_WATCH.remove(id);
 	}
 
 	static void clearDeepWatches() {
 		DEEP_WATCH.clear();
+		FALL_LOG.clear();
 		WALK_HOME.clear();
 	}
 
@@ -969,7 +982,7 @@ public final class JobManager {
 				clearDeepWatch(c.v().getUUID());
 				deep = false;
 			} else {
-				deep = deepStrandConfirmed(c.v().getUUID(), c.now());
+				deep = deepStrandConfirmed(c.v().getUUID(), c.now()) | fellRecently(c.v().getUUID(), c.now());
 			}
 		}
 		net.minecraft.core.BlockPos arrival = null;

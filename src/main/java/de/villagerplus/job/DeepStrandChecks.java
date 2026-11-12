@@ -155,6 +155,23 @@ public final class DeepStrandChecks {
 			require(!trapEarly && JobManager.rescueStranded(ctx(level, worker, state, memory, ref, t6 + GRACE)),
 				"a task target in a walled-in lowland does not exempt the resident from the grace-period rescue"); checks++;
 			state.clearTarget();
+
+			// J: a resident that fell into the deep terrain (more than 3.5 blocks) cannot climb out: rescued at once, no grace period.
+			JobUtil.clearLongRoutes();
+			JobManager.clearDeepWatches();
+			state.clearTarget();
+			long t7 = T0 + 130_000L;
+			placeAt(worker, lowland);
+			JobManager.noteFall(id, t7 - 20L);
+			require(JobManager.rescueStranded(ctx(level, worker, state, memory, ref, t7)) && worker.getY() > origin.getY() - 2.0,
+				"a deep resident that just fell in is rescued at once"); checks++;
+			// K: an old fall (outside the window) does not shortcut the grace period.
+			JobManager.clearDeepWatches();
+			long t8 = T0 + 150_000L;
+			placeAt(worker, lowland);
+			JobManager.noteFall(id, t8 - JobManager.DEEP_FALL_WINDOW_TICKS - 100L);
+			require(!JobManager.rescueStranded(ctx(level, worker, state, memory, ref, t8)) && atSpot(worker, lowland),
+				"a fall long before the deep sighting is no shortcut"); checks++;
 			return checks;
 		} finally {
 			JobUtil.clearLongRoutes();
