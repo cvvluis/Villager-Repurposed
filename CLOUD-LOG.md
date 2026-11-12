@@ -273,3 +273,8 @@ Fix (Builder.java): noteStandVisit setzt nach >200 Ticks Abwesenheit Abstands-/R
 Gruppen (von mir nach Merge, je 1 Lauf): builderpaths 86 (79 + 7 neue standAbsence-Fixtures), builderchecks 318, houseplot 140, supply 30, planstonesupply 22, milestones 16, constructionsite 21, housesitesearch 36, palettefallback 21, strandrescue 19, deepstrand 17, housesign 7.
 Natur (Agent): mit Absenz-Reset kein Abbruch, Plaene bis Schritt 119/437 bzw. 127/443 (bezahlte Bloecke gesetzt = erste gesetzte Bloecke ueberhaupt); mit Uebergabe 0 Granary-Abbrueche, Otto uebernimmt (Schritt 137/442). Fertiggestellt 0 - ab Schritt ~119 wartet der Plan auf cobblestone/spruce_planks.
 Offen: warum Bewohner im Zaunbecken/Kuechengebaeude feststecken (umgangen, nicht behoben); Wirkung auf Haeuser/Dschungel ungetestet.
+
+## Naturlauf vp-natural111-m6 (voller Stand inkl. granary-site-Folge, 2 Etappen = 48 437 Ticks, Einzellauf)
+Etappe 1: Plaene gestartet 3 (granary 86,68,-339 @2363; storage 167,66,-312 @2632 und 195,65,-363 @5922), fertig 0, gestrandet 1, unreachable<=4: 2.
+Etappe 2: kein neuer Plan; Planstand granary 119/441, storage 75/266 (erste gesetzte Bloecke in einem Naturlauf); Mine Eingang 104,67,-375 gegraben bis Tiefe 11 (Heinz/Elsa, "von Hand"); gestrandet 1; unreachable 21 (<=4: 3); Steinbruch-Rueckweg verworfen 2.
+Engpass jetzt: Bruchstein. granary "steht seit 15611 Ticks still ... Kiste Bruchstein/Stein/Ziegel/Kohle=0/0/0/22, fehlt cobblestone x18"; storage fehlt cobblestone x20 + spruce_log/planks. Gegrabener Stein erreicht den Plan nicht -> Agent claude/mine-supplies (Frage: wohin geht der Stein?).
