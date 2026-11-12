@@ -2839,8 +2839,13 @@ public final class Mining {
 		VillageData.Mine mine = taggedMine(villager, level);
 		if (mine == null) return true;
 		Vec3 from = villager.position();
-		Vec3 to = from.add(movement);
-		if (from.y >= mine.entrance.getY() - 0.05 && to.y >= mine.entrance.getY() - 0.05) return true;
+		// The route confinement only applies where the gallery is. A resident on the surface (or anywhere away from the saved
+		// gallery) is free to walk, even while it still carries the saved route tag during the approach to the entrance.
+		// The old test compared the PRE-collision destination with the entrance height: a walker standing exactly at entrance
+		// level (feet y == entrance y, the normal case on flat ground) has a gravity nudge of about -0.08 in every move call,
+		// counted as "below the entrance", and the whole move (horizontal part included) was cancelled: the resident froze with a
+		// valid path and an active WALK_TARGET until the anti-stuck logic gave the task up.
+		if (!inMineArea(mine, villager)) return true;
 		AABB box = villager.getBoundingBox();
 		return mineMovementAllowed(mine, from, movement, box.getXsize(), box.getYsize());
 	}
@@ -2874,7 +2879,11 @@ public final class Mining {
 		double lateralError = Math.max(0.0, Math.abs(lateral) - maxLateral);
 		double alongError = Math.max(0.0, Math.max(-along - width * 0.5, along - last - width * 0.5));
 		double clampedAlong = Math.max(0.0, Math.min(last, along));
-		double expectedFloor = mine.entrance.getY() - Math.min(clampedAlong, descent(mine));
+		// The gallery is terraced one block per cell: a walker in cell i (along within half a block of i) stands on that cell's floor,
+		// not on a continuous slope. The sloped model put the allowed band up to half a block above the real floor in the upper part
+		// of each cell, so a walker landing on a terrace there was held above its floor by the guard (frozen mid-air, measured 600 to
+		// 1400 blocked moves per miner in a natural run).
+		double expectedFloor = mine.entrance.getY() - Math.min(Math.round(clampedAlong), descent(mine));
 		int near = Math.max(0, Math.min(last, (int) Math.round(clampedAlong)));
 		int clearBlocks = cells(mine, near);
 		if (near > 0) clearBlocks = Math.min(clearBlocks, cells(mine, near - 1));
