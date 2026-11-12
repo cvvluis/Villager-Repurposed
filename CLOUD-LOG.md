@@ -200,3 +200,13 @@ Verbleibende Engpaesse (Zahlen oben und in den Agent-Abschnitten): Steinmenge/-w
 ## P8 / D03 (12.11., ich)
 Roads.roadLinkActive(Link) ersetzt 3 inline-Bedingungen (route || relation >= 30); Verhalten unveraendert. 2 neue Checks in NetworkDiscoveryChecks (29/30-Grenze, Routen-Override, null).
 Gruppen: networkdiscovery 42 (inkl. 2 neue), roadbuild 53 (je 1 Lauf). D03 bleibt TEIL: kein Check, dass der Strassenbauer des Partnerdorfs seine Haelfte tatsaechlich baut.
+
+## P5 Schrittweise Haussuche (Agent claude/p5-housesearch, gemergt; Diff-Umfang von mir geprueft)
+Befund (Agent, Naturlauf 38 400 Ticks Dschungel-Mason-Planpruefung): Einwohner 10, Betten 17, Hausbedarf false im ganzen Lauf; nur granary (2614) und storage (7130) geplant. Pfad braucht needHouse (beds < pop oder beds==pop mit Obdachlosen)
+UND Scheitern aller Zufallspfade (ZoneAwareSites.find/findTolerant/findHouseLot, je bis 4 Entwuerfe). Auf Seed 4242 entsteht Hausbedarf erst bei Bevoelkerungswachstum (>=17 in frueheren Laeufen, Tick ~24000+).
+Aenderung: Builder.stepHouseSiteSearch/ongoingHouseSiteSearch/dropHouseSiteSearch (testbar), Cursor (Variante, Mindestradius, Phasenseed, naechster Kandidat, retryAt, lastUsedAt) in VillageData.Extra `house_site_search` (optional, Defaults; alte Saves laden),
+Neustart setzt aus dem Cursor fort (Verwurf bei geaendertem Radius/Legacy-Plan/24000 Ticks Leerlauf), Logzeilen begonnen/fortgesetzt(gedrosselt 1200)/gefunden/wiederaufgenommen; Suche selbst unveraendert (Budget 96, HOUSE_MARGIN 12).
+Dev-Hooks (nur per Umgebungsvariable, im Normalbetrieb aus): VP_FORCE_HOUSE_STEP_SEARCH=1, VP_HOUSE_SEARCH_BUDGET=n. Neue Gruppe housesitesearch (36).
+Natur (erzwungen per Hook): Taiga: begonnen/fortgesetzt/gefunden, Standort 97/66/-315 spaeter von prepareHouseLot verworfen (Luecke zwischen Standortpruefung und Lotvorbereitung); Dschungel: kein Standort bei Mindestradius 68; echter Neustart: "aus gespeichertem Cursor wiederaufgenommen (Kandidat 456)".
+Ohne Hook natuerlich NICHT ausgeloest (kein Hausbedarf) - P5-Abnahme "Check + Log im Naturlauf" nur mit Hook erfuellt.
+Nach Merge von mir (je 1 Lauf): housesitesearch 36, houseplot 140, builderchecks 318, builderpaths 79, supply 30, planstonesupply 22, milestones 16, constructionsite 21, strandrescue 19. Agent: houses 12748.
