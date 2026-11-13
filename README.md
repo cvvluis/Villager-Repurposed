@@ -4,6 +4,17 @@ Dorfbewohner haben Namen, feste Häuser mit Schild, einen festen Tagesplan und e
 mit Doppelkiste und wächst selbstständig. Server- und Client-Mod (der Info-Knopf braucht die Mod auch beim Spieler; Einzelspieler funktioniert), benötigt Fabric Loader 0.20.1+,
 Fabric API und Java 25.
 
+## Neu in 0.10.0: stabilere Dörfer (Playtest 3)
+
+Stand: nur auf dem Dev-Server geprüft (Prüfgruppen, synthetische Fixtures und Naturläufe ohne Spieler), **nicht im Client oder Vollpack erprobt**.
+Noch kein Bau wurde in einem Naturlauf fertig; Bruchstein und Holz sind der Engpass.
+
+- **Rückholung:** Bewohner ohne Weg zur Dorfstraße (z. B. auf Zaunpfosten oder in Mulden) werden zurückgeholt, wenn die echte Navigation keinen Weg findet; tiefes Gelände zählt erst nach 3600 Ticks oder nach einem Sturz.
+- **Steinbruch, Mine, Holz:** nächste erreichbare Steinzellen zuerst, gemerkte Sperrregionen, Bergleute liefern Bruchstein nach Bedarf, Mine ohne Eiche-Brett-Blockade, Bewegungssperre nur im Stollen, Bäume nur mit Rückweg.
+- **Bauplätze:** Kornspeicher und andere Zivilbauten finden auf Hanglagen einen terrassierten Platz mit Baumräumung; Pläne starten mit beschaffbarer Palette; die Haussuche speichert ihren Cursor.
+- **Berufe:** der Metzger räuchert Rohfleisch aus dem Kornspeicher; Hausschilder werden nicht mehr doppelt gesetzt; der Farmer beachtet Serene Seasons (erstes Feld darf Weizen auch außerhalb der Saison säen).
+- **Modpack:** Laufzeit-Prüfung der Berufszuordnung (More Villagers, Village Taverns), der Serene-Seasons-Tags und der Towns-and-Towers-Dörfer; der Server läuft ohne Farmer's Delight, Chef's Delight und Serene Seasons ohne Klassenladefehler.
+
 ## Neu in 0.9.0: Handelsnetz, Dorfschrein und Marktleben
 
 - **Große Plaza mit Dorfschrein:** achteckiger Platz in der Dorfpalette, überdachter Schrein, Sitzplätze, Beleuchtung, Dorfkiste und Dorftafel. Die Suche schützt bestehende Häuser und berücksichtigt offene Pflasterflächen. In dichten Dörfern kann die neue Mitte an einer freien Erweiterungsfläche liegen. Häuser werden nicht umgesetzt. Neue Bauten halten fünf freie Blöcke Abstand zur äußeren Plaza bzw. zu den Ladenhütten einschließlich Vordächern.

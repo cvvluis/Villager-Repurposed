@@ -356,3 +356,7 @@ Natur (Agent, je 48k Ticks, Seed 4242): vorher 3 Oberflaechensteine, 0-3 Mine-Ab
 ## Playtest-Jar (13.11., Stand 12ff26a)
 build/libs/villagers-repurposed-0.9.0.jar (5 333 369 Bytes), SHA-256 e5c3da298ea929519d2c67cb5b9eaa3d599b403f656cd9b534f351ed63c32c9a; gebaut mit ./gradlew build (BUILD SUCCESSFUL) nach dem 43-Gruppen-Endlauf (alle PASS, einzeln gezaehlt, siehe oben).
 Enthaelt weiterhin die dev/*Checks-Klassen (laufen nur im Dev-Server). Nicht im Client/Vollpack erprobt. Natuerlicher Endlauf m8 (48k Ticks): kein Bau fertig (granary 119/437, storage 75/266).
+
+## Version 0.10.0 (13.11.)
+gradle.properties mod_version 0.9.0 -> 0.10.0 (Jar-Name, fabric.mod.json "version" und Dateiname leiten sich davon ab); README "Neu in 0.10.0" ergaenzt, FEATURES.md Ueberschrift. Alte Dokumente (SPEC.md, PLAN.md, tools/*090*.py) bewusst unveraendert (historisch).
+Jar: build/libs/villagers-repurposed-0.10.0.jar, SHA-256 f093eee054ddf384abb0d3d9bb5621a543b64e2c4f0b4d009f596b2058ca265d (Stand dieses Commits; Code entspricht dem 43-Gruppen-Endlauf, nur Version/Doku geaendert).

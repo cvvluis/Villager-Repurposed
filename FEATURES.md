@@ -1,4 +1,4 @@
-# Villagers: Repurposed 0.9.0 – komplette Funktionsliste
+# Villagers: Repurposed 0.10.0 – komplette Funktionsliste
 
 Fabric-Mod für Minecraft 26.2 (Server und Client; der Info-Knopf braucht die Mod auch beim Spieler). Stand: nach `AI-HANDOFF.md` ist
 vermerkt, was im Testlauf beobachtet wurde und was nur im Code steht.

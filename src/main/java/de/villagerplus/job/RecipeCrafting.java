@@ -28,6 +28,8 @@ import net.minecraft.world.level.Level;
 /** Applies loaded server recipes to village inventory as single, component-aware transactions. */
 public final class RecipeCrafting {
 	private static final int INTERMEDIATE_OUTPUT_CAP = 64;
+	/** At most this many plank batches (four planks each) per stop at the crafting table, each extra batch costing a short pause. */
+	static final int MAX_PLANK_BATCHES = 8, PLANK_BATCH_PAUSE = 20;
 	private static final String FARMERS_DELIGHT_COOKING_POT_RECIPE =
 		"vectorwing.farmersdelight.common.crafting.CookingPotRecipe";
 	private static final String FARMERS_DELIGHT_CUTTING_BOARD_RECIPE =
@@ -199,9 +201,23 @@ public final class RecipeCrafting {
 		List<ItemStack> remainder = recipe.getRemainingItems(input);
 		if (workPos != null && !JobUtil.approachLong(c, workPos, 3.0)) return true;
 		if (!commit(chest, input, output, remainder)) return false;
+		int extra = 0;
+		if (output.is(net.minecraft.tags.ItemTags.PLANKS)) {
+			// One stop at the table turns the logs at hand into planks (every batch is a real recipe transaction on the chest stock),
+			// as far as the plan's request or the stock cap allows, instead of one walk and one pause per four planks.
+			while (extra < MAX_PLANK_BATCHES - 1) {
+				CraftingInput more = inputFor(recipe, chest, c.level());
+				if (more == null) break;
+				ItemStack next = recipe.assemble(more);
+				if (next.isEmpty() || !next.is(output.getItem()) || !outputFilter.test(next)
+					|| !outputAllowed(c, chest, outputFilter, next, outputCap, allowPlanBatch)
+					|| !commit(chest, more, next, recipe.getRemainingItems(more))) break;
+				extra++;
+			}
+		}
 		c.setActivity("stellt her: " + output.getHoverName().getString());
 		Anim.hold(c, output.getItem());
-		c.st().cooldownUntil = c.now() + 100;
+		c.st().cooldownUntil = c.now() + 100 + PLANK_BATCH_PAUSE * extra;
 		c.mem().jobsDone++;
 		return true;
 	}
