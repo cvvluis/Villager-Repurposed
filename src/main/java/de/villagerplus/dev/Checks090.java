@@ -542,6 +542,10 @@ public final class Checks090 {
    int count=de.villagerplus.job.FreightLoadingChecks.run(level,new BlockPos(49000,201,49000));
    source.sendSuccess(()->Component.literal("VP090 freightload PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("lamplighter")) {
+   int count=de.villagerplus.job.LamplighterJobChecks.run(level,new BlockPos(51008,201,51008));
+   source.sendSuccess(()->Component.literal("VP090 lamplighter PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("deepstrand")) {
    int count=de.villagerplus.job.DeepStrandChecks.run(level,new BlockPos(47500,201,47500));
    source.sendSuccess(()->Component.literal("VP090 deepstrand PASS "+count+" checks"),false);return count;
