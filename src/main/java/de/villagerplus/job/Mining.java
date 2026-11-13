@@ -580,12 +580,18 @@ public final class Mining {
 
 	// --- Anlegen --------------------------------------------------------------------------------
 
+	/** Failed site searches per village (by bell), so the next search looks farther out. */
+	private static final Map<Long, Integer> MINE_CREATE_FAILS = new HashMap<>();
+
 	private static Optional<VillageData.Mine> create(Ctx c, VillageRef ref) {
 		ServerLevel level = c.level();
 		int[] why = new int[7];
+		// Every failed round widens the ring (up to +24 blocks): a village that already lost a mine to a cave has fewer sites left near it.
+		int failedRounds = MINE_CREATE_FAILS.getOrDefault(ref.bell().asLong(), 0);
+		int ring = 24 + 8 * Math.min(failedRounds, 3);
 		for (int attempt = 0; attempt < 200; attempt++) {
 			double angle = c.v().getRandom().nextDouble() * Math.PI * 2;
-			double dist = 14 + c.v().getRandom().nextInt(24);
+			double dist = 14 + c.v().getRandom().nextInt(ring);
 			int x = ref.bell().getX() + (int) Math.round(Math.cos(angle) * dist);
 			int z = ref.bell().getZ() + (int) Math.round(Math.sin(angle) * dist);
 			if (!level.hasChunkAt(new BlockPos(x, ref.bell().getY(), z))) {
@@ -636,8 +642,10 @@ public final class Mining {
 				continue;
 			}
 			JobUtil.tellNearbyPlayers(level, c.v(), 48, Component.literal("Das Dorf legt eine Mine an."));
+			MINE_CREATE_FAILS.remove(ref.bell().asLong());
 			return Optional.of(m);
 		}
+		MINE_CREATE_FAILS.merge(ref.bell().asLong(), 1, Integer::sum);
 		LOGGER.info("Mine: kein Eingang gefunden, Ablehnungen [ungeladen,Hoehe,Boden,Altmine,Bauplan,Vorschau,Eingangsplatz]={}, Vorschau-Gruende={}, nicht abbaubar={}", java.util.Arrays.toString(why), java.util.Arrays.toString(PREVIEW_WHY), NONMINEABLE);
 		return Optional.empty();
 	}
