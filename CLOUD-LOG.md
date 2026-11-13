@@ -293,3 +293,15 @@ Fix (Mining.java, PlanStoneSupply.java, MineKitChecks, Checks090): Lieferung nac
 Gruppen von mir nach Merge: minekit 17, mining 68, miningcycle 199, minelifecycle 35, minewalk 27, surfacestone 13, planstonesupply 22, strandrescue 19, roles 112, gravelcycle 20, builderpaths 86.
 Natur (Agent, fix2, 30 Sprints): 54 Bruchstein geliefert, Hauler holten jeweils binnen 150 Ticks; Plan bleibt trotzdem bei Schritt 0 (Besitzer Theo "kommt nicht zum Stand (kein Fortschritt zum Stand 121,67,-334)", Uebergabe 1/3, 2/3) - Builder-Ablauf, Streuung gross (in m6 kam derselbe Plan bis Schritt 119).
 Offen: Fehlbetrag-Log zeigt weiter cobblestone x48 trotz Lieferung (Verbuchung an der Baustelle unklar); Builder-Besitzerpfad liefert mit keep=0; lange Pausen der Bergleute (15000-22000 Ticks).
+
+## Naturlauf vp-natural111-m7 (Endstand aller Merges, 2 Etappen = 48 386 Ticks, Einzellauf)
+Plaene gestartet 2 (granary 120,67,-348 @2324; storage 84,68,-335 @2862), fertig 0, Hausplan-Abbruch 0; Etappe 1: gestrandet 2, unreachable 12 (<=4: 5); Etappe 2: gestrandet 1, unreachable 8 (<=4: 1). "Stein gebrochen" 3 (Etappe 1) / 0 (Etappe 2).
+Planstand bleibt ueber >24 000 Ticks bei granary 119/437 und storage 75/266 -> reproduzierbares Plateau wie m6: Bruchstein (granary x18, storage x20) und Bretter kommen nicht an.
+
+## Gesamtstand zum Abschluss dieser Sitzung (13.11.)
+Gemergt in claude/village-growth-1111: P1 Rueckholung (route) + Navigation-vor-Modell, Steinbruch (nearest-first, Regionen), Mine-Bewegungssperre/Terrassenmodell/Pfosten-Absetzen, Mine-Kit + Lieferung nach Bedarf, Baumwahl mit Rueckweg, Kornspeicher-Pass (terrassiert) + Absenz-Reset + Besitzer-Uebergabe,
+Palette beim Planstart, Saatgras-Rueckweg, Tief-Rueckholung mit Karenz, P5 Haussuche (Cursor, Log, Dev-Hooks), D03-Praedikat + Checks, B04 Hausschild (Duplikat-Fix), gravelcycle-Fixture, P6 Laufzeit-Checks (Mapping, Serene-Seasons-Tags, T&T-Strukturen), Abschaltung ohne FD/CD (Naturlauf).
+Neue/erweiterte Pruefgruppen: strandrescue 19, surfacestone 13, minewalk 27, minekit 17, treewalkback 32, deepstrand 17, housesitesearch 36, palettefallback 21, housesign 7, compat 42, builderpaths 86, networkdiscovery 42.
+Ergebnis Naturlaeufe (Seed 4242, ohne Spieler): Plaene starten frueh (granary ~Tick 2300), erste Bloecke werden gesetzt, aber in 48k Ticks wurde KEIN Bau fertig; verbleibender Engpass = Bruchstein/Holz-Versorgung der Plaene (nur ~3 erreichbare Oberflaechensteinzellen, Mine liefert langsam, lange Pausen), Verbuchung des Fehlbetrags an der Baustelle unklar.
+Nicht geprueft: Client/Optik, Vollpack, Spielerbetrieb, Dschungel-Granary, Haeuser ohne Hook (kein Hausbedarf auf Seed 4242 in 48k Ticks), FD-Kochfluss ohne Mod.
+Push: durchgehend 403 (Claude-GitHub-App ohne Schreibzugriff) - alles nur lokal.
