@@ -41,6 +41,11 @@ public final class Anchor {
 	/** Refreshable lease for a tracked resident loaded outside the village's capped persistent footprint. */
 	public static final TicketType VILLAGER_WORK = new TicketType(WORK_TICKET_TIMEOUT,
 		TicketType.FLAG_LOADING | TicketType.FLAG_SIMULATION | TicketType.FLAG_KEEP_DIMENSION_ACTIVE);
+	/**
+	 * A radius-0 ticket only reaches chunk level 33 (loaded, not entity-ticking), so a lease on the resident's own chunk
+	 * would keep it loaded but frozen; radius 2 yields level 31 (entity-ticking) for exactly that chunk.
+	 */
+	static final int VILLAGER_LEASE_RADIUS = 2;
 	private static final int MINE_HORIZONTAL_LIMIT = 56;
 	private static final int MINE_LOOKAHEAD = 48;
 	private static boolean registered;
@@ -62,7 +67,7 @@ public final class Anchor {
 		WorkTicketKey key = workTicketKey(level, VILLAGER_WORK, chunk);
 		boolean existingLease = WORK_TICKET_REFRESHES.hasUnexpiredLease(key, now, WORK_TICKET_TIMEOUT);
 		if (!shouldLeaseVillagerChunk(true, level.isPositionEntityTicking(villager.blockPosition()), existingLease)) return;
-		addWorkTicket(level, VILLAGER_WORK, chunk, 0, now, key);
+		addWorkTicket(level, VILLAGER_WORK, chunk, VILLAGER_LEASE_RADIUS, now, key);
 	}
 
 	/** Keep a returning miner's corridor loaded even after its mine has been archived as completed. */
