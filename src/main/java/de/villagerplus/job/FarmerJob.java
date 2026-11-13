@@ -288,7 +288,9 @@ public class FarmerJob implements Job {
 
 	@Override
 	public boolean primary(Ctx c) {
-		if (c.idle(0)) {
+		boolean fbIdle = c.idle(0);
+		de.villagerplus.build.FbTrace.trace("FP " + c.mem().name, c.now(), 300, "idle0=" + fbIdle + " act=" + c.st().activity + " farms=" + (c.village() == null ? -1 : c.village().data().farms) + " target=" + c.st().target);
+		if (fbIdle) {
 			return false;
 		}
 		boolean foodDeficit = belowFoodTarget(c);
@@ -300,7 +302,7 @@ public class FarmerJob implements Job {
 			foodDeficit ? 0 : Config.FARM_KEEP)) {
 			return true;
 		}
-		if (JobUtil.depositSurplus(c, stack -> stack.is(Items.WHEAT_SEEDS), 1, 0)) {
+		if (starterSeedDepositDue(c) && JobUtil.depositSurplus(c, stack -> stack.is(Items.WHEAT_SEEDS), 1, 0)) {
 			return true;
 		}
 		String waterPlanTag = farmWaterPlanTag(c.v());
@@ -373,6 +375,18 @@ public class FarmerJob implements Job {
 		return true;
 	}
 
+	/**
+	 * While the first field is unfunded the foragers keep their seeds until a trip is worth it (a small batch, or enough for the field
+	 * together with the public stock); once a field exists every seed is delivered as before.
+	 */
+	private static boolean starterSeedDepositDue(Ctx c) {
+		int carried = JobUtil.count(c.v().getInventory(), stack -> stack.is(Items.WHEAT_SEEDS));
+		if (carried <= 0) return false;
+		VillageRef ref = c.village();
+		if (ref == null || ref.data().farms > 0 || carried >= SEED_DEPOSIT_BATCH) return true;
+		return publicFarmSeedCount(Balance.storage(c.level(), ref)) + carried >= VISIBLE_STARTER_FIELD_SEEDS;
+	}
+
 	/** Collects real vanilla seed drops from wild grass so a village without an existing field can start one. */
 	static boolean forageStarterWheatSeeds(Ctx c) {
 		VillageRef ref = c.village();
@@ -391,8 +405,9 @@ public class FarmerJob implements Job {
 			return false;
 		}
 
-		// Send every recovered seed to shared stock; the farmer starts the visible field from communal supplies.
-		if (carriedSeeds > 0 && JobUtil.depositSurplus(c, stack -> stack.is(Items.WHEAT_SEEDS), 1, 0)) return true;
+		// Send the recovered seeds to shared stock in batches; the farmer starts the visible field from communal supplies.
+		boolean depositDue = carriedSeeds >= SEED_DEPOSIT_BATCH || carriedSeeds > 0 && publicSeeds + carriedSeeds >= VISIBLE_STARTER_FIELD_SEEDS;
+		if (depositDue && JobUtil.depositSurplus(c, stack -> stack.is(Items.WHEAT_SEEDS), 1, 0)) { de.villagerplus.build.FbTrace.ev("DEPOSIT " + c.mem().name + " tick " + c.now() + " carried=" + carriedSeeds); return true; }
 		int targetSeeds = VISIBLE_STARTER_FIELD_SEEDS;
 		if (publicSeeds + carriedSeeds >= targetSeeds) return waitForStarterSeedStorage(c);
 
@@ -400,6 +415,10 @@ public class FarmerJob implements Job {
 		if (target == null || !safeSeedGrass(c.level(), ref, target)) {
 			BlockPos previousTarget = target;
 			target = findSeedGrass(c, ref);
+			if (target == null && c.now() >= c.st().forageFarSearchAt) {
+				target = findFarSeedGrass(c, ref);
+				if (target == null) c.st().forageFarSearchAt = c.now() + FAR_SEED_SEARCH_RETRY_TICKS;
+			}
 			c.st().forageTarget = target;
 			if (!java.util.Objects.equals(previousTarget, target)) resetApproach(c);
 		}
@@ -407,6 +426,8 @@ public class FarmerJob implements Job {
 		if (target == null) return FISHING_FALLBACK.primary(c);
 		c.setActivity("sammelt Weizensamen für das erste Dorffeld");
 		Anim.hold(c, Items.WOODEN_HOE);
+		de.villagerplus.build.FbTrace.trace("FTRACE " + c.mem().name, c.now(), 150, "pos=" + c.v().blockPosition().toShortString() + " target=" + target.toShortString()
+			+ " d=" + (int) Math.sqrt(c.v().blockPosition().distSqr(target)) + " nav=" + (c.v().getNavigation().isDone() ? "done" : "active") + " walkStart=" + c.st().walkStart + " cd=" + (c.st().cooldownUntil - c.now()));
 		long previousRouteStart = c.st().walkStart;
 		if (!JobUtil.approachLong(c, target, 2.6)) {
 			// A route abort clears JobState.walkStart and starts the shared approach cooldown.
@@ -438,6 +459,7 @@ public class FarmerJob implements Job {
 		BlockState state = c.level().getBlockState(target);
 		ItemStack tool = Items.WOODEN_HOE.getDefaultInstance();
 		List<ItemStack> drops = new ArrayList<>(Block.getDrops(state, c.level(), target, null, c.v(), tool));
+		de.villagerplus.build.FbTrace.ev("FORAGE " + c.mem().name + " tick " + c.now() + " roll=" + drops.stream().anyMatch(stack -> stack.is(Items.WHEAT_SEEDS)) + " at " + c.v().blockPosition().toShortString() + " bellDist=" + (int) Math.sqrt(c.v().blockPosition().distSqr(ref.bell())));
 		if (drops.stream().noneMatch(stack -> stack.is(Items.WHEAT_SEEDS))) {
 			// Wild grass has a low vanilla seed-drop chance. Preserve plants that yield no seeds.
 			// Do not pin the farmer to the same unlucky grass block on every later attempt.
@@ -663,21 +685,49 @@ public class FarmerJob implements Job {
 	 * Vanilla navigation walks a forager down into a gully but not out of it (measured: the same farmers were rescued from one
 	 * hollow again and again), so the nearest few candidates must also have a walk-back to the village street.
 	 */
+	/** The farmer stands next to the plant it just searched in vain: it searches that plant again unless another one lies within this many blocks. */
+	private static final int SEED_REROLL_REACH = 4;
+	private static final int SEED_REROLL_NEIGHBOUR = 8;
+	/** Recovered seeds are walked to the depot in small batches, not one trip per seed. */
+	private static final int SEED_DEPOSIT_BATCH = 3;
+	private static final int FAR_SEED_SEARCH_RADIUS = 80;
+	private static final long FAR_SEED_SEARCH_RETRY_TICKS = 600L;
+
 	static BlockPos findSeedGrass(Ctx c, VillageRef ref) {
+		return scanSeedGrass(c, ref, STARTER_SEED_SEARCH_RADIUS, 1);
+	}
+
+	/**
+	 * The ordinary search only sees plants within 32 blocks of the farmer. A farmer standing in a built-up village often has none there
+	 * while meadows lie 40-80 blocks away inside the village radius; this wider pass looks at every second column of that square.
+	 */
+	static BlockPos findFarSeedGrass(Ctx c, VillageRef ref) {
+		return scanSeedGrass(c, ref, FAR_SEED_SEARCH_RADIUS, 2);
+	}
+
+	private static BlockPos scanSeedGrass(Ctx c, VillageRef ref, int radius, int stride) {
 		BlockPos center = c.v().blockPosition();
 		BlockPos bell = ref.bell();
 		List<BlockPos> candidates = new java.util.ArrayList<>();
 		List<Long> candidateDistance = new java.util.ArrayList<>();
-		for (int index = 0; index < MAX_STARTER_SEED_SEARCH_COLUMNS; index++) {
-			BlockPos column = starterSeedSearchColumn(center, index);
+		BlockPos rerollCandidate = null;
+		int fbGrass = 0, fbVillage = 0;
+		for (int xOffset = -radius; xOffset <= radius; xOffset += stride) for (int zOffset = -radius; zOffset <= radius; zOffset += stride) {
+			BlockPos column = center.offset(xOffset, 0, zOffset);
 			long distance = horizontalDistanceSquared(center, column);
-			if (distance > (long) STARTER_SEED_SEARCH_RADIUS * STARTER_SEED_SEARCH_RADIUS) continue;
+			if (distance > (long) radius * radius) continue;
 			if (candidates.size() >= SEED_WALKBACK_CHECKS && distance >= candidateDistance.get(candidateDistance.size() - 1)) continue;
 			BlockPos pos = seedGrassSurface(c.level(), column);
 			if (pos == null || !c.level().getBlockState(pos).is(Blocks.SHORT_GRASS)) continue;
+			fbGrass++;
 			long villageDistance = horizontalDistanceSquared(pos, bell);
-			if (villageDistance < 10L * 10L || villageDistance > (long) Config.VILLAGE_RADIUS * Config.VILLAGE_RADIUS) continue;
-			if (rejectedForageTarget(c.st(), pos) || !safeSeedGrass(c.level(), ref, pos)) continue;
+			if (villageDistance < 10L * 10L || villageDistance > (long) Config.VILLAGE_RADIUS * Config.VILLAGE_RADIUS) { fbVillage++; continue; }
+			if (rejectedForageTarget(c.st(), pos)) {
+				// The plant that just yielded no seed stays standing; it may be searched again when no other plant is close.
+				if (distance <= SEED_REROLL_REACH * SEED_REROLL_REACH && safeSeedGrass(c.level(), ref, pos)) rerollCandidate = pos.immutable();
+				continue;
+			}
+			if (!safeSeedGrass(c.level(), ref, pos)) continue;
 			if (nearbyHomePoi(c.level(), pos)) continue;
 			if (inSeedTrap(pos, c.now())) continue;
 			int at = candidates.size();
@@ -689,6 +739,10 @@ public class FarmerJob implements Job {
 				candidateDistance.remove(candidateDistance.size() - 1);
 			}
 		}
+		if (rerollCandidate != null && (candidates.isEmpty() || candidateDistance.get(0) > (long) SEED_REROLL_NEIGHBOUR * SEED_REROLL_NEIGHBOUR)) {
+			return rerollCandidate;
+		}
+		de.villagerplus.build.FbTrace.trace("FSEARCH " + c.mem().name, c.now(), 300, "from " + center.toShortString() + " bellDist=" + (int) Math.sqrt(horizontalDistanceSquared(center, bell)) + " grassInR32=" + fbGrass + " outsideVillageRing=" + fbVillage + " candidates=" + candidates.size());
 		if (candidates.isEmpty()) return null;
 		BlockPos home = de.villagerplus.build.Builder.villageReturn(c.level(), bell);
 		// No street cell known: keep the nearest candidate, as before this check existed.

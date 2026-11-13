@@ -21,6 +21,8 @@ public class JobState {
 	public BlockPos target;
 	/** Runtime-only target while a farmer walks to a safe wild-grass seed source. */
 	public BlockPos forageTarget;
+	/** Next game time at which a forager may run the wide (far meadow) seed-grass search again. */
+	public long forageFarSearchAt;
 	/** Last safe grass patch that yielded no seeds; avoid immediately retrying the same low-yield spot. */
 	public BlockPos forageRejectedTarget;
 	public Entity targetEntity;

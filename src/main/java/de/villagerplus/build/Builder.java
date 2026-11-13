@@ -71,6 +71,7 @@ import net.minecraft.world.phys.AABB;
 public final class Builder {
 	private static final Map<Long, VillageStyle> STYLES = new HashMap<>();
 	private static final Map<Long, List<Step>> STEPS = new HashMap<>();
+	static int fbTotal(long origin) { List<Step> l = STEPS.get(origin); return l == null ? -1 : l.size(); }
 	private static final Map<Long, String> PLAN_DIAGNOSTICS = new HashMap<>();
 	private static final Map<Long, Optional<HouseTemplate>> TEMPLATES = new HashMap<>();
 	private static final long STUCK_TICKS = 36000L;
@@ -1258,6 +1259,14 @@ public final class Builder {
 						return supplierBusy;
 					}
 				}
+			}
+			// The field owner turns public planks and sticks into the fence and gate the open step asks for (loaded recipes,
+			// real chest inventory); without this the compact starter plan waited for a craftsman nobody sends.
+			if (!helper && d.planType.equals(Blueprints.FARM) && !d.wanted.isEmpty()
+				&& de.villagerplus.job.Workshop.tick(c)) {
+				d.planProgress = c.now();
+				ref.dirty();
+				return true;
 			}
 			boolean result = d.planType.equals(Blueprints.WALL) ? continueWall(c, ref, box)
 				: continuePlan(c, ref, box, siteStock, cargoManifest, preparedSteps, standSlot, helper);
@@ -3599,6 +3608,7 @@ public final class Builder {
 		if (needsNaturalHousePreparation(type, variant, source != null)) {
 			persistProjectView(c, ref, d, null, siteStock, cargoManifest, plannedHouseLotBounds);
 		}
+		FbTrace.cost(type, steps);
 		LOGGER.info("Villagers: Repurposed: Bauplan {} gestartet bei {} (Tick {}, {} Schritte, Variante {}, Vorlage {}, Glocke {})",
 			type, site.toShortString(), c.now(), steps.size(), variant,
 			ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.of()).contains(site.asLong()),
