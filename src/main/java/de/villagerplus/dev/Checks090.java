@@ -541,6 +541,10 @@ public final class Checks090 {
    int count=de.villagerplus.job.StoneEconomyChecks.run(level,fixtureForEquipment(level,at),at);
    source.sendSuccess(()->Component.literal("VP090 stoneeconomy PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("woodsupply")) {
+   int count=de.villagerplus.job.WoodSupplyChecks.run(level,new BlockPos(48500,201,48500));
+   source.sendSuccess(()->Component.literal("VP090 woodsupply PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("treewalkback")) {
    int count=de.villagerplus.job.TreeWalkbackChecks.run(level,new BlockPos(46000,201,46000));
    source.sendSuccess(()->Component.literal("VP090 treewalkback PASS "+count+" checks"),false);return count;
