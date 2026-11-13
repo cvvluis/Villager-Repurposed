@@ -278,3 +278,8 @@ Offen: warum Bewohner im Zaunbecken/Kuechengebaeude feststecken (umgangen, nicht
 Etappe 1: Plaene gestartet 3 (granary 86,68,-339 @2363; storage 167,66,-312 @2632 und 195,65,-363 @5922), fertig 0, gestrandet 1, unreachable<=4: 2.
 Etappe 2: kein neuer Plan; Planstand granary 119/441, storage 75/266 (erste gesetzte Bloecke in einem Naturlauf); Mine Eingang 104,67,-375 gegraben bis Tiefe 11 (Heinz/Elsa, "von Hand"); gestrandet 1; unreachable 21 (<=4: 3); Steinbruch-Rueckweg verworfen 2.
 Engpass jetzt: Bruchstein. granary "steht seit 15611 Ticks still ... Kiste Bruchstein/Stein/Ziegel/Kohle=0/0/0/22, fehlt cobblestone x18"; storage fehlt cobblestone x20 + spruce_log/planks. Gegrabener Stein erreicht den Plan nicht -> Agent claude/mine-supplies (Frage: wohin geht der Stein?).
+
+## P6 Abschaltung ohne Farmer's Delight / Chef's Delight (ich, Naturlauf in Wegwerf-Worktree)
+Aufbau: Worktree mit build.gradle `compileOnly` statt `implementation` fuer farmers-delight-refabricated und chefs-delight (Mod-Liste: 64 Mods, 0 Treffer fuer farmersdelight/chefsdelight; ctov, morevillagers, village_taverns, villagerplus geladen).
+Ergebnis: Server startet, frische Welt Seed 4242, 24 271 Ticks (10x2400) ohne Spieler: 0x NoClassDefFoundError/ClassNotFoundException/NoSuchMethodError, 0 ERROR/Exception-Zeilen (gefiltert wie natural-run.sh), Plaene gestartet 2, gestrandet 0.
+Einschraenkung: Klassen laden lazy; Koch-/Kuechenpfade (DelightKitchenCrafting, CookJob mit Kochtopf) wurden in 24k Ticks nicht gezielt ausgeloest -> "mod fehlt" ist fuer das Dorfleben belegt, NICHT fuer den kompletten FD-Kochfluss. Worktree und Welt danach geloescht, nichts committet ausser diesem Eintrag.
