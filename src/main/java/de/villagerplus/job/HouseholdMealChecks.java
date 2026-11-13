@@ -112,6 +112,9 @@ public final class HouseholdMealChecks {
 			diner.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
 				new net.minecraft.world.entity.ai.memory.WalkTarget(deliverySpot, 0.45F, 1));
 			diner.getInventory().clearContent();
+			// A resident mid-delivery has committed to a delivery stand beside the shared chest (JobState.target); the routine only
+			// cancels an approach it recognises as a delivery (Routine.stopDeliveryApproachIfNeeded).
+			routine.target = deliverySpot.immutable();
 			Routine.run(new Ctx(level, diner, routine, memory, village, routineNow), logDelivery, Phase.MORNING);
 			check(routine.stage == 2 && !hasWalkTarget(diner) && routine.walkStart == 0,
 				"morning delivery skips the shared chest when the matching inventory is empty");
@@ -138,6 +141,16 @@ public final class HouseholdMealChecks {
 			routine.cooldownUntil = 0;
 			diner.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
 			diner.getInventory().setItem(0, new ItemStack(Items.OAK_LOG, 3));
+			// The delivery approach needs a supported, free stand around the chest (distributed stands, JobUtil.sharedStandSpot):
+			// give the chest a small floor so the resident really starts a route that then stalls and is aborted.
+			BlockPos chestCentre = deliverySpot;
+			for (int dx = -4; dx <= 4; dx++) for (int dz = -4; dz <= 4; dz++) {
+				BlockPos floor = chestCentre.offset(dx, -1, dz);
+				if (dx == 0 && dz == 0) continue;
+				level.setBlock(floor, Blocks.STONE.defaultBlockState(), 3);
+				level.setBlock(floor.above(), Blocks.AIR.defaultBlockState(), 3);
+				level.setBlock(floor.above(2), Blocks.AIR.defaultBlockState(), 3);
+			}
 			long routeStart = routineNow + 100;
 			for (int tick = 0; tick < 800 && routine.stage == 1; tick++) {
 				Routine.run(new Ctx(level, diner, routine, memory, village, routeStart + tick), logDelivery(1), Phase.MORNING);
