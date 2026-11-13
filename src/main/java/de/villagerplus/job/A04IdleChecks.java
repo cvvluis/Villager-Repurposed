@@ -124,7 +124,7 @@ public final class A04IdleChecks {
 			List<Ctx> contexts = new ArrayList<>();
 			long base = level.getGameTime() + 100L;
 			for (Villager v : readers) {
-				v.teleportTo(origin.getX() + 0.5, origin.getY(), origin.getZ() + 0.5);
+				v.teleportTo(origin.getX() - 1.5 + (contexts.size() % 4), origin.getY(), origin.getZ() - 1.5 - (contexts.size() / 4));
 				JobState state = new JobState();
 				contexts.add(new Ctx(level, v, state, v.getAttachedOrCreate(VillagerPlus.MEMORY), ref, base));
 			}
@@ -143,7 +143,14 @@ public final class A04IdleChecks {
 			List<BlockPos> stands = new ArrayList<>();
 			for (Ctx c : contexts) {
 				BlockPos target = c.st().target;
-				require(target != null, "resident " + c.v().getUUID() + " found a break stand slot ('" + c.st().activity + "')");
+				if (target == null) {
+					BlockPos off = Routine.gatherOffset(c.v().getUUID(), Phase.BREAK, false);
+					BlockPos cand = level.getHeightmapPos(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, origin.offset(off.getX(), 0, off.getZ()));
+					var path = de.villagerplus.build.Builder.workPath(c, cand);
+					require(false, "resident " + c.v().getUUID() + " found a break stand slot ('" + c.st().activity + "') cand=" + cand.toShortString()
+						+ " from=" + c.v().blockPosition().toShortString() + " path=" + (path == null ? "null" : path.canReach() + "/" + path.getNodeCount())
+						+ " floor=" + level.getBlockState(cand.below()) + " body=" + level.getBlockState(cand) + " noAi=" + c.v().isNoAi());
+				}
 				long dx = target.getX() - origin.getX(), dz = target.getZ() - origin.getZ();
 				require(dx * dx + dz * dz >= 16L && dx * dx + dz * dz <= 144L,
 					"the break stand " + target.toShortString() + " lies on the ring 4 to 12 blocks around the bell, not at the bell");

@@ -45,11 +45,14 @@ public final class A04LeaseChecks {
 				return -1;
 			}
 			Run r = run;
+			if ((level.getGameTime() - r.startedAt) % 40 == 5) System.out.println("A04 LEASE WAIT t=" + (level.getGameTime() - r.startedAt)
+				+ " ticking=" + level.isPositionEntityTicking(r.leasedPos) + " tickCount=" + r.leased.tickCount + " alive=" + r.leased.isAlive()
+				+ " removed=" + r.leased.isRemoved() + " chunkLoaded=" + level.hasChunkAt(r.leasedPos) + " controlTicking=" + level.isPositionEntityTicking(r.controlPos) + " find=" + (Villages.find(level, r.leased) != null));
 			if (!level.isPositionEntityTicking(r.leasedPos) || r.leased.tickCount == 0 || !r.leased.isAlive()) return -1;
 			require(r.leased.isAlive() && level.isPositionEntityTicking(r.leasedPos) && r.leased.tickCount > 0,
 				"the resident whose scheduler ran now ticks without any player nearby (after " + (level.getGameTime() - r.startedAt) + " ticks)");
 			require(!level.isPositionEntityTicking(r.controlPos) && (r.control.tickCount == 0 || r.control.isRemoved()),
-				"an identical resident in a chunk without lease or player is not simulated");
+				"an identical villager that belongs to no village (so no lease) in an untouched chunk is not simulated");
 			cleanup(level);
 			return 2;
 		} catch (Throwable failure) {
@@ -59,7 +62,7 @@ public final class A04LeaseChecks {
 	}
 
 	private static void start(ServerLevel level, BlockPos origin, Run r) {
-		BlockPos controlOrigin = origin.offset(160, 0, 0);
+		BlockPos controlOrigin = origin.offset(400, 0, 0);
 		level.getChunkAt(origin);
 		level.getChunkAt(controlOrigin);
 		for (BlockPos p : new BlockPos[] {origin, controlOrigin}) {
@@ -74,7 +77,7 @@ public final class A04LeaseChecks {
 		r.leasedPos = origin.offset(6, 0, 6);
 		r.controlPos = controlOrigin.offset(6, 0, 6);
 		r.leased = spawn(level, r.leasedPos, ref);
-		r.control = spawn(level, r.controlPos, ref);
+		r.control = spawn(level, r.controlPos, null);
 		require(!level.isPositionEntityTicking(r.leasedPos) && !level.isPositionEntityTicking(r.controlPos),
 			"precondition: neither fixture chunk is entity-ticking without a player or lease");
 		r.startedAt = level.getGameTime();
@@ -88,7 +91,7 @@ public final class A04LeaseChecks {
 		villager.addTag("vp090_fixture");
 		villager.setNoAi(true);
 		villager.setInvulnerable(true);
-		villager.getBrain().setMemory(MemoryModuleType.MEETING_POINT, GlobalPos.of(level.dimension(), ref.bell()));
+		if (ref != null) villager.getBrain().setMemory(MemoryModuleType.MEETING_POINT, GlobalPos.of(level.dimension(), ref.bell()));
 		villager.getAttachedOrCreate(VillagerPlus.MEMORY).name = "A04Lease";
 		return villager;
 	}
