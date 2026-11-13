@@ -352,3 +352,7 @@ Aenderung: Kit-Aufwand je Abschnitt auf 1800 Arbeitsticks begrenzt (max 400 je A
 ENTSCHEIDUNG FUER DEN NUTZER: die kuerzere Kit-Grenze laesst Abschnitte nach der Auszeit ohne Stuetzen/Fackeln graben, wenn das Lager sie nicht hat (vorher nach 12000 Ticks Wartezeit, jetzt nach 1800 Arbeitsticks Aufwand); Sicherheit gegen Tempo nicht natuerlich bewertet.
 Gruppen nach Merge: stoneeconomy 9 (neu), minekit 19, mining 68, miningcycle 199, minelifecycle 35, minewalk 27, surfacestone 13, planstonesupply 22, strandrescue 19, roles 112, gravelcycle 20, builderpaths 86, mealcycle 10. (gravelcycle fiel bei Kit-Grenze 900 durch, bei 1800 gruen: wenig Spielraum.)
 Natur (Agent, je 48k Ticks, Seed 4242): vorher 3 Oberflaechensteine, 0-3 Mine-Abschnitte; nachher Stein gebrochen 27 (fin3), 21 (fin4) bzw. 45/5/29/39 in Zwischenstaenden (Streuung 5-45); Planstand granary 119->140/137, storage 75->99; KEIN Bau fertig (Granary braucht weit ueber 100 Bruchstein); naechster Engpass Holz/Bretter (Maurer warten 900-2600 Ticks/Tag auf Bauholz).
+
+## Playtest-Jar (13.11., Stand 12ff26a)
+build/libs/villagers-repurposed-0.9.0.jar (5 333 369 Bytes), SHA-256 e5c3da298ea929519d2c67cb5b9eaa3d599b403f656cd9b534f351ed63c32c9a; gebaut mit ./gradlew build (BUILD SUCCESSFUL) nach dem 43-Gruppen-Endlauf (alle PASS, einzeln gezaehlt, siehe oben).
+Enthaelt weiterhin die dev/*Checks-Klassen (laufen nur im Dev-Server). Nicht im Client/Vollpack erprobt. Natuerlicher Endlauf m8 (48k Ticks): kein Bau fertig (granary 119/437, storage 75/266).
