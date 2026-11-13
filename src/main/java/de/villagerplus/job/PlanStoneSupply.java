@@ -40,6 +40,8 @@ public final class PlanStoneSupply {
 
 	/** A load of this many cobblestones is worth the walk to the public chest while the plan waits for stone. */
 	static final int DELIVERY_LOAD = 12;
+	/** A miner keeps a few cobblestones for the one-block floor repairs of its own gallery (nobody else can hand them over underground). */
+	public static final int COBBLE_RESERVE = 2;
 
 	/** Cobblestone the plan asks for (directly, or as stairs and slabs to craft) beyond what the public chest holds. */
 	static int cobbleShortage(VillageData data, Container stock) {
@@ -55,10 +57,11 @@ public final class PlanStoneSupply {
 	 * stone chain) is short of cobblestone and the load is either a full delivery or covers the whole shortage.
 	 */
 	public static boolean cobbleDeliveryDue(ServerLevel level, VillageData data, Container stock, int carried) {
-		if (carried <= 0 || data == null || stock == null || !data.hasPlan()) return false;
+		int spare = carried - COBBLE_RESERVE;
+		if (spare <= 0 || data == null || stock == null || !data.hasPlan()) return false;
 		int shortage = cobbleShortage(data, stock);
 		if (shortage <= 0 && !needsCobble(level, data, stock)) return false;
-		return carried >= DELIVERY_LOAD || (shortage > 0 && carried >= shortage);
+		return carried >= DELIVERY_LOAD || (shortage > 0 && spare >= shortage);
 	}
 
 	/** Starts plan mining with an actual stored pickaxe or one paid from loaded recipes and public stock. */

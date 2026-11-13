@@ -152,8 +152,9 @@ public final class MineKitChecks {
 			check(!PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 0), "nothing carried, nothing to deliver"); checks++;
 			data.wanted.clear();
 			data.wanted.add("minecraft:cobblestone#5");
-			check(PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 5) && !PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 4),
-				"a load that covers the whole remaining shortage is delivered at once, a smaller one is not"); checks++;
+			check(PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 5 + PlanStoneSupply.COBBLE_RESERVE)
+				&& !PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 4 + PlanStoneSupply.COBBLE_RESERVE),
+				"a load that covers the whole remaining shortage (besides the miner's repair reserve) is delivered at once, a smaller one is not"); checks++;
 			add(chest, Items.COBBLESTONE, 5);
 			check(!PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 30), "nothing is delivered once the public chest already covers the plan"); checks++;
 			chest.clearContent();
@@ -197,13 +198,23 @@ public final class MineKitChecks {
 				// The fixture villager has no AI: set it onto the delivery stand the job chose (a real one walks there).
 				if (state.target != null) worker.setPos(state.target.getX() + 0.5, state.target.getY(), state.target.getZ() + 0.5);
 			}
-			check(count(chest, Items.COBBLESTONE) == 14 && count(worker.getInventory(), Items.COBBLESTONE) == 0
+			check(count(chest, Items.COBBLESTONE) == 14 - PlanStoneSupply.COBBLE_RESERVE
+				&& count(worker.getInventory(), Items.COBBLESTONE) == PlanStoneSupply.COBBLE_RESERVE
 				&& count(worker.getInventory(), Items.IRON_PICKAXE) == 1,
 				"a miner carrying a load for the waiting plan puts it into the public chest (chest " + count(chest, Items.COBBLESTONE)
 					+ ", carried " + count(worker.getInventory(), Items.COBBLESTONE) + ", activity " + state.activity
 					+ ", due " + PlanStoneSupply.cobbleDeliveryDue(level, ref.data(), ref.chest(level), count(worker.getInventory(), Items.COBBLESTONE))
 					+ ", needed " + Mining.needed(level, ref, ref.data(), ref.chest(level), Mining.Need.STONE)
 					+ ", blocked " + (worker.level() == level ? state.depositBlockedUntil - now : 0) + ", cd " + (state.cooldownUntil - now) + ")"); checks++;
+			// The one-block floor repair of the gallery works with any rock or soil the miner dug if no cobblestone is left.
+			worker.getInventory().clearContent();
+			add(worker.getInventory(), Items.DIRT, 1);
+			BlockPos gap = chestPos.offset(2, 0, 2);
+			level.setBlock(gap.below().below(), net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(), 3);
+			level.setBlock(gap.below(), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+			boolean patched = Mining.patchFloor(new Ctx(level, worker, state, memory, ref, now + 900L), gap.below());
+			check(patched && level.getBlockState(gap.below()).is(net.minecraft.world.level.block.Blocks.DIRT) && count(worker.getInventory(), Items.DIRT) == 0,
+				"a floor gap is closed with dug dirt when the miner holds no cobblestone (patched " + patched + ")"); checks++;
 			return checks;
 		} finally {
 			if (worker != null) worker.discard();
