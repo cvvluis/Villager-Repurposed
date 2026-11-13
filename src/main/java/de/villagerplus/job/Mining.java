@@ -186,7 +186,7 @@ public final class Mining {
 	/** Section the running kit wait belongs to: a new section starts a fresh wait, so one timeout never unlocks the whole mine. */
 	private static final java.util.Map<Long, Integer> KIT_WAIT_INDEX = new java.util.HashMap<>();
 	/** Timber or coal may simply not exist near a village: after this much working time spent on one section's kit (restock trips, crafting, waiting) the miners dig that section without it, and the following ones too for {@link #KIT_SKIP_TICKS}. */
-	static final long KIT_WAIT_TICKS = 2400L;
+	static final long KIT_WAIT_TICKS = 1800L;
 	/** After such a release the following sections are dug without waiting for the same kit again for this long. */
 	static final long KIT_SKIP_TICKS = 12000L;
 	/** One call counts at most this much waiting time, so nights and rest periods between two work spells are not charged. */
@@ -2796,8 +2796,8 @@ public final class Mining {
 
 		// Far from the mine (vanilla navigation range is short): hand the walk to the bounded long-route search first.
 		double farSq = c.v().position().distanceToSqr(Vec3.atBottomCenterOf(cell));
+		if (farSq > 8.0 * 8.0 && onMineSurface(mine, c.v()) && approachStalled(c, farSq)) return MineWalk.MOVING;
 		if (farSq > 20.0 * 20.0 && onMineSurface(mine, c.v())) {
-			if (approachStalled(c, farSq)) return MineWalk.MOVING;
 			c.setActivity("geht zur Mine");
 			if (!JobUtil.approachLong(c, cell, 10.0)) return c.st().cooldownUntil > c.now() ? MineWalk.STUCK : MineWalk.MOVING;
 		}

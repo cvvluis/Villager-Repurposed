@@ -536,6 +536,11 @@ public final class Checks090 {
     +de.villagerplus.job.MineKitChecks.runDelivery(level,fixtureForEquipment(level,at2),at2);
    source.sendSuccess(()->Component.literal("VP090 minekit PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("stoneeconomy")) {
+   BlockPos at=new BlockPos(47600,201,47000);
+   int count=de.villagerplus.job.StoneEconomyChecks.run(level,fixtureForEquipment(level,at),at);
+   source.sendSuccess(()->Component.literal("VP090 stoneeconomy PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("treewalkback")) {
    int count=de.villagerplus.job.TreeWalkbackChecks.run(level,new BlockPos(46000,201,46000));
    source.sendSuccess(()->Component.literal("VP090 treewalkback PASS "+count+" checks"),false);return count;
