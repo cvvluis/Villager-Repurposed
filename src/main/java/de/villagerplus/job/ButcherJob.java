@@ -19,7 +19,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.AABB;
 
-/** Metzger: Vormittags Tierbestaende klein halten und Fleisch sammeln. Nachmittags Rohes in der Dorfkiste garen. */
+/** Metzger: Vormittags Tierbestaende klein halten und Fleisch sammeln. Nachmittags Rohes in der Dorfkiste garen, Rohfleisch aus dem Kornspeicher im Raeucherofen. */
 public class ButcherJob implements Job {
 	private static final Set<EntityType<?>> LIVESTOCK = Set.of(EntityTypes.COW, EntityTypes.PIG, EntityTypes.SHEEP, EntityTypes.CHICKEN);
 
@@ -85,7 +85,10 @@ public class ButcherJob implements Job {
 		if (c.idle(1)) {
 			return false;
 		}
-		if (Craft.run(c, RECIPES) || Livestock.tick(c)) {
+		// Raw meat in the village chest keeps the existing path. Slaughter loot is delivered to the granary (food belongs
+		// there, the central material chest refuses it), so afterwards it is smoked in the marked kitchen smoker with
+		// public fuel and returned to the food store.
+		if (Craft.run(c, RECIPES) || SmithSmelting.cookMeat(c) || Livestock.tick(c)) {
 			return true;
 		}
 		c.setIdle(1, 300);

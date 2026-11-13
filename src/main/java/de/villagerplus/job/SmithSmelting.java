@@ -29,7 +29,7 @@ import net.minecraft.world.level.block.state.BlockState;
 /** Real, recipe-registry-driven cooking and smelting in marked village furnaces. */
 final class SmithSmelting {
 	private static final long SCAN_INTERVAL = 1200L;
-	private enum Worker { SMITH, COOK }
+	private enum Worker { SMITH, COOK, BUTCHER }
 
 	private SmithSmelting() { }
 
@@ -39,6 +39,18 @@ final class SmithSmelting {
 
 	static boolean cook(Ctx c) {
 		return work(c, Worker.COOK);
+	}
+
+	/**
+	 * Butcher: smokes raw meat and fish from the public food store (granary) in the marked kitchen smoker, with fuel from public
+	 * stock only, and returns the cooked result to the food store. Shares the furnace claim protocol with the cook.
+	 */
+	static boolean cookMeat(Ctx c) {
+		return work(c, Worker.BUTCHER);
+	}
+
+	private static boolean smokes(Worker worker) {
+		return worker != Worker.SMITH;
 	}
 
 	/** Uses only a marked village-owned furnace next to the communal depot for the active plan's stone chain. */
@@ -194,11 +206,14 @@ final class SmithSmelting {
 			if (furnace.getAttached(VillagerPlus.COMMUNAL_FURNACE) != 0
 				|| !furnace.getItem(0).isEmpty() || !furnace.getItem(2).isEmpty()) return false;
 			Batch batch = findBatch(c.level(), c.village(), furnace, worker);
+			// The butcher never parks raw meat in a smoker that cannot burn: no public fuel, no batch.
+			if (batch != null && worker == Worker.BUTCHER && !hasFuel(c.level(), c.village(), furnace)) return false;
 			if (batch == null || !JobUtil.approach(c, pos, 3.0)) return batch != null;
 			if (!loadBatch(c.level(), furnace, batch.source(), batch.slot(), batch.recipe(), worker)) return false;
 			ItemStack input = furnace.getItem(0);
 			c.level().sendBlockUpdated(pos, c.level().getBlockState(pos), c.level().getBlockState(pos), 3);
-			c.setActivity(worker == Worker.COOK ? "beschickt den Räucherofen nach Rezept" : "beschickt den Dorfofen nach Rezept");
+			c.setActivity(worker == Worker.BUTCHER ? "beschickt den Räucherofen mit Rohfleisch"
+				: worker == Worker.COOK ? "beschickt den Räucherofen nach Rezept" : "beschickt den Dorfofen nach Rezept");
 			Anim.hold(c, input.getItem());
 			JobUtil.swing(c.v());
 			c.mem().jobsDone++;
@@ -212,7 +227,7 @@ final class SmithSmelting {
 			int moved = deliverClaimedOutput(c.level(), c.village(), furnace);
 			if (moved <= 0) return false;
 			c.level().sendBlockUpdated(pos, c.level().getBlockState(pos), c.level().getBlockState(pos), 3);
-			c.setActivity(worker == Worker.COOK ? "lagert geräucherte Mahlzeit ein" : "lagert Schmiedeerzeugnis ein");
+			c.setActivity(smokes(worker) ? "lagert geräucherte Mahlzeit ein" : "lagert Schmiedeerzeugnis ein");
 			Anim.hold(c, claim.getItem());
 			JobUtil.swing(c.v());
 			c.mem().jobsDone++;
@@ -238,7 +253,7 @@ final class SmithSmelting {
 		if (!furnace.getItem(1).is(ItemTags.COALS)) return false;
 		furnace.setChanged();
 		c.level().sendBlockUpdated(pos, c.level().getBlockState(pos), c.level().getBlockState(pos), 3);
-		c.setActivity(worker == Worker.COOK ? "räuchert eine Mahlzeit nach Rezept" : "schmilzt nach geladenem Rezept");
+		c.setActivity(smokes(worker) ? "räuchert eine Mahlzeit nach Rezept" : "schmilzt nach geladenem Rezept");
 		Anim.hold(c, input.getItem());
 		JobUtil.swing(c.v());
 		c.mem().jobsDone++;
@@ -247,7 +262,7 @@ final class SmithSmelting {
 	}
 
 	private static Batch findBatch(ServerLevel level, de.villagerplus.village.VillageRef ref, AbstractFurnaceBlockEntity furnace, Worker worker) {
-		List<Container> stores = worker == Worker.COOK
+		List<Container> stores = smokes(worker)
 			? Specials.containers(level, ref, Blueprints.GRANARY) : Balance.storage(level, ref);
 		if (stores.isEmpty()) return null;
 		RecipeType<? extends AbstractCookingRecipe> type = recipeType(level.getBlockState(furnace.getBlockPos()));
@@ -257,6 +272,7 @@ final class SmithSmelting {
 			for (Container store : stores) for (int slot = 0; slot < store.getContainerSize(); slot++) {
 				ItemStack stack = store.getItem(slot);
 				if (stack.isEmpty() || !recipe.input().test(stack)) continue;
+				if (worker == Worker.BUTCHER && !rawMeat(stack)) continue;
 				ItemStack one = stack.copyWithCount(1);
 				if (!recipe.matches(new SingleRecipeInput(one), level)
 					|| matchingRecipe(level, one, type) != recipe) continue;
@@ -265,6 +281,20 @@ final class SmithSmelting {
 			}
 		}
 		return null;
+	}
+
+	/** Raw meat and fish (vanilla and convention tags); the loaded smoking recipe still decides what actually cooks. */
+	private static boolean rawMeat(ItemStack stack) {
+		return stack.is(ItemTags.MEAT) || stack.is(ItemTags.FISHES)
+			|| stack.is(net.fabricmc.fabric.api.tag.convention.v2.ConventionalItemTags.RAW_MEAT_FOODS)
+			|| stack.is(net.fabricmc.fabric.api.tag.convention.v2.ConventionalItemTags.RAW_FISH_FOODS);
+	}
+
+	/** Fuel for the next batch: either already in the furnace fuel slot or available as coal in public village stock. */
+	private static boolean hasFuel(ServerLevel level, VillageRef ref, AbstractFurnaceBlockEntity furnace) {
+		if (furnace.getItem(1).is(ItemTags.COALS)) return true;
+		Container storage = Lager.combined(level, ref);
+		return storage != null && JobUtil.count(storage, s -> s.is(ItemTags.COALS)) > 0;
 	}
 
 	static AbstractCookingRecipe matchingRecipe(ServerLevel level, ItemStack input, RecipeType<? extends AbstractCookingRecipe> type) {
@@ -385,7 +415,7 @@ final class SmithSmelting {
 
 	private static boolean validOutput(ItemStack output, Worker worker) {
 		if (output.isEmpty()) return false;
-		if (worker == Worker.COOK) return Meals.isPreparedFood(output);
+		if (smokes(worker)) return Meals.isPreparedFood(output);
 		StockPolicy.Category category = StockPolicy.category(output.getItem());
 		return category == StockPolicy.Category.MATERIAL || category == StockPolicy.Category.TOOLS;
 	}
@@ -407,7 +437,7 @@ final class SmithSmelting {
 	private static AbstractFurnaceBlockEntity furnaceAt(ServerLevel level, BlockPos pos, Worker worker) {
 		if (!level.hasChunkAt(pos)) return null;
 		BlockState state = level.getBlockState(pos);
-		if (recipeType(state) == null || worker == Worker.COOK && !state.is(Blocks.SMOKER)
+		if (recipeType(state) == null || smokes(worker) && !state.is(Blocks.SMOKER)
 			|| worker == Worker.SMITH && state.is(Blocks.SMOKER)) return null;
 		if (!(level.getBlockEntity(pos) instanceof AbstractFurnaceBlockEntity furnace)
 			|| furnace.getAttached(VillagerPlus.COMMUNAL_FURNACE) == null
