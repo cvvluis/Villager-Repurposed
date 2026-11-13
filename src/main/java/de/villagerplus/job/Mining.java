@@ -70,6 +70,8 @@ public final class Mining {
 	private static final int SUPPORT_RADIUS = 2;
 	private static final int SUPPORT_SPACING = 4;
 	private static final int LIGHT_SPACING = 6;
+	private static final Item[] TERRACE_FILL = {Items.COBBLESTONE, Items.COBBLED_DEEPSLATE, Items.DIRT, Items.COARSE_DIRT,
+		Items.ANDESITE, Items.DIORITE, Items.GRANITE, Items.TUFF, Items.STONE, Items.DEEPSLATE};
 	static final int WAITING_STAND_COUNT = 36;
 	static final int MINE_WORK_STAND_COUNT = 3;
 	private static final int WAITING_STAND_SCAN_MARGIN = 16;
@@ -259,6 +261,18 @@ public final class Mining {
 		}
 		VillageData.Mine m = d.mine.get();
 		ensureMineEntrance(c.level(), ref, m, c.v(), c.now());
+		// Cobblestone the village plan is waiting for goes to the public chest as soon as a useful load is on board. Residents who
+		// mine for the plan without owning it used to keep it until their pockets held 64 items, while the plan waited for it.
+		if (need == Need.STONE && PlanStoneSupply.cobbleDeliveryDue(c.level(), ref.data(), box,
+				JobUtil.count(c.v().getInventory(), stack -> stack.is(net.minecraft.world.item.Items.COBBLESTONE)))) {
+			if (c.v().getY() < m.entrance.getY() - 0.5 && nearest(m, c.v().position()) >= 1) {
+				requestCapacityReturn(c, m);
+				return true;
+			}
+			if (JobUtil.depositSurplus(c, stack -> stack.is(net.minecraft.world.item.Items.COBBLESTONE), 1, PlanStoneSupply.COBBLE_RESERVE)) {
+				return true;
+			}
+		}
 		MineRoute currentRoute = mineRoute(c.v());
 		// Only as many residents may hold a mine route as there are stands (plus one waiting): the rest do other work.
 		// Without this cap everybody with a stone job walks in and the gallery jams for good.
@@ -2089,9 +2103,16 @@ public final class Mining {
 		if (s.isAir()
 			&& level.getBlockState(under).isFaceSturdy(level, under, Direction.UP)) {
 			Container inventory = c.v().getInventory();
-			if (JobUtil.count(inventory, stack -> stack.is(Items.COBBLESTONE)) < 1) return false;
-			if (level.setBlock(floor, Blocks.COBBLESTONE.defaultBlockState(), 3)) {
-				JobUtil.take(inventory, stack -> stack.is(Items.COBBLESTONE), 1);
+			// Cobblestone first; if the miner holds none (it all went to the public chest) any plain rock or soil it dug itself will do.
+			// Nothing is conjured: the block comes out of the miner's real inventory.
+			Item fill = null;
+			for (Item candidate : TERRACE_FILL) {
+				if (JobUtil.count(inventory, stack -> stack.is(candidate)) >= 1) { fill = candidate; break; }
+			}
+			if (fill == null) return false;
+			Item used = fill;
+			if (level.setBlock(floor, Block.byItem(used).defaultBlockState(), 3)) {
+				JobUtil.take(inventory, stack -> stack.is(used), 1);
 				return true;
 			}
 		}
