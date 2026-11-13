@@ -175,7 +175,8 @@ public final class ButcherSlaughterChecks {
 				"ten raw meat items reach the public granary and leave the butcher (granary beef " + count(granary, Items.BEEF)
 					+ ", pork " + count(granary, Items.PORKCHOP) + ", worked=" + stored + ", activity=" + state.activity + ")"); checks++;
 
-			// Observation only (not asserted): afternoon cooking looks into the central chest, which cannot hold food.
+			// Observation only: without a kitchen smoker nothing is cooked from the granary (the real smoker cycle is covered by
+			// ButcherCookingChecks); the raw meat just stays in the food store.
 			butcher.teleportTo(chestPos.getX() + 1.5, chestPos.getY(), chestPos.getZ() + 0.5);
 			boolean cooked = job.secondary(ctx(level, butcher, state, memory, ref, granaryAt + 500));
 			System.out.println("BUTCHER SLAUGHTER NOTE secondary with raw meat only in the granary: worked=" + cooked
