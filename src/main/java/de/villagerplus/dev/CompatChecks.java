@@ -118,6 +118,14 @@ public final class CompatChecks {
 			System.out.println("COMPAT season crop tag " + tag.location() + " members=" + members);
 			check(blocks.get(tag).isPresent(), "block tag " + tag.location() + " is registered"); checks++;
 		}
+		// The adapter (de.villagerplus.compat.SeasonCompat) must reach the mod's API and name the season of this world.
+		boolean hook = de.villagerplus.compat.SeasonCompat.hasDevOverride();
+		if (!hook) {
+			var season = de.villagerplus.compat.SeasonCompat.currentSeason(level);
+			System.out.println("COMPAT serene seasons adapter season=" + season);
+			check(de.villagerplus.compat.SeasonCompat.apiResolved(), "Serene Seasons API resolves through the adapter"); checks++;
+			check(season != null, "Serene Seasons adapter returns the current season"); checks++;
+		}
 		return checks;
 	}
 
