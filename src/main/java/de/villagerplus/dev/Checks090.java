@@ -561,6 +561,10 @@ public final class Checks090 {
    if(count<0) { source.sendSuccess(()->Component.literal("VP090 butcherslaughter PREPARING entity-ticking fixture; retry after server ticks"),false);return -1; }
    source.sendSuccess(()->Component.literal("VP090 butcherslaughter PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("butchercooking")) {
+   int count=de.villagerplus.job.ButcherCookingChecks.run(level,new BlockPos(50608,201,50608));
+   source.sendSuccess(()->Component.literal("VP090 butchercooking PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("expedition")) {
    int count=de.villagerplus.village.ExpeditionChecks.run(level,new BlockPos(49408,201,49408));
    if(count<0) { source.sendSuccess(()->Component.literal("VP090 expedition PREPARING multi-tick fixture; retry after server ticks"),false);return -1; }
