@@ -404,6 +404,7 @@ public final class Woodcutting {
 			st.woodCheckAt = c.now() + 40;
 			return true;
 		}
+		if (base == null && planWoodDemand && deliverPlanLogs(c, box, ref.data().wanted, demandedLogs)) return true;
 		if (base == null) {
 			st.clearTarget();
 			base = findTree(c, planWoodDemand, demandedLogs);
@@ -501,7 +502,9 @@ public final class Woodcutting {
 			c.setActivity("braucht freien Inventarplatz für Baumaterial");
 			return true;
 		}
-		if (Anim.breakStep(c, top, state, Items.IRON_AXE, work.stage())) {
+		// The trunk's foot gets the full crack animation; the limbs and crown above it start half cut, like a woodcutter's quick strokes.
+		int resumeStage = work.stage() >= 0 ? work.stage() : top.getY() > base.getY() ? UPPER_LOG_START_STAGE : -1;
+		if (Anim.breakStep(c, top, state, Items.IRON_AXE, resumeStage)) {
 			work = work.claimRemoval(drops, state.getBlock());
 			setWork(c, work);
 			return true;
@@ -511,30 +514,75 @@ public final class Woodcutting {
 		return true;
 	}
 
+	/** Crack stage a log above the trunk's foot starts at (0-9; the foot itself is cut through all ten stages). */
+	static final int UPPER_LOG_START_STAGE = 6;
+
+	/** Logs carried before the plan's wood is delivered without waiting for the next routine stop (morning and lunch only). */
+	static final int PLAN_LOG_BATCH = 4;
+
+	/**
+	 * Between two trees, hand the demanded logs in at the village chest as soon as a batch (or everything the plan still lacks)
+	 * is carried: the planks the plan waits for are crafted from the chest stock, and the routine delivery only runs twice a day.
+	 * @return true while the delivery walk or the insertion is in progress
+	 */
+	static boolean deliverPlanLogs(Ctx c, Container box, List<String> wanted, Set<String> demandedLogs) {
+		java.util.function.Predicate<ItemStack> requested = stack -> matchesRequestedLog(stack, demandedLogs);
+		int carried = JobUtil.count(c.v().getInventory(), requested);
+		if (carried <= 0) return false;
+		int threshold = Math.max(1, Math.min(PLAN_LOG_BATCH, planLogShortfall(wanted, box)));
+		if (carried < threshold) return false;
+		boolean moving = JobUtil.depositSurplus(c, requested, threshold, 0);
+		if (moving) c.setActivity("bringt Bauholz zur Dorfkiste");
+		return moving;
+	}
+
+	/** Logs the wish list still lacks in the public chest: wished logs plus a quarter of the wished planks, minus the logs already there. */
+	static int planLogShortfall(List<String> wanted, Container box) {
+		int need = 0;
+		for (String request : wanted) {
+			if (request == null || request.isBlank()) continue;
+			String[] fields = request.split("#", 2);
+			int count = positiveCount(fields);
+			if (fields[0].endsWith("_planks")) need += (count + 3) / 4;
+			else if (fields[0].endsWith("_log")) need += count;
+		}
+		return Math.max(0, need - JobUtil.count(box, stack -> stack.is(ItemTags.LOGS)));
+	}
+
 	/**
 	 * Naechster natuerlicher Baumstamm, der auf Erde steht. Statt jeden Block im Umkreis (rund 59 000) zu pruefen, wird je
 	 * Spalte nur die oberste Hoehe gelesen (Heightmap ohne Laub): Liegt dort ein Stamm, wird er bis zum Fuss verfolgt.
 	 */
-	private static BlockPos findTree(Ctx c, boolean restrictToPlan, Set<String> demandedLogs) {
+	static BlockPos findTree(Ctx c, boolean restrictToPlan, Set<String> demandedLogs) {
 		walkBackBudget = WALKBACK_BFS_PER_CALL;
 		BlockPos street = c.village() == null ? null : de.villagerplus.build.Builder.villageReturn(c.level(), c.village().bell());
-		BlockPos tree = findTree(c, restrictToPlan, demandedLogs, searchRadius(restrictToPlan), false, street);
-		if (!restrictToPlan) return tree;
-		// Plan wood: strict village footprint near, then only buildings protected near, then the same further out.
-		if (tree == null) tree = findTree(c, true, demandedLogs, searchRadius(true), true, street);
-		if (tree == null) tree = findTree(c, true, demandedLogs, EXTENDED_PLAN_RADIUS, false, street);
-		if (tree == null) tree = findTree(c, true, demandedLogs, EXTENDED_PLAN_RADIUS, true, street);
+		if (!restrictToPlan) return findTree(c, false, demandedLogs, searchRadius(false), false, street);
+		// Plan wood, ring by ring around the village chest (the stock the wood is delivered to): inside one ring the strict
+		// village footprint comes first and only then the building-protected pass; a farther ring is only searched when the
+		// nearer one holds nothing. Without the inner ring a lone strict tree 70 blocks away beat a relaxed tree 10 blocks from the chest.
+		BlockPos tree = null;
+		for (int ring : PLAN_RINGS) {
+			tree = findTree(c, true, demandedLogs, ring, false, street);
+			if (tree == null) tree = findTree(c, true, demandedLogs, ring, true, street);
+			if (tree != null) break;
+		}
 		return tree;
 	}
 
+	/** Search rings (blocks from the village chest) for plan wood: a short trip first, then the old near and extended radii. */
+	static final int PLAN_INNER_RADIUS = 32;
+
 	/** Second, wider ring for construction wood when no reachable tree is left within {@link #PLAN_RADIUS}. */
 	public static final int EXTENDED_PLAN_RADIUS = 112;
+	private static final int[] PLAN_RINGS = { PLAN_INNER_RADIUS, PLAN_RADIUS, EXTENDED_PLAN_RADIUS };
 
 	private record TreeCandidate(BlockPos root, int d2) { }
 
 	private static BlockPos findTree(Ctx c, boolean restrictToPlan, Set<String> demandedLogs, int radius, boolean relaxed, BlockPos street) {
 		ServerLevel level = c.level();
-		BlockPos center = c.v().blockPosition();
+		// Plan wood is measured from the village chest (where it is delivered); the free cycle stays around the worker.
+		BlockPos chestAnchor = restrictToPlan && c.village() != null ? c.village().chestPos(level) : null;
+		BlockPos center = chestAnchor != null ? chestAnchor : c.v().blockPosition();
 		BoundingBox village = c.village() == null ? null : de.villagerplus.village.Development.bounds(level, c.village());
 		// Plan wood only keeps clear of actual buildings, not of the (huge) bounding box around the whole village.
 		List<BlockPos> sites = relaxed && c.village() != null ? buildingSites(level, c.village()) : null;
@@ -571,10 +619,21 @@ public final class Woodcutting {
 		for (TreeCandidate candidate : candidates) {
 			BlockPos root = candidate.root();
 			if (!isHarvestableTree(level, root)) continue;
+			if (claimedByOther(level, c.v(), root)) continue;
 			int verdict = street == null ? WALKBACK_SAFE : walkBack(level, street, root, level.getGameTime());
 			if (verdict == WALKBACK_SAFE) return root;
 		}
 		return null;
+	}
+
+	/** True when another resident's woodcutter cursor already holds this tree (two workers on one trunk only waste each other's time). */
+	static boolean claimedByOther(ServerLevel level, net.minecraft.world.entity.npc.villager.Villager worker, BlockPos root) {
+		for (var resident : level.getEntitiesOfClass(net.minecraft.world.entity.npc.villager.Villager.class,
+			new net.minecraft.world.phys.AABB(root).inflate(48), other -> other != worker && other.isAlive())) {
+			var work = resident.getAttachedOrElse(de.villagerplus.VillagerPlus.WOODCUTTER_WORK, WoodcutterWork.empty());
+			if (work.root().filter(root::equals).isPresent()) return true;
+		}
+		return false;
 	}
 
 	// ---- Walk-back safety of a tree's stand cells -------------------------------------------------------------
@@ -1132,7 +1191,7 @@ public final class Woodcutting {
 		setWork(c, next);
 		JobUtil.swing(c.v());
 		c.mem().jobsDone++;
-		c.st().cooldownUntil = c.now() + 16;
+		c.st().cooldownUntil = c.now() + 8;
 		return true;
 	}
 
