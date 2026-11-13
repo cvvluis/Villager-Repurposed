@@ -174,19 +174,23 @@ public final class SeasonFarmChecks {
 			SeasonCompat.setDevOverride(Season.AUTUMN);
 			check(FarmerJob.seasonalSeed(level, site, stockOf(15, 0, 0, 40), false) == Items.BEETROOT_SEEDS,
 				"autumn: beetroot 40 beats wheat 15"); checks++;
-			// first field: wheat or, out of season, another stocked in-season crop with the 8-seed payment
+			// first field: an in-season crop first; with only wheat stocked the starter exception sows it in every season (a village
+			// without a field must not wait weeks: out of season the mod lets crops grow slowly, not never)
 			for (Season season : Season.values()) {
 				SeasonCompat.setDevOverride(season);
-				boolean wheatNow = expected(season, 0);
-				check((FarmerJob.seasonalSeed(level, site, stockOf(8, 0, 0, 0), true) == Items.WHEAT_SEEDS) == wheatNow,
-					"first field with eight wheat seeds only: sown in " + season + " = " + wheatNow); checks++;
+				check(FarmerJob.seasonalSeed(level, site, stockOf(8, 0, 0, 0), true) == Items.WHEAT_SEEDS,
+					"first field with eight wheat seeds only: sown in " + season + " (starter exception)"); checks++;
 			}
 			SeasonCompat.setDevOverride(Season.SPRING);
 			check(FarmerJob.seasonalSeed(level, site, stockOf(8, 8, 0, 0), true) == Items.CARROT,
 				"first field in spring switches to the stocked in-season carrot"); checks++;
 			SeasonCompat.setDevOverride(Season.WINTER);
-			check(FarmerJob.seasonalSeed(level, site, stockOf(8, 8, 8, 8), true) == null,
-				"first field in winter waits although every seed is stocked"); checks++;
+			check(FarmerJob.seasonalSeed(level, site, stockOf(8, 8, 8, 8), true) == Items.WHEAT_SEEDS,
+				"first field in winter sows wheat (starter exception) although nothing is in season"); checks++;
+			check(FarmerJob.seasonalSeed(level, site, stockOf(20, 20, 20, 20), false) == null,
+				"a further field in winter still waits (strict rule outside the starter exception)"); checks++;
+			check(FarmerJob.seasonalSeed(level, site, stockOf(0, 8, 8, 8), true) == null,
+				"first field in winter without wheat seeds waits (no other seed is allowed out of season)"); checks++;
 			check(FarmerJob.seasonBlocksSeed(level, site, Items.WHEAT_SEEDS) && FarmerJob.seasonBlocksSeed(level, site, Items.BEETROOT_SEEDS),
 				"the crop-step gate blocks sowing in winter"); checks++;
 			SeasonCompat.setDevOverride(Season.SUMMER);

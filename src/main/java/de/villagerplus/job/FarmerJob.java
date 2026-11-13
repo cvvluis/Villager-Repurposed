@@ -86,9 +86,13 @@ public class FarmerJob implements Job {
 			if (count(stores, wheat.seed()) >= need && SeasonCompat.canPlant(level, pos, wheat.crop())) return wheat.seed();
 			if (!SeasonCompat.active(level)) return null;
 		}
-		return SEED_CROPS.stream()
+		Item inSeason = SEED_CROPS.stream()
 			.filter(sc -> count(stores, sc.seed()) >= need && SeasonCompat.canPlant(level, pos, sc.crop()))
 			.max(Comparator.comparingInt(sc -> count(stores, sc.seed()))).map(SeedCrop::seed).orElse(null);
+		// Starter exception: a village without any field must not wait weeks (a new Serene Seasons world starts in late winter) for
+		// the right season. Out of season the mod lets crops grow only slowly (default out_of_season_crop_behavior), not never: sow wheat.
+		if (inSeason == null && starter && count(stores, Items.WHEAT_SEEDS) >= need) return Items.WHEAT_SEEDS;
+		return inSeason;
 	}
 
 	/** Enough public seed exists for the field kind, regardless of the season (used to tell a seasonal wait from a seed shortage). */
@@ -1353,7 +1357,8 @@ public class FarmerJob implements Job {
 		}
 		// Serene Seasons: never sow a crop that cannot grow now. The cursor stays untouched (fences, water and gate steps are not
 		// season-bound); returning false lets the farmer harvest, tend animals and craft until the season fits again.
-		if (step.kind() == ExpansionStepKind.CROP && !stepAlreadyPlaced(c.level(), plan, step)
+		boolean firstField = c.village() != null && c.village().data().farms == 0;
+		if (step.kind() == ExpansionStepKind.CROP && !stepAlreadyPlaced(c.level(), plan, step) && !firstField
 			&& seasonBlocksSeed(c.level(), step.pos(), plan.seed())) {
 			c.setActivity("wartet auf eine Jahreszeit, in der das Saatgut wächst");
 			return false;
