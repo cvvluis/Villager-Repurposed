@@ -546,6 +546,11 @@ public final class Checks090 {
    int count=de.villagerplus.job.LamplighterJobChecks.run(level,new BlockPos(51008,201,51008));
    source.sendSuccess(()->Component.literal("VP090 lamplighter PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("butcherslaughter")) {
+   int count=de.villagerplus.job.ButcherSlaughterChecks.run(level,new BlockPos(50400,201,50400));
+   if(count<0) { source.sendSuccess(()->Component.literal("VP090 butcherslaughter PREPARING entity-ticking fixture; retry after server ticks"),false);return -1; }
+   source.sendSuccess(()->Component.literal("VP090 butcherslaughter PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("deepstrand")) {
    int count=de.villagerplus.job.DeepStrandChecks.run(level,new BlockPos(47500,201,47500));
    source.sendSuccess(()->Component.literal("VP090 deepstrand PASS "+count+" checks"),false);return count;
