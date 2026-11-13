@@ -556,6 +556,22 @@ public final class Checks090 {
    if(count<0) { source.sendSuccess(()->Component.literal("VP090 expedition PREPARING multi-tick fixture; retry after server ticks"),false);return -1; }
    source.sendSuccess(()->Component.literal("VP090 expedition PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("a04idle")) {
+   long oldClock=level.getOverworldClockTime();
+   int count;
+   try {
+    level.getServer().getCommands().performPrefixedCommand(source,"time set 4000");
+    count=de.villagerplus.job.A04IdleChecks.run(level,new BlockPos(51408,201,51408));
+   } finally {
+    level.getServer().getCommands().performPrefixedCommand(source,"time set "+oldClock);
+   }
+   source.sendSuccess(()->Component.literal("VP090 a04idle PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("a04lease")) {
+   int count=de.villagerplus.village.A04LeaseChecks.run(level,new BlockPos(52000,201,52000));
+   if(count<0) { source.sendSuccess(()->Component.literal("VP090 a04lease PREPARING; retry after server ticks"),false);return -1; }
+   source.sendSuccess(()->Component.literal("VP090 a04lease PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("deepstrand")) {
    int count=de.villagerplus.job.DeepStrandChecks.run(level,new BlockPos(47500,201,47500));
    source.sendSuccess(()->Component.literal("VP090 deepstrand PASS "+count+" checks"),false);return count;
