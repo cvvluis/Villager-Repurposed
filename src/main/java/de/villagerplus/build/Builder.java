@@ -181,6 +181,9 @@ public final class Builder {
 	/** Diagnostic: candidates tested / rejected per filter since the last "Kein Bauplatz" log line. */
 	private static final int[] SITE_REJECT = new int[10];
 	private static final java.util.Map<String, Integer> GRADE_REJECT = new java.util.TreeMap<>();
+	/** Diagnostic civic search: [Plan-Pruefungen, Parzelle, Zone, Konflikt, Weg, bestanden] since the last log line. */
+	private static final java.util.Map<Long, Long> CIVIC_DIAG_AT = new java.util.HashMap<>();
+	private static final java.util.Map<Long, int[][]> CIVIC_REJECT_BY_VILLAGE = new java.util.HashMap<>();
 
 	/** Candidate preflight uses the exact generated house and its approach yard, including safe-clearable plants. */
 	private static boolean siteCandidateFits(Ctx c, VillageRef ref, String type, int variant, Architect.Design design,
@@ -1912,7 +1915,8 @@ public final class Builder {
 			|| de.villagerplus.village.Guests.isGuest(villager)
 			|| de.villagerplus.village.Expedition.isAway(villager)
 			|| de.villagerplus.village.RailTransport.isPassenger(villager)
-			|| de.villagerplus.village.Market.shop(ref, villager.getUUID()) != null) return false;
+			|| de.villagerplus.village.Market.shop(ref, villager.getUUID()) != null
+			|| planOwnerExcluded(villager.getUUID(), level.getGameTime())) return false;
 		VillageRef assigned = Villages.find(level, villager);
 		return assigned != null && assigned.bell().equals(ref.bell());
 	}
@@ -2330,9 +2334,12 @@ public final class Builder {
 					boolean insideVillage = savedRoot.getX() >= villageBounds.minX() && savedRoot.getX() <= villageBounds.maxX()
 						&& savedRoot.getY() >= villageBounds.minY() && savedRoot.getY() <= villageBounds.maxY()
 						&& savedRoot.getZ() >= villageBounds.minZ() && savedRoot.getZ() <= villageBounds.maxZ();
+					de.villagerplus.job.Woodcutting.startWalkBackSelection();
 					if (insideVillage || !de.villagerplus.job.Woodcutting.matchesRequestedLog(
 						c.level().getBlockState(savedRoot).getBlock(), demandedLogs)
-						|| planTreeOnRoad(c.level(), savedRoot) || planTreeClaimed(c.level(), c.v(), savedRoot)) {
+						|| planTreeOnRoad(c.level(), savedRoot) || planTreeClaimed(c.level(), c.v(), savedRoot)
+						|| (work.log().isEmpty() && work.stage() < 0 && de.villagerplus.job.Woodcutting.walkBackUnsafe(c.level(),
+							de.villagerplus.job.Woodcutting.walkBackStreet(c.level(), ref), savedRoot))) {
 						work = work.abandonTree();
 						c.v().setAttached(de.villagerplus.VillagerPlus.WOODCUTTER_WORK, work);
 						c.st().clearTarget();
@@ -2463,14 +2470,13 @@ public final class Builder {
 		var village = Development.bounds(level, ref);
 		var sites = relaxed ? de.villagerplus.job.Woodcutting.buildingSites(level, ref) : null;
 		BlockPos.MutableBlockPos probe = new BlockPos.MutableBlockPos();
-		BlockPos best = null;
-		long bestDistance = Long.MAX_VALUE;
-		int seenLogs = 0, inVillage = 0, wrongSpecies = 0, notHarvestable = 0, blocked = 0, unreachable = 0, unloaded = 0;
+		// Cheap filters while scanning; the costly ones (canopy, road, claim, walk-back search) run on the nearest candidates only, nearest first.
+		java.util.List<BlockPos> candidates = new java.util.ArrayList<>();
+		int seenLogs = 0, inVillage = 0, wrongSpecies = 0, notHarvestable = 0, blocked = 0, unreachable = 0, unloaded = 0, noWayBack = 0, deferred = 0;
 		long nearestWrong = Long.MAX_VALUE;
 		String nearestWrongStem = null;
 		for (int dx = -radius; dx <= radius; dx++) for (int dz = -radius; dz <= radius; dz++) {
 			long distance = (long)dx * dx + (long)dz * dz;
-			if (distance >= bestDistance) continue;
 			int x = center.getX() + dx, z = center.getZ() + dz;
 			if (!level.hasChunk(x >> 4, z >> 4)) continue;
 			int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
@@ -2494,17 +2500,32 @@ public final class Builder {
 				}
 				continue;
 			}
+			if (de.villagerplus.job.Woodcutting.treeUnreachable(worker.getUUID(), root, level.getGameTime())) { unreachable++; continue; }
+			candidates.add(root.immutable());
+		}
+		candidates.sort(java.util.Comparator.comparingLong(root -> {
+			long ddx = root.getX() - center.getX(), ddz = root.getZ() - center.getZ();
+			return ddx * ddx + ddz * ddz;
+		}));
+		BlockPos street = de.villagerplus.job.Woodcutting.walkBackStreet(level, ref);
+		de.villagerplus.job.Woodcutting.startWalkBackSelection();
+		BlockPos best = null;
+		for (BlockPos root : candidates) {
 			if (!de.villagerplus.job.Woodcutting.isHarvestableTree(level, root)) { notHarvestable++; continue; }
 			if (planTreeOnRoad(level, root) || planTreeClaimed(level, worker, root)) { blocked++; continue; }
-			if (de.villagerplus.job.Woodcutting.treeUnreachable(worker.getUUID(), root, level.getGameTime())) { unreachable++; continue; }
-			best = root.immutable();
-			bestDistance = distance;
+			// A tree whose stand cells cannot walk back to the village street is a strand trap (remembered, not offered again).
+			if (!de.villagerplus.job.Woodcutting.walkBackAcceptable(level, street, root)) {
+				if (de.villagerplus.job.Woodcutting.walkBackUnsafe(level, street, root)) noWayBack++; else deferred++;
+				continue;
+			}
+			best = root;
+			break;
 		}
 		lastWrongStem = best == null ? nearestWrongStem : null;
 		if (best == null && level.getGameTime() >= TREE_SELECT_LOG.getOrDefault(worker.getUUID(), 0L)) {
 			TREE_SELECT_LOG.put(worker.getUUID(), level.getGameTime() + 2400L);
-			LOGGER.info("Villagers: Repurposed: Baumwahl {} (Radius {}, {}): Staemme {}, geladen-nein {}, im Dorf/Gebaeude {}, falsche Art {}, nicht erntbar {}, Weg/belegt {}, unerreichbar {}, gesucht {}",
-				worker.getName().getString(), radius, relaxed ? "locker" : "streng", seenLogs, unloaded, inVillage, wrongSpecies, notHarvestable, blocked, unreachable, demandedLogs);
+			LOGGER.info("Villagers: Repurposed: Baumwahl {} (Radius {}, {}): Staemme {}, geladen-nein {}, im Dorf/Gebaeude {}, falsche Art {}, nicht erntbar {}, Weg/belegt {}, unerreichbar {}, kein Rueckweg {}, zurueckgestellt {}, gesucht {}",
+				worker.getName().getString(), radius, relaxed ? "locker" : "streng", seenLogs, unloaded, inVillage, wrongSpecies, notHarvestable, blocked, unreachable, noWayBack, deferred, demandedLogs);
 		}
 		return best;
 	}
@@ -2630,6 +2651,7 @@ public final class Builder {
 			STAND_MOVE_ANCHOR.remove(planKey);
 			STAND_BEST_NODES.remove(planKey);
 			STAND_FAILURE_SINCE.remove(planKey);
+			forgetStandWatch(planKey);
 			PALETTES.remove(planKey);
 			Map<Long, Integer> dug = PREP_RECORD.remove(planKey);
 			if (dug != null && d.planStep == 0 && ref.bellEntity().getLevel() instanceof ServerLevel sl) {
@@ -2959,12 +2981,17 @@ public final class Builder {
 				PoiManager.Occupancy.ANY);
 			if (d.popAtLastHouse == 0) { d.popAtLastHouse = pop; ref.dirty(); }
 			boolean needHouse = needsHouse(pop, homeless, homes);
+			// Dev hook only: without bed demand (CTOV villages start with more beds than residents) no house is ever planned.
+			boolean forcedHouseDemand = FORCE_HOUSE_STEP_SEARCH && pop >= 2 && !d.hasBuildProjectType(Blueprints.HOUSE);
+			if (forcedHouseDemand) needHouse = true;
 			needsBeds = needHouse;
 			String special = nextSpecial(ref, pop);
 			boolean deferStorageExpansion = Development.deferStorageExpansion(special);
 			boolean firstPublicStorageMissing = firstPublicStorageMissing(level, d);
 			boolean storageNeedsExpansion = Development.needsStorage(box, d, level) && storageFree(c, ref);
-			if (specialSiteSearchStalled(ref, special, c.now(), needHouse, homeless) && !d.hasBuildProjectType(Blueprints.HOUSE)) {
+			if (forcedHouseDemand) {
+				type = Blueprints.HOUSE;
+			} else if (specialSiteSearchStalled(ref, special, c.now(), needHouse, homeless) && !d.hasBuildProjectType(Blueprints.HOUSE)) {
 				// A milestone without any site must not starve the homeless: houses go first while the search keeps trying.
 				type = Blueprints.HOUSE;
 			} else if (shouldExpandStorageUnderPressure(null, special, storageNeedsExpansion, firstPublicStorageMissing, needHouse)
@@ -3116,7 +3143,7 @@ public final class Builder {
 						BlockPos anchor = ZoneAwareSites.tolerantAnchor(level, ref, type, candidate, -candidateHalf, candidateHalf,
 							-candidateHalf, candidateHalf, candidateHeadroom);
 						if (anchor == null) continue;
-						Palette palette = Palette.detect(level, ref.bell(), c.v(), seed, anchor);
+						Palette palette = detectForPlan(level, ref, c.v(), seed, anchor);
 						List<Step> candidateSteps = Architect.build(candidateDesign, palette, anchor, candidateDir);
 						List<Step> candidatePlan = candidateSteps;
 						int yardStyle = Paths.yardStyle(level, anchor, candidateDir);
@@ -3165,15 +3192,35 @@ public final class Builder {
 			int selectedVariant = variant;
 			Architect.Design selectedDesign = design;
 			BlockPos civicAnchor = civicSiteAnchor(level, ref);
+			// Slots 0-15: column scan reasons (Sites.SCAN_REJECT delta of this search only), 16-21: plan checks.
+			int[] civicReject = CIVIC_REJECT_BY_VILLAGE.computeIfAbsent(ref.bell().asLong(), k -> new int[3][23])[search.terraced ? 2 : search.tolerant ? 1 : 0];
+			int[] scanBefore = Sites.SCAN_REJECT.clone();
 			java.util.function.Predicate<BlockPos> fits = p -> {
 				List<Step> candidateSteps = sitingSteps(c, ref, selectedType, selectedVariant, selectedDesign, style, p, civicAnchor);
-				return !rejectedPlot(ref, p) && ZoneAwareSites.allowsPlan(ref, selectedType, candidateSteps)
-					&& !planSiteConflicts(ref, candidateSteps, p) && routeConnected(c, ref, p);
+				civicReject[16]++;
+				if (rejectedPlot(ref, p)) { civicReject[17]++; return false; }
+				if (!ZoneAwareSites.allowsPlan(ref, selectedType, candidateSteps)) { civicReject[18]++; return false; }
+				if (planSiteConflicts(ref, candidateSteps, p)) { civicReject[19]++; return false; }
+				if (search.terraced) {
+					// Last-resort pass: rooted natural trees count as clearable vegetation, but only when the site
+					// preparation can really remove every one of them (otherwise the plan would stall or skip steps).
+					BlockPos[] prepBox = civicPrepBox(p, candidateSteps, selectedDesign.headroom());
+					NaturalSitePreparation.Status preparable = NaturalSitePreparation.inspect(level, prepBox[0], prepBox[1],
+						MAX_CIVIC_SITE_OBSTACLES).status();
+					if (preparable != NaturalSitePreparation.Status.READY && preparable != NaturalSitePreparation.Status.CLEARABLE) {
+						civicReject[21]++;
+						return false;
+					}
+				}
+				if (!routeConnected(c, ref, p)) { civicReject[20]++; return false; }
+				civicReject[22]++;
+				return true;
 			};
 			Sites.margin = 2;
 			Sites.SearchPage page = Sites.findSystematicPage(level, ref.bell(), min, max,
-				-half, half, -half, half, headroom + (search.tolerant ? 1 : 0), search.tolerant, search.nextCandidate,
+				-half, half, -half, half, headroom + (search.tolerant ? 1 : 0), search.terraced ? Sites.TERRACED_CIVIC_RELIEF : search.tolerant ? 1 : 0, search.terraced, search.nextCandidate,
 				CIVIC_SITE_CANDIDATE_BUDGET, search.phaseSeed, search.visitedColumns(), fits, civicAnchor.getY());
+			for (int i = 0; i < 16; i++) civicReject[i] += Sites.SCAN_REJECT[i] - scanBefore[i];
 			search.nextCandidate = page.nextCandidate();
 			persistCivicSiteSearch(ref, search);
 			Sites.margin = 3;
@@ -3183,18 +3230,36 @@ public final class Builder {
 				if (page.complete()) persistCivicSiteSearch(ref, search);
 				c.st().buildCheckAt = search.retryAt > c.now() ? search.retryAt : c.now() + CIVIC_SITE_RETRY_TICKS;
 				if (type.equals(Blueprints.STORAGE) && completedCycle) STORAGE_BLOCKED.put(ref.bell().asLong(), c.now() + 24000L);
-				if (c.now() - lastDiag > 1200) {
-					lastDiag = c.now();
-					LOGGER.info("Villagers: Repurposed: Bauplatzsuche fuer '{}' fortgesetzt (Variante {}, {}, Kandidat {}/{}, besuchte Spalten {}), noch kein passender Standort",
-						type, search.variantIndex + 1, search.tolerant ? "unebenes Gelaende" : "ebener Bauplatz",
-						search.nextCandidate, Sites.systematicCandidateCount(min, max), search.visitedColumns().size());
+				if (c.now() - CIVIC_DIAG_AT.getOrDefault(ref.bell().asLong(), Long.MIN_VALUE / 2) > 1200) {
+					CIVIC_DIAG_AT.put(ref.bell().asLong(), c.now());
+					LOGGER.info("Villagers: Repurposed: Bauplatzsuche fuer '{}' (Glocke {}) fortgesetzt (Variante {}, {}, Kandidat {}/{}, besuchte Spalten {}, halbe Kante {}, Hoehe {}), noch kein passender Standort (Bezugshoehe {}, Glocke y {}, Strassenanker {})",
+						type, ref.bell().toShortString(), search.variantIndex + 1, search.terraced ? "terrassiertes Gelaende" : search.tolerant ? "unebenes Gelaende" : "ebener Bauplatz",
+						search.nextCandidate, Sites.systematicCandidateCount(min, max), search.visitedColumns().size(), half, headroom,
+						civicAnchor.getY(), ref.bell().getY(), civicAnchor.toShortString());
+					if (design != null) {
+						StringBuilder extents = new StringBuilder();
+						for (Direction facing : Direction.Plane.HORIZONTAL) {
+							extents.append(facing.getName()).append(java.util.Arrays.toString(civicPlanExtents(c, ref, selectedType, selectedVariant, selectedDesign, style, civicAnchor, facing))).append(' ');
+						}
+						LOGGER.info("Villagers: Repurposed: Bauplatzsuche '{}' (Glocke {}) Plan-Ausdehnung [minX, maxX, minZ, maxZ] je Tuerrichtung (Suchquadrat +-{}): {}", type, ref.bell().toShortString(), half, extents);
+					}
+					// Per pass since the last report: column reasons, then the full-plan checks of the columns that survived.
+					String[] passNames = {"eben", "tolerant", "terrassiert"};
+					int[][] passes = CIVIC_REJECT_BY_VILLAGE.get(ref.bell().asLong());
+					for (int pass = 0; pass < passes.length; pass++) {
+						if (java.util.Arrays.stream(passes[pass]).sum() == 0) continue;
+						LOGGER.info("Villagers: Repurposed: Bauplatz-Ablehnung '{}' (Glocke {}) Pass {}: Spalten {} {} Plan [geprueft, Parzelle, Zone, Konflikt, Weg, Baumpflege, bestanden] {}",
+							type, ref.bell().toShortString(), passNames[pass], Sites.SCAN_REJECT_LEGEND, java.util.Arrays.toString(java.util.Arrays.copyOfRange(passes[pass], 0, 16)),
+							java.util.Arrays.toString(java.util.Arrays.copyOfRange(passes[pass], 16, 23)));
+						java.util.Arrays.fill(passes[pass], 0);
+					}
 				}
 				return false;
 			}
 			clearSpecialSiteSearchFailure(ref);
 			site = page.site();
 			dir = siteFacing(level, ref, type, site);
-			Palette palette = Palette.detect(level, ref.bell(), c.v(), variant >>> 2, site);
+			Palette palette = detectForPlan(level, ref, c.v(), variant >>> 2, site);
 			PALETTES.put(site.asLong(), palette);
 			constructionPaletteIds = palette.ids();
 			steps = Architect.build(design, palette, site, dir);
@@ -3205,16 +3270,8 @@ public final class Builder {
 				: type.equals(Blueprints.WELL) ? 14 : type.equals(Blueprints.DECOR) ? 16 : type.equals(Blueprints.TOWNHALL) ? 22 : type.equals(Blueprints.STORAGE) || type.equals(Blueprints.SCHOOL) || Blueprints.special(type) ? 72 : 36;
 			int half = type.equals(Blueprints.FARM) ? variant / 10 : Blueprints.half(type);
 			int headroom = Blueprints.headroom(type);
-			String houseSearchDimension = level.dimension().identifier().toString() + ":";
-			HOUSE_SITE_SEARCHES.entrySet().removeIf(entry -> entry.getKey().startsWith(houseSearchDimension)
-				&& c.now() - entry.getValue().lastUsedAt > 24000L);
 			HouseSiteSearch ongoingHouseSearch = type.equals(Blueprints.HOUSE)
-				? HOUSE_SITE_SEARCHES.get(houseSiteSearchKey(level, ref)) : null;
-			if (ongoingHouseSearch != null && (ongoingHouseSearch.minRadius != houseMinRadiusForPlan
-				|| !needsNaturalHousePreparation(type, ongoingHouseSearch.variant, source != null))) {
-				HOUSE_SITE_SEARCHES.remove(houseSiteSearchKey(level, ref));
-				ongoingHouseSearch = null;
-			}
+				? ongoingHouseSiteSearch(c, ref, houseMinRadiusForPlan, source != null) : null;
 			if (ongoingHouseSearch != null) {
 				variant = ongoingHouseSearch.variant;
 				design = designForPlan(type, variant);
@@ -3255,14 +3312,17 @@ public final class Builder {
 				int searchMax = Math.min(Config.VILLAGE_RADIUS - 8, max + attempt * 8);
 				int normalAttempts = architect(type) ? 48 : 30;
 				int tolerantAttempts = architect(type) ? 96 : 60;
-				if (shouldPreferPreparedExpansionParcel(type, variant, source != null, d.houses, needsBeds,
+				// Dev hook (VP_FORCE_HOUSE_STEP_SEARCH=1): skip every random path so the step-wise search below is exercised.
+				boolean skipRandomHousePaths = FORCE_HOUSE_STEP_SEARCH && Blueprints.HOUSE.equals(type)
+					&& needsNaturalHousePreparation(type, variant, source != null);
+				if (!skipRandomHousePaths && shouldPreferPreparedExpansionParcel(type, variant, source != null, d.houses, needsBeds,
 					preparedExpansionParcel.isPresent())) {
 					BlockPos preferred = preparedExpansionHouseCandidate(c, ref, preparedExpansionParcel.orElseThrow(),
 						variant, design, style, min, searchMax);
 					if (preferred != null) {
 						site = preferred;
 						dir = Sites.facingTowards(site, ref.bell());
-						Palette palette = Palette.detect(level, ref.bell(), c.v(), variant >>> 2, site);
+						Palette palette = detectForPlan(level, ref, c.v(), variant >>> 2, site);
 						PALETTES.put(site.asLong(), palette);
 						constructionPaletteIds = palette.ids();
 						steps = Architect.build(design, palette, site, dir);
@@ -3281,15 +3341,15 @@ public final class Builder {
 					if (site == null) site = ZoneAwareSites.findTolerantCentral(level, ref, type, center, c.v().getRandom(), 32,
 						-half, half, -half, half, headroom + 1, fits);
 				}
-				if (site == null) {
+				if (site == null && !skipRandomHousePaths) {
 						site = ZoneAwareSites.find(level, ref, type, c.v().getRandom(), min, searchMax, half, headroom, normalAttempts, fits);
 				}
-				if (site == null) {
+				if (site == null && !skipRandomHousePaths) {
 					// Huegeliges Gelaende (z.B. Overhauled Villages): leicht unebene Plaetze werden eingeebnet.
 					site = ZoneAwareSites.findTolerant(level, ref, type, c.v().getRandom(), min, searchMax, -half, half, -half, half,
 						headroom + 1, tolerantAttempts, fits);
 				}
-				if (site == null && needsNaturalHousePreparation(type, variant, source != null)) {
+				if (site == null && !skipRandomHousePaths && needsNaturalHousePreparation(type, variant, source != null)) {
 					// Natural tree height makes the generic flat-site scan skip the ground beneath it. Search those
 					// bounded candidates with the rooted-tree-aware house preflight before giving up on this design.
 					site = findHouseLot(c, ref, variant, design, style, min, searchMax, normalAttempts);
@@ -3318,61 +3378,30 @@ public final class Builder {
 				Sites.margin = 3;
 			}
 			if (site == null && needsNaturalHousePreparation(type, variant, source != null)) {
-				HouseSiteSearch search = ongoingHouseSearch;
-				if (search == null) {
-					search = new HouseSiteSearch(variant, c.v().getRandom().nextLong(), houseMinRadiusForPlan, c.now());
-					HOUSE_SITE_SEARCHES.put(houseSiteSearchKey(level, ref), search);
-				}
-				ongoingHouseSearch = search;
-				search.lastUsedAt = c.now();
-				if (c.now() < search.retryAt) {
-					c.st().buildCheckAt = search.retryAt;
+				HouseSiteStep step = stepHouseSiteSearch(c, ref, style, type, ongoingHouseSearch, variant, houseMinRadiusForPlan);
+				ongoingHouseSearch = step.search();
+				if (step.waiting()) {
+					c.st().buildCheckAt = step.search().retryAt;
 					return false;
 				}
-				int searchMax = Math.min(88, Config.VILLAGE_RADIUS - 8);
-				int searchHalf = siteHalf(type, search.variant, designForPlan(type, search.variant));
-				int searchHeadroom = siteHeadroom(type, search.variant, designForPlan(type, search.variant));
-				Architect.Design searchDesign = designForPlan(type, search.variant);
-				int searchVariant = search.variant;
-				String searchType = type;
-				if (templateEligible(searchDesign)) {
-					searchHalf = Math.max(searchHalf, 4);
-					searchHeadroom = Math.max(searchHeadroom, 10);
-				}
-				Sites.margin = 2;
-				Sites.SearchPage page;
-				try {
-					page = Sites.findHouseSitePage(level, ref.bell(), search.minRadius, searchMax,
-						search.nextCandidate, HOUSE_SITE_CANDIDATE_BUDGET, search.phaseSeed, search.visitedColumns,
-						p -> siteCandidateAnchor(c, ref, searchType, searchVariant, searchDesign, style, p, ref.bell()),
-						Sites.villageReferenceY(level, ref.bell()));
-				} finally {
-					Sites.margin = 3;
-				}
-				search.nextCandidate = page.nextCandidate();
-				if (page.site() == null) {
-					if (page.complete()) {
-						long seed = ((long) c.v().getRandom().nextInt(1 << 22) << 6) | Palette.profileCode(level, ref.bell());
-						seed = Architect.withSizeTier(seed, nextSizeTier(ref, type));
-						search.restart(newPlanVariant(type, seed), c.v().getRandom().nextLong(), c.now() + HOUSE_SITE_REPROBE_TICKS);
-					}
-					else search.retryAt = c.now() + HOUSE_SITE_RETRY_TICKS;
-					c.st().buildCheckAt = search.retryAt;
+				if (step.site() == null) {
+					c.st().buildCheckAt = step.search().retryAt;
 				} else {
-					search.retryAt = c.now() + HOUSE_SITE_RETRY_TICKS;
-					site = page.site();
-					variant = search.variant;
-					design = searchDesign;
-					half = searchHalf;
-					headroom = searchHeadroom;
+					site = step.site();
+					variant = step.variant();
+					design = step.design();
+					half = step.half();
+					headroom = step.headroom();
 				}
 			}
 			if (site == null) {
 				if (c.now() - lastDiag > 1200) {
 					lastDiag = c.now();
 					LOGGER.info("Villagers: Repurposed: Kein Bauplatz fuer '{}' (halbe Kante {}, Hoehe {}); Kandidaten/Ablehnung [geprueft, Anker, Hoehenlage, Grundstueck, Hof, Parzelle, Zone, Konflikt, Vorbereitung, Weg] = {}", type, half, headroom, java.util.Arrays.toString(SITE_REJECT));
+					LOGGER.info("Villagers: Repurposed: Bauplatz-Spaltenablehnung {} {}", Sites.SCAN_REJECT_LEGEND, java.util.Arrays.toString(Sites.SCAN_REJECT));
 					LOGGER.info("Villagers: Repurposed: Bauplatz-Diagnose Gelaende {} Grundstueck [Gebaeude, Abstand, Zugang-Boden, Zugang-Hoehe, Strasse, Ungeladen] {}", GRADE_REJECT, java.util.Arrays.toString(Sites.PLOT_REJECT));
 					java.util.Arrays.fill(SITE_REJECT, 0);
+					java.util.Arrays.fill(Sites.SCAN_REJECT, 0);
 					GRADE_REJECT.clear();
 					java.util.Arrays.fill(Sites.PLOT_REJECT, 0);
 					if (!Sites.PLOT_BLOCKERS.isEmpty()) {
@@ -3397,12 +3426,12 @@ public final class Builder {
 				dir = siteFacing(level, ref, type, site);
 			}
 			if (design != null) {
-				Palette palette = Palette.detect(level, ref.bell(), c.v(), variant >>> 2, site);
+				Palette palette = detectForPlan(level, ref, c.v(), variant >>> 2, site);
 				PALETTES.put(site.asLong(), palette);
 				constructionPaletteIds = palette.ids();
 				steps = freshSteps(c, ref, type, variant, style, site, dir);
 			} else if (Landmarks.handles(type)) {
-				Palette palette = Palette.detect(level, ref.bell(), c.v(), variant >>> 2, site);
+				Palette palette = detectForPlan(level, ref, c.v(), variant >>> 2, site);
 				PALETTES.put(site.asLong(), palette);
 				steps = Landmarks.build(type, variant >>> 2, palette, site, dir);
 			} else {
@@ -3540,6 +3569,17 @@ public final class Builder {
 			&& newHouseTemplatePreview(level, ref, type, designForPlan(type, variant), site, dir) != null) {
 			markTemplatePlan(ref, site);
 		}
+		String earlyPalette = source == null ? EARLY_PALETTE_SITES.remove(site.asLong()) : null;
+		if (earlyPalette != null && !ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.<Long>of()).contains(site.asLong())) {
+			// The village cannot obtain part of the detected palette (deepslate, fired bricks ...). The plan starts with the
+			// look-alike palette it can build and carries the material-substitution marker (bit 1), so a restart keeps it and
+			// no caravan wait or 3000-tick stall precedes the switch. Fixed role-marker full blocks follow the local wall.
+			variant |= 2;
+			d.planVariant = variant;
+			steps = substituteUnobtainableFullBlocks(steps, 0);
+			LOGGER.info("Villagers: Repurposed: Bauplan {} startet mit beschaffbarer Palette (Dorfpalette hat unbeschaffbar: {}; Palette jetzt: {})",
+				type, earlyPalette, constructionPaletteIds);
+		}
 		if (!type.equals(Blueprints.FARM)) {
 			// Der Auftrag wird sofort festgelegt (ein Haus, ein Platz); fehlendes Material wird waehrenddessen beschafft.
 			updateWanted(c, ref, type, steps, box, siteStock, cargoManifest, site, 0, true);
@@ -3548,7 +3588,7 @@ public final class Builder {
 			CIVIC_SITE_SEARCHES.remove(ref.bell().asLong());
 			d.extra.civicSiteSearch = Optional.empty();
 		}
-		if (type.equals(Blueprints.HOUSE)) HOUSE_SITE_SEARCHES.remove(houseSiteSearchKey(level, ref));
+		if (type.equals(Blueprints.HOUSE)) dropHouseSiteSearch(level, ref);
 		if (architect(type) && source == null && !constructionPhaseEnds.isEmpty()) {
 			ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.CONSTRUCTION,
 				new ConstructionSite(site, List.of(), constructionPhaseEnds, false, constructionPaletteIds));
@@ -3559,13 +3599,39 @@ public final class Builder {
 		if (needsNaturalHousePreparation(type, variant, source != null)) {
 			persistProjectView(c, ref, d, null, siteStock, cargoManifest, plannedHouseLotBounds);
 		}
-		if (type.equals(Blueprints.HOUSE)) {
-			LOGGER.info("Villagers: Repurposed: Bauplan house gestartet bei {} (Tick {}, {} Schritte, Variante {}, Vorlage {}, Glocke {})",
-				site.toShortString(), c.now(), steps.size(), variant,
-				ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.of()).contains(site.asLong()),
-				ref.bell().toShortString());
-		}
+		LOGGER.info("Villagers: Repurposed: Bauplan {} gestartet bei {} (Tick {}, {} Schritte, Variante {}, Vorlage {}, Glocke {})",
+			type, site.toShortString(), c.now(), steps.size(), variant,
+			ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.of()).contains(site.asLong()),
+			ref.bell().toShortString());
 		return true;
+	}
+
+	/** Plots whose palette was swapped for an obtainable one while the plan was drawn up (site key -> unobtainable roles). */
+	private static final Map<Long, String> EARLY_PALETTE_SITES = new HashMap<>();
+
+	/**
+	 * Palette for a NEW plan: the one detected from the neighbouring houses, but with every role the village cannot obtain
+	 * itself (deepslate bricks from a foreign house, fired bricks ...) already replaced by its look-alike (stone bricks,
+	 * cobblestone ...). Without this the plan would start with a wish list nobody can fill and only fall back after the
+	 * 3000-tick stall. The detected palette is unchanged when everything is obtainable. Already running plans are not
+	 * re-evaluated: they keep the palette they were saved with.
+	 */
+	static Palette detectForPlan(ServerLevel level, VillageRef ref, Villager hint, long seed, BlockPos site) {
+		Palette detected = Palette.detect(level, ref.bell(), hint, seed, site);
+		List<String> missing = detected.unobtainableRoles();
+		if (missing.isEmpty()) {
+			EARLY_PALETTE_SITES.remove(site.asLong());
+			return detected;
+		}
+		if (EARLY_PALETTE_SITES.size() > 64) EARLY_PALETTE_SITES.clear();
+		EARLY_PALETTE_SITES.put(site.asLong(), missing.toString());
+		// Stone bricks need a furnace and fuel the young village does not have: without a smelting stock in the public chest
+		// (and unless the village already switched to rustic stone) the look-alike stays plain cobblestone.
+		Container chest = ref.chest(level);
+		boolean smelting = chest != null && !de.villagerplus.village.VillageAdmin.rusticStone(ref)
+			&& JobUtil.count(chest, stack -> stack.is(Items.STONE_BRICKS) || stack.is(Items.STONE)
+				|| stack.is(Items.COAL) || stack.is(Items.CHARCOAL)) > 0;
+		return Supply.lookAlikePalette(detected, biomeAt(level, site), smelting);
 	}
 
 	/** Build the exact candidate footprint before accepting a zoned site; Palette only changes materials at these coordinates. */
@@ -3586,13 +3652,13 @@ public final class Builder {
 	private static List<Step> freshSteps(Ctx c, VillageRef ref, String type, int variant, VillageStyle style, BlockPos site, Direction dir) {
 		Architect.Design design = architect(type) ? designForPlan(type, variant) : null;
 		if (design != null) {
-			Palette palette = Palette.detect(c.level(), ref.bell(), c.v(), variant >>> 2, site);
+			Palette palette = detectForPlan(c.level(), ref, c.v(), variant >>> 2, site);
 			PALETTES.put(site.asLong(), palette);
 			List<Step> template = newHouseTemplatePreview(c.level(), ref, type, design, site, dir);
 			return template != null ? template : Architect.build(design, palette, site, dir);
 		}
 		if (Landmarks.handles(type)) {
-			Palette palette = Palette.detect(c.level(), ref.bell(), c.v(), variant >>> 2, site);
+			Palette palette = detectForPlan(c.level(), ref, c.v(), variant >>> 2, site);
 			PALETTES.put(site.asLong(), palette);
 			return Landmarks.build(type, variant >>> 2, palette, site, dir);
 		}
@@ -3647,6 +3713,44 @@ public final class Builder {
 		}
 		Sites.margin = 3;
 		return site == null ? null : naturalHouseAnchor(level, type, variant, site);
+	}
+
+	/** Upper bound on natural obstacles (trunks, leaves, plants) a civic site preparation may remove. */
+	private static final int MAX_CIVIC_SITE_OBSTACLES = 1024;
+	static final long CIVIC_CLEARANCE_RETRY_TICKS = 0L;
+	/** Diagnostic: natural blocks removed so far per civic plan origin (log throttling only). */
+	private static final java.util.Map<Long, Integer> CIVIC_CLEARED = new java.util.HashMap<>();
+	private static final java.util.Map<Long, NaturalSitePreparation.Status> CIVIC_PREP_STATUS = new java.util.HashMap<>();
+
+	/**
+	 * Work volume of a civic site preparation: the exact plan footprint from the anchor height up to the design's headroom.
+	 * It starts at the anchor so that natural soil below the building is never a removal target (no digging, no pits).
+	 */
+	static BlockPos[] civicPrepBox(BlockPos origin, List<Step> steps, int headroom) {
+		int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+		for (Step step : steps) {
+			minX = Math.min(minX, step.pos().getX());
+			maxX = Math.max(maxX, step.pos().getX());
+			minZ = Math.min(minZ, step.pos().getZ());
+			maxZ = Math.max(maxZ, step.pos().getZ());
+		}
+		return new BlockPos[]{new BlockPos(minX, origin.getY(), minZ), new BlockPos(maxX, origin.getY() + headroom + 1, maxZ)};
+	}
+
+	/** Diagnostic: actual plan extents [minX, maxX, minZ, maxZ] relative to the anchor for a door facing, from the generated steps. */
+	private static int[] civicPlanExtents(Ctx c, VillageRef ref, String type, int variant, Architect.Design design,
+			VillageStyle style, BlockPos civicAnchor, Direction doorFacing) {
+		// facingTowards(site, anchor) == doorFacing for a site 40 blocks on the opposite side of the anchor.
+		BlockPos probe = civicAnchor.relative(doorFacing.getOpposite(), 40);
+		List<Step> steps = sitingSteps(c, ref, type, variant, design, style, probe, civicAnchor);
+		int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE, minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+		for (Step step : steps) {
+			minX = Math.min(minX, step.pos().getX() - probe.getX());
+			maxX = Math.max(maxX, step.pos().getX() - probe.getX());
+			minZ = Math.min(minZ, step.pos().getZ() - probe.getZ());
+			maxZ = Math.max(maxZ, step.pos().getZ() - probe.getZ());
+		}
+		return new int[]{minX, maxX, minZ, maxZ};
 	}
 
 	private static boolean civicSite(String type) {
@@ -3991,6 +4095,32 @@ public final class Builder {
 		}
 		return false;
 	}
+	/** Plans whose scaffolding availability was already judged (once per plan origin and session). */
+	private static final java.util.Set<Long> SCAFFOLDING_JUDGED = new HashSet<>();
+
+	/**
+	 * Site scaffolding (vanilla: six bamboo and a string) is convenience equipment, but until it is delivered the unprepared
+	 * construction site keeps the whole plan at step 0. If the public stock holds none and cannot craft any (a taiga village has
+	 * neither bamboo nor string), nobody will ever make it: judge that at the first supply check instead of after the
+	 * 3000-tick stall, and let the plan build without scaffolding. Returns the (possibly updated) construction site.
+	 */
+	private static ConstructionSite waiveUncraftableScaffolding(Ctx c, VillageRef ref, BlockPos origin,
+			ConstructionSite construction, Container publicStock) {
+		if (construction == null || !construction.origin().equals(origin) || construction.prepared()
+			|| publicStock == null || c == null || !SCAFFOLDING_JUDGED.add(origin.asLong())) return construction;
+		if (JobUtil.count(publicStock, stack -> stack.is(Items.SCAFFOLDING)) > 0
+			|| de.villagerplus.job.RecipeCrafting.canCraftCraftingOutput(c, publicStock, stack -> stack.is(Items.SCAFFOLDING), 64)) {
+			return construction;
+		}
+		ConstructionSite waived = new ConstructionSite(construction.origin(), construction.temporary(), construction.phaseEnds(),
+			true, construction.paletteIds());
+		ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.CONSTRUCTION, waived);
+		ref.dirty();
+		LOGGER.info("Villagers: Repurposed: Bauplan {} baut ohne Baustellengeruest weiter (Geruest ist im Dorf nicht herstellbar: kein Vorrat, kein Bambus/Schnur)",
+			ref.data().planType);
+		return waived;
+	}
+
 	/** Keep project-local demand equal to its remaining plan/setup need after site stock and marked cargo. */
 	private static boolean updateWanted(Ctx c, VillageRef ref, String type, List<Step> steps, Container publicStock,
 			Container siteStock, List<String> cargoManifest, BlockPos origin, int fromStep, boolean announce) {
@@ -4006,6 +4136,7 @@ public final class Builder {
 			if (gap.item() != null && gap.total() > 0) targets.add(new DemandTarget(gap.item(), gap.tag(), gap.total()));
 		}
 		ConstructionSite construction = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.CONSTRUCTION, null);
+		construction = waiveUncraftableScaffolding(c, ref, origin, construction, publicStock);
 		if (construction != null && construction.origin().equals(origin) && !construction.prepared()) {
 			Map<Item, Integer> setup = ConstructionSite.missingSetupMaterials(c.level(), construction, steps, origin,
 				Direction.from2DDataValue(d.planDir), empty);
@@ -4741,6 +4872,10 @@ public final class Builder {
 		if (steps != null) {
 			// Nicht mitten im Bauwerk stehen (sonst mauert sich der Baumeister ein): Standort vor dem Gebaeude.
 			int minimumStandY = villageGroundY(level, ref.bell()) - 12;
+			if (!helper && d.planStep == 0 && noteStandVisit(origin.asLong(), c.now())) {
+				LOGGER.info("Villagers: Repurposed: Bau '{}' Schritt 0: Besitzer kehrt nach Abwesenheit zurueck, Wegverfolgung zum Stand neu begonnen (Arbeiter {})",
+					d.planType, c.v().blockPosition().toShortString());
+			}
 			BlockPos stand = standSlot >= 0
 				? workStand(c, origin, dir, steps, minimumStandY, standSlot)
 				: workStand(c, origin, dir, steps, minimumStandY);
@@ -4767,6 +4902,7 @@ public final class Builder {
 					c.setActivity("geht zur Dorfstrasse und sucht einen Baustand");
 				}
 				if (c.now() - standFailureSince > STAND_GIVE_UP) {
+					if (handOverStuckOwner(c, ref, d, origin, dir, steps, "kein Weg vom Arbeiter zu einem Stand")) return false;
 					why = "kein Weg zum Bauplatz";
 					LOGGER.info("Villagers: Repurposed: Bau '{}' Schritt {} wird abgebrochen ({}) {}", d.planType, d.planStep, why, lastStandReport(c.v()));
 					rejectPlot(ref, origin);
@@ -4776,6 +4912,19 @@ public final class Builder {
 				return true;
 			}
 			if (!helper) STAND_FAILURE_SINCE.remove(origin.asLong());
+			if (!helper && civicSite(d.planType) && d.planStep == 0) {
+				BlockPos previousStand = STAND_LAST.put(origin.asLong(), stand.immutable());
+				long lastDiagAt = STAND_DIAG_AT.getOrDefault(origin.asLong(), Long.MIN_VALUE / 2);
+				if (!stand.equals(previousStand) || c.now() - lastDiagAt >= 200) {
+					STAND_DIAG_AT.put(origin.asLong(), c.now());
+					LOGGER.info("Villagers: Repurposed: Standdiagnose {} {}: Stand {} (vorher {}) Arbeiter {} Abstand {} bester {} Fortschritt vor {} Ticks, Raeumung {} / {} entfernt",
+						d.planType, origin.toShortString(), stand.toShortString(), previousStand == null ? "-" : previousStand.toShortString(),
+						c.v().blockPosition().toShortString(),
+						String.format(java.util.Locale.ROOT, "%.1f", c.v().position().distanceTo(net.minecraft.world.phys.Vec3.atBottomCenterOf(stand))),
+						STAND_BEST.get(origin.asLong()), c.now() - d.planProgress, CIVIC_PREP_STATUS.get(origin.asLong()),
+						CIVIC_CLEARED.getOrDefault(origin.asLong(), 0));
+				}
+			}
 			if (!JobUtil.approach(c, stand, 6.0)) {
 				// Vanilla path searches stop around 16 blocks, so hand the brain the next node on the
 				// already verified route instead of the distant stand itself.
@@ -4800,11 +4949,21 @@ public final class Builder {
 				if (!helper && (best == null || dist < best - 1.5)) {
 					STAND_BEST.put(origin.asLong(), dist);
 					d.planProgress = c.now();
+					noteStandProgress(origin.asLong(), c.now());
 				} else if (movedOnRoute) {
 					d.planProgress = c.now();
-				} else if (!helper && d.planStep == 0 && c.now() - d.planProgress > STAND_GIVE_UP) {
+					noteStandProgress(origin.asLong(), c.now());
+				} else if (!helper && d.planStep == 0 && standProgressAge(origin.asLong(), c.now()) > STAND_GIVE_UP) {
+					if (handOverStuckOwner(c, ref, d, origin, dir, steps, "kein Fortschritt zum Stand " + stand.toShortString())) return false;
 					why = "Bauplatz nicht erreicht";
-					LOGGER.info("Villagers: Repurposed: Bau '{}' Schritt {} wird abgebrochen ({}) Stand {}", d.planType, d.planStep, why, stand.toShortString());
+					LOGGER.info("Villagers: Repurposed: Bau '{}' Schritt {} wird abgebrochen ({}) Stand {} (Arbeiter {}, Abstand {}, bester {}, Fortschritt vor {} Ticks, Routenknoten bester {}, Raeumung {} / {} entfernt, Inventar {}, Beruf {}, Tätigkeit '{}', Wegziel {}) Umgebung des Arbeiters (Westen links, Norden oben):{}",
+						d.planType, d.planStep, why, stand.toShortString(), c.v().blockPosition().toShortString(), dist, best,
+						standProgressAge(origin.asLong(), c.now()), STAND_BEST_NODES.get(origin.asLong()), CIVIC_PREP_STATUS.get(origin.asLong()),
+						CIVIC_CLEARED.getOrDefault(origin.asLong(), 0), JobUtil.hasEmptySlot(c.v().getInventory()) ? "frei" : "voll",
+						c.mem().name, c.st().activity,
+						c.v().getBrain().getMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET)
+							.map(t -> t.getTarget().currentBlockPosition().toShortString()).orElse("keines"),
+						surroundings(level, c.v().blockPosition(), 5));
 					rejectPlot(ref, origin);
 					abort(d, ref, c.now());
 					return false;
@@ -4812,7 +4971,7 @@ public final class Builder {
 				why = "geht zur Baustelle " + stand.toShortString() + " von " + c.v().blockPosition().toShortString();
 				return true;
 			}
-			if (!helper) { STAND_BEST.remove(origin.asLong()); STAND_MOVE_ANCHOR.remove(origin.asLong()); STAND_BEST_NODES.remove(origin.asLong()); }
+			if (!helper) { STAND_BEST.remove(origin.asLong()); STAND_MOVE_ANCHOR.remove(origin.asLong()); STAND_BEST_NODES.remove(origin.asLong()); noteStandProgress(origin.asLong(), c.now()); }
 			if (insideFootprint(c, steps)) {
 				JobUtil.approachLong(c, stand, 1.0);
 				return true;
@@ -4832,6 +4991,51 @@ public final class Builder {
 		List<Step> prepSteps = d.planType.equals(Blueprints.HOUSE)
 			? steps.stream().filter(step -> !Paths.isYardStep(level, origin, dir, step.pos())).toList() : steps;
 		java.util.Set<Long> fp = d.planType.equals(Blueprints.FARM) ? null : FOOT.computeIfAbsent(origin.asLong(), k -> Prep.footprint(prepSteps, origin));
+		if (d.planStep == 0 && civicSite(d.planType) && architect(d.planType) && !REPAIRS.contains(origin.asLong())) {
+			// Trees inside a last-resort civic site are removed by the same verified natural-site clearing the house lots use.
+			// A site without natural obstacles reports READY and costs nothing; anything it cannot clear keeps the old behaviour.
+			BlockPos[] prepBox = civicPrepBox(origin, steps, designForPlan(d.planType, d.planVariant).headroom());
+			if (helper) {
+				// Helpers must not start the (free) foundation steps over standing trees; the plan owner clears them first.
+				NaturalSitePreparation.Status pending = NaturalSitePreparation.inspect(level, prepBox[0], prepBox[1], MAX_CIVIC_SITE_OBSTACLES).status();
+				if (pending == NaturalSitePreparation.Status.CLEARABLE || pending == NaturalSitePreparation.Status.WAITING_FOR_CHUNK) return false;
+			} else {
+				NaturalSitePreparation.Scan civicPrep = NaturalSitePreparation.clearOne(level, prepBox[0], prepBox[1],
+					MAX_CIVIC_SITE_OBSTACLES, c.v());
+				if (CIVIC_PREP_STATUS.put(origin.asLong(), civicPrep.status()) != civicPrep.status()) {
+					LOGGER.info("Villagers: Repurposed: Bauplatz {} fuer '{}': Raeumung {} (naechstes Hindernis {}, {} offen)", origin.toShortString(),
+						d.planType, civicPrep.status(), civicPrep.next() == null ? "-" : civicPrep.next().toShortString()
+							+ " " + level.getBlockState(civicPrep.next()).getBlock().getDescriptionId(), civicPrep.obstacleCount());
+				}
+				if (civicPrep.status() == NaturalSitePreparation.Status.CLEARED) {
+					int cleared = CIVIC_CLEARED.merge(origin.asLong(), 1, Integer::sum);
+					if (cleared == 1 || cleared % 25 == 0) {
+						LOGGER.info("Villagers: Repurposed: Bauplatz {} fuer '{}' wird geraeumt: {} Naturbloecke entfernt, zuletzt bei {}, vorher {} Hindernisse",
+							origin.toShortString(), d.planType, cleared, civicPrep.next() == null ? "?" : civicPrep.next().toShortString(), civicPrep.obstacleCount());
+					}
+					c.setActivity("raeumt den Bauplatz");
+					d.planProgress = c.now();
+					c.st().cooldownUntil = c.now() + CIVIC_CLEARANCE_RETRY_TICKS;
+					ref.dirty();
+					return true;
+				}
+				if (civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_CHUNK
+					|| civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_ENTITY
+					|| civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_TOOL) {
+					c.setActivity("wartet auf einen freien Bauplatz");
+					d.planProgress = c.now();
+					c.st().cooldownUntil = c.now() + 100;
+					ref.dirty();
+					return true;
+				}
+				if (civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_INVENTORY) {
+					c.setActivity("schafft Platz fuer die Ernte vom Bauplatz");
+					d.planProgress = c.now();
+					ref.dirty();
+					return false;
+				}
+			}
+		}
 		if (d.planStep == 0 && needsNaturalHousePreparation(d.planType, d.planVariant, d.planSource.isPresent())) {
 			if (!houseLotStillSafe(level, ref, origin, dir, prepSteps, steps, d.planVariant, d.planSource.isPresent())) {
 				why = "Hausbauplatz ist inzwischen geschuetzt oder nicht mehr sicher";
@@ -5123,15 +5327,36 @@ public final class Builder {
 	private static final int HOUSE_SITE_CANDIDATE_BUDGET = 96;
 	private static final long HOUSE_SITE_RETRY_TICKS = 20L;
 	private static final long HOUSE_SITE_REPROBE_TICKS = 1200L;
+	/** An idle house search (no call for this long) is dropped, in memory and in the saved village data. */
+	private static final long HOUSE_SITE_STALE_TICKS = 24000L;
 	private static final Map<String, HouseSiteSearch> HOUSE_SITE_SEARCHES = new HashMap<>();
+	/** Throttle of the "fortgesetzt" progress line per village bell. */
+	private static final Map<Long, Long> HOUSE_SITE_DIAG_AT = new HashMap<>();
+	/**
+	 * Dev/test hook: with the environment variable {@code VP_FORCE_HOUSE_STEP_SEARCH=1} a new catalog house skips the random
+	 * and tolerant site paths and goes straight to the step-wise search, and the mason plans a house first even without bed
+	 * demand. Natural runs use it to observe that search on real terrain; the demand and the random paths otherwise pre-empt
+	 * it. Never set in normal play.
+	 */
+	static final boolean FORCE_HOUSE_STEP_SEARCH = "1".equals(System.getenv("VP_FORCE_HOUSE_STEP_SEARCH"));
 
-	private static final class HouseSiteSearch {
+	/** Dev hook companion: {@code VP_HOUSE_SEARCH_BUDGET} shrinks the page budget so a natural run needs several pages. */
+	private static int forcedHouseSearchBudget() {
+		try {
+			return Math.max(1, Math.min(HOUSE_SITE_CANDIDATE_BUDGET, Integer.parseInt(System.getenv("VP_HOUSE_SEARCH_BUDGET"))));
+		} catch (RuntimeException ignored) {
+			return HOUSE_SITE_CANDIDATE_BUDGET;
+		}
+	}
+
+	static final class HouseSiteSearch {
 		int variant;
 		final int minRadius;
 		long phaseSeed;
 		int nextCandidate;
 		long retryAt;
 		long lastUsedAt;
+		/** Not persisted: only de-duplicates columns inside one session; after a restart the cursor alone resumes the sweep. */
 		final Set<Long> visitedColumns = new HashSet<>();
 
 		HouseSiteSearch(int variant, long phaseSeed, int minRadius, long now) {
@@ -5141,6 +5366,12 @@ public final class Builder {
 			this.lastUsedAt = now;
 		}
 
+		HouseSiteSearch(de.villagerplus.village.VillageData.Extra.HouseSiteSearch saved) {
+			this(saved.variant(), saved.phaseSeed(), saved.minRadius(), saved.lastUsedAt());
+			nextCandidate = saved.nextCandidate();
+			retryAt = saved.retryAt();
+		}
+
 		void restart(int nextVariant, long nextPhaseSeed, long nextRetryAt) {
 			variant = nextVariant;
 			phaseSeed = nextPhaseSeed;
@@ -5148,10 +5379,143 @@ public final class Builder {
 			retryAt = nextRetryAt;
 			visitedColumns.clear();
 		}
+
+		int nextCandidate() { return nextCandidate; }
 	}
 
 	private static String houseSiteSearchKey(ServerLevel level, VillageRef ref) {
 		return level.dimension().identifier().toString() + ":" + ref.bell().asLong();
+	}
+
+	private static void persistHouseSiteSearch(VillageRef ref, HouseSiteSearch search) {
+		ref.data().extra.houseSiteSearch = Optional.of(new de.villagerplus.village.VillageData.Extra.HouseSiteSearch(
+			search.variant, search.minRadius, search.phaseSeed, search.nextCandidate, search.retryAt, search.lastUsedAt));
+		ref.dirty();
+	}
+
+	/** Ends the house search of this village: memory entry and the saved cursor, so nothing is left behind. */
+	static void dropHouseSiteSearch(ServerLevel level, VillageRef ref) {
+		HOUSE_SITE_SEARCHES.remove(houseSiteSearchKey(level, ref));
+		HOUSE_SITE_DIAG_AT.remove(ref.bell().asLong());
+		if (ref.data().extra.houseSiteSearch.isPresent()) {
+			ref.data().extra.houseSiteSearch = Optional.empty();
+			ref.dirty();
+		}
+	}
+
+	/** Test seam: forget the in-memory searches, as a server restart would. The saved cursor stays in the village data. */
+	static void forgetHouseSiteSearchMemory() {
+		HOUSE_SITE_SEARCHES.clear();
+		HOUSE_SITE_DIAG_AT.clear();
+	}
+
+	static boolean hasHouseSiteSearchInMemory(ServerLevel level, VillageRef ref) {
+		return HOUSE_SITE_SEARCHES.containsKey(houseSiteSearchKey(level, ref));
+	}
+
+	/**
+	 * The running step-wise house search of this village, if any: from memory, else resumed from the saved cursor.
+	 * A search for another minimum radius or a non-catalog plan, or one idle for {@link #HOUSE_SITE_STALE_TICKS}, is dropped.
+	 */
+	static HouseSiteSearch ongoingHouseSiteSearch(Ctx c, VillageRef ref, int minRadius, boolean hasLegacySource) {
+		ServerLevel level = c.level();
+		String dimension = level.dimension().identifier().toString() + ":";
+		HOUSE_SITE_SEARCHES.entrySet().removeIf(entry -> entry.getKey().startsWith(dimension)
+			&& c.now() - entry.getValue().lastUsedAt > HOUSE_SITE_STALE_TICKS);
+		HouseSiteSearch search = HOUSE_SITE_SEARCHES.get(houseSiteSearchKey(level, ref));
+		if (search == null && ref.data().extra.houseSiteSearch.isPresent()) {
+			var saved = ref.data().extra.houseSiteSearch.get();
+			if (c.now() - saved.lastUsedAt() > HOUSE_SITE_STALE_TICKS) {
+				dropHouseSiteSearch(level, ref);
+			} else {
+				search = new HouseSiteSearch(saved);
+				HOUSE_SITE_SEARCHES.put(houseSiteSearchKey(level, ref), search);
+				LOGGER.info("Villagers: Repurposed: Bauplatzsuche fuer 'house' (Glocke {}) aus gespeichertem Cursor wiederaufgenommen (Variante {}, Kandidat {}, Mindestradius {})",
+					ref.bell().toShortString(), search.variant, search.nextCandidate, search.minRadius);
+			}
+		}
+		if (search != null && (search.minRadius != minRadius || !needsNaturalHousePreparation(Blueprints.HOUSE, search.variant, hasLegacySource))) {
+			dropHouseSiteSearch(level, ref);
+			search = null;
+		}
+		return search;
+	}
+
+	/**
+	 * Outcome of one bounded step. {@code waiting}: the retry time has not come, nothing was scanned.
+	 * {@code site} null and not waiting: this page found nothing; {@code search.retryAt} says when the next page runs.
+	 */
+	record HouseSiteStep(HouseSiteSearch search, BlockPos site, int variant, Architect.Design design, int half, int headroom,
+		boolean waiting, boolean pageComplete, int evaluated) { }
+
+	/** One step of the persisted house site search; at most {@link #HOUSE_SITE_CANDIDATE_BUDGET} candidates are checked. */
+	static HouseSiteStep stepHouseSiteSearch(Ctx c, VillageRef ref, VillageStyle style, String type, HouseSiteSearch ongoing,
+			int newVariant, int minRadius) {
+		return stepHouseSiteSearch(c, ref, style, type, ongoing, newVariant, minRadius,
+			Math.min(88, Config.VILLAGE_RADIUS - 8), FORCE_HOUSE_STEP_SEARCH ? forcedHouseSearchBudget() : HOUSE_SITE_CANDIDATE_BUDGET);
+	}
+
+	/** {@code maxRadius} is a test seam (smaller fixture terrain); production always passes the village search radius. */
+	static HouseSiteStep stepHouseSiteSearch(Ctx c, VillageRef ref, VillageStyle style, String type, HouseSiteSearch ongoing,
+			int newVariant, int minRadius, int maxRadius, int budget) {
+		ServerLevel level = c.level();
+		HouseSiteSearch search = ongoing;
+		if (search == null) {
+			search = new HouseSiteSearch(newVariant, c.v().getRandom().nextLong(), minRadius, c.now());
+			HOUSE_SITE_SEARCHES.put(houseSiteSearchKey(level, ref), search);
+			LOGGER.info("Villagers: Repurposed: Bauplatzsuche fuer 'house' (Glocke {}) begonnen (Variante {}, Mindestradius {}): Zufalls- und Toleranzsuche ohne Treffer",
+				ref.bell().toShortString(), search.variant, search.minRadius);
+			persistHouseSiteSearch(ref, search);
+		}
+		search.lastUsedAt = c.now();
+		if (c.now() < search.retryAt) {
+			return new HouseSiteStep(search, null, search.variant, null, 0, 0, true, false, 0);
+		}
+		int searchMax = maxRadius;
+		Architect.Design searchDesign = designForPlan(type, search.variant);
+		int searchHalf = siteHalf(type, search.variant, searchDesign);
+		int searchHeadroom = siteHeadroom(type, search.variant, searchDesign);
+		int searchVariant = search.variant;
+		if (templateEligible(searchDesign)) {
+			searchHalf = Math.max(searchHalf, 4);
+			searchHeadroom = Math.max(searchHeadroom, 10);
+		}
+		int oldMargin = Sites.margin;
+		int evaluatedBefore = SITE_REJECT[0];
+		Sites.margin = 2;
+		Sites.SearchPage page;
+		try {
+			page = Sites.findHouseSitePage(level, ref.bell(), search.minRadius, searchMax,
+				search.nextCandidate, budget, search.phaseSeed, search.visitedColumns,
+				p -> siteCandidateAnchor(c, ref, type, searchVariant, searchDesign, style, p, ref.bell()),
+				Sites.villageReferenceY(level, ref.bell()));
+		} finally {
+			Sites.margin = oldMargin;
+		}
+		search.nextCandidate = page.nextCandidate();
+		if (page.site() == null) {
+			if (page.complete()) {
+				long seed = ((long) c.v().getRandom().nextInt(1 << 22) << 6) | Palette.profileCode(level, ref.bell());
+				seed = Architect.withSizeTier(seed, nextSizeTier(ref, type));
+				search.restart(newPlanVariant(type, seed), c.v().getRandom().nextLong(), c.now() + HOUSE_SITE_REPROBE_TICKS);
+			} else {
+				search.retryAt = c.now() + HOUSE_SITE_RETRY_TICKS;
+			}
+			persistHouseSiteSearch(ref, search);
+			if (c.now() - HOUSE_SITE_DIAG_AT.getOrDefault(ref.bell().asLong(), Long.MIN_VALUE / 2) > 1200) {
+				HOUSE_SITE_DIAG_AT.put(ref.bell().asLong(), c.now());
+				LOGGER.info("Villagers: Repurposed: Bauplatzsuche fuer 'house' (Glocke {}) fortgesetzt (Variante {}, Kandidat {}/{}, besuchte Spalten {}, halbe Kante {}, Hoehe {}, Mindestradius {}), noch kein passender Standort (Bezugshoehe {}, Glocke y {})",
+					ref.bell().toShortString(), searchVariant, page.nextCandidate(), Sites.systematicCandidateCount(search.minRadius, searchMax),
+					search.visitedColumns.size(), searchHalf, searchHeadroom, search.minRadius,
+					Sites.villageReferenceY(level, ref.bell()), ref.bell().getY());
+			}
+			return new HouseSiteStep(search, null, searchVariant, searchDesign, searchHalf, searchHeadroom, false, page.complete(), SITE_REJECT[0] - evaluatedBefore);
+		}
+		search.retryAt = c.now() + HOUSE_SITE_RETRY_TICKS;
+		persistHouseSiteSearch(ref, search);
+		LOGGER.info("Villagers: Repurposed: Bauplatzsuche fuer 'house' (Glocke {}) hat Standort {} gefunden (Variante {}, Kandidat {})",
+			ref.bell().toShortString(), page.site().toShortString(), searchVariant, page.nextCandidate());
+		return new HouseSiteStep(search, page.site(), searchVariant, searchDesign, searchHalf, searchHeadroom, false, false, SITE_REJECT[0] - evaluatedBefore);
 	}
 
 	private static final int CIVIC_SITE_CANDIDATE_BUDGET = 96;
@@ -5165,9 +5529,12 @@ public final class Builder {
 		final long phaseSeed;
 		final java.util.List<java.util.Set<Long>> flatVisited = new java.util.ArrayList<>();
 		final java.util.List<java.util.Set<Long>> tolerantVisited = new java.util.ArrayList<>();
+		final java.util.List<java.util.Set<Long>> terracedVisited = new java.util.ArrayList<>();
 		int variantIndex;
 		int nextCandidate;
 		boolean tolerant;
+		/** Last-resort pass after every variant failed on flat and one-block-tolerant ground (implies tolerant). */
+		boolean terraced;
 		long retryAt;
 
 		CivicSiteSearch(String type, int[] variants, long phaseSeed) {
@@ -5177,6 +5544,7 @@ public final class Builder {
 			for (int ignored : variants) {
 				flatVisited.add(new java.util.HashSet<>());
 				tolerantVisited.add(new java.util.HashSet<>());
+				terracedVisited.add(new java.util.HashSet<>());
 			}
 		}
 
@@ -5184,12 +5552,13 @@ public final class Builder {
 			this(saved.type(), saved.variants().stream().mapToInt(Integer::intValue).toArray(), saved.phaseSeed());
 			variantIndex = saved.variantIndex();
 			nextCandidate = saved.nextCandidate();
-			tolerant = saved.tolerant();
+			tolerant = saved.tolerant() || saved.terraced();
+			terraced = saved.terraced();
 			retryAt = saved.retryAt();
 		}
 
 		java.util.Set<Long> visitedColumns() {
-			return tolerant ? tolerantVisited.get(variantIndex) : flatVisited.get(variantIndex);
+			return terraced ? terracedVisited.get(variantIndex) : tolerant ? tolerantVisited.get(variantIndex) : flatVisited.get(variantIndex);
 		}
 
 		void deferCandidate(BlockPos plot) {
@@ -5199,18 +5568,31 @@ public final class Builder {
 
 		boolean advancePass(long now) {
 			nextCandidate = 0;
-			if (!tolerant) {
-				tolerant = true;
+			if (!terraced) {
+				if (!tolerant) {
+					tolerant = true;
+					return false;
+				}
+				if (variantIndex + 1 < variants.length) {
+					tolerant = false;
+					variantIndex++;
+					return false;
+				}
+				// Every variant failed on flat and one-block-tolerant ground: sweep them once more on terraced ground.
+				terraced = true;
+				variantIndex = 0;
 				return false;
 			}
-			tolerant = false;
 			if (variantIndex + 1 < variants.length) {
 				variantIndex++;
 				return false;
 			}
+			terraced = false;
+			tolerant = false;
 			variantIndex = 0;
 			flatVisited.forEach(java.util.Set::clear);
 			tolerantVisited.forEach(java.util.Set::clear);
+			terracedVisited.forEach(java.util.Set::clear);
 			retryAt = now + CIVIC_SITE_REPROBE_TICKS;
 			return true;
 		}
@@ -5247,12 +5629,148 @@ public final class Builder {
 	private static void persistCivicSiteSearch(VillageRef ref, CivicSiteSearch search) {
 		List<Integer> variants = java.util.Arrays.stream(search.variants).boxed().toList();
 		ref.data().extra.civicSiteSearch = Optional.of(new de.villagerplus.village.VillageData.Extra.CivicSiteSearch(
-			search.type, variants, search.phaseSeed, search.variantIndex, search.nextCandidate, search.tolerant, search.retryAt));
+			search.type, variants, search.phaseSeed, search.variantIndex, search.nextCandidate, search.tolerant, search.retryAt, search.terraced));
 		ref.dirty();
 	}
 
 	/** Closest distance to the current stand since the mason last made real progress. Not persisted. */
 	private static final java.util.Map<Long, Double> STAND_BEST = new java.util.HashMap<>();
+	/** Last tick this plan's owner evaluated its work stand; an owner away on other jobs must not look like a stalled walk. */
+	private static final java.util.Map<Long, Long> STAND_SEEN_AT = new java.util.HashMap<>();
+	/** Last tick the owner got closer to the stand (or reset after an absence). Not persisted. */
+	private static final java.util.Map<Long, Long> STAND_PROGRESS_AT = new java.util.HashMap<>();
+	/** Longer than any normal gap between two builder calls (cooldowns are up to 100 ticks), shorter than a supply trip. */
+	static final long STAND_ABSENCE_TICKS = 200L;
+
+	/**
+	 * Called on every stand evaluation of a plan. After an absence (the owner was busy with other jobs, e.g. fetching
+	 * material) the old distance record, route record and timers describe the previous walk, not this one, so they are
+	 * dropped; otherwise the first call after the return reads as "1200 ticks without getting closer" and aborts the plan.
+	 * Returns true when such a reset happened.
+	 */
+	static boolean noteStandVisit(long key, long now) {
+		Long last = STAND_SEEN_AT.put(key, now);
+		if (last == null) {
+			STAND_PROGRESS_AT.put(key, now);
+			return false;
+		}
+		if (now - last <= STAND_ABSENCE_TICKS) return false;
+		STAND_BEST.remove(key);
+		STAND_MOVE_ANCHOR.remove(key);
+		STAND_BEST_NODES.remove(key);
+		STAND_FAILURE_SINCE.remove(key);
+		STAND_PROGRESS_AT.put(key, now);
+		return true;
+	}
+
+	static void noteStandProgress(long key, long now) {
+		STAND_PROGRESS_AT.put(key, now);
+	}
+
+	static long standProgressAge(long key, long now) {
+		return now - STAND_PROGRESS_AT.getOrDefault(key, now);
+	}
+
+	static void forgetStandWatch(long key) {
+		STAND_SEEN_AT.remove(key);
+		STAND_PROGRESS_AT.remove(key);
+		STAND_HANDOVERS.remove(key);
+	}
+
+	/** Owners that could not get to a plan's work stand although the site is walkable from the street (stuck in a pen, boxed in). */
+	private static final java.util.Map<java.util.UUID, Long> PLAN_OWNER_EXCLUDED_UNTIL = new java.util.HashMap<>();
+	private static final java.util.Map<Long, Integer> STAND_HANDOVERS = new java.util.HashMap<>();
+	static final long STUCK_OWNER_EXCLUSION_TICKS = 2400L;
+	static final int MAX_STAND_HANDOVERS = 3;
+
+	static void excludePlanOwner(java.util.UUID owner, long until) {
+		PLAN_OWNER_EXCLUDED_UNTIL.put(owner, until);
+	}
+
+	static boolean planOwnerExcluded(java.util.UUID owner, long now) {
+		Long until = PLAN_OWNER_EXCLUDED_UNTIL.get(owner);
+		if (until == null) return false;
+		if (until <= now) {
+			PLAN_OWNER_EXCLUDED_UNTIL.remove(owner);
+			return false;
+		}
+		return true;
+	}
+
+	/** Some plausible stand column around the plan can be walked back to the village street (the site itself is not the problem). */
+	private static boolean siteWalkableFromStreet(Ctx c, VillageRef ref, BlockPos origin, Direction dir, List<Step> steps) {
+		BlockPos street = villageReturn(c.level(), ref.bell());
+		if (street == null) return false;
+		int minX = origin.getX(), maxX = minX, minZ = origin.getZ(), maxZ = minZ, ext = 2;
+		for (Step step : steps) {
+			BlockPos p = step.pos();
+			minX = Math.min(minX, p.getX()); maxX = Math.max(maxX, p.getX());
+			minZ = Math.min(minZ, p.getZ()); maxZ = Math.max(maxZ, p.getZ());
+			ext = Math.max(ext, (p.getX() - origin.getX()) * dir.getStepX() + (p.getZ() - origin.getZ()) * dir.getStepZ());
+		}
+		BlockPos[] columns = {origin.relative(dir, ext + 3), new BlockPos((minX + maxX) / 2, origin.getY(), minZ - 3),
+			new BlockPos((minX + maxX) / 2, origin.getY(), maxZ + 3), new BlockPos(minX - 3, origin.getY(), (minZ + maxZ) / 2),
+			new BlockPos(maxX + 3, origin.getY(), (minZ + maxZ) / 2)};
+		for (BlockPos column : columns) {
+			BlockPos feet = standOnColumn(c.level(), column.getX(), column.getZ(), origin.getY());
+			if (feet != null && Math.abs(feet.getY() - origin.getY()) <= 4 && Sites.walksBackTo(c.level(), feet, street)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * The owner cannot reach the stand but the site can be walked from the village: the owner, not the plot, is the problem
+	 * (boxed in, caught in a fenced pen). Keep the plot and its cleared trees, bench this owner for a while and let the next
+	 * eligible resident take over. Limited per plan so a genuinely unreachable plot is still dropped.
+	 */
+	private static boolean handOverStuckOwner(Ctx c, VillageRef ref, VillageData d, BlockPos origin, Direction dir, List<Step> steps, String reason) {
+		if (!civicSite(d.planType) || d.planStep != 0 || steps == null) return false;
+		if (STAND_HANDOVERS.getOrDefault(origin.asLong(), 0) >= MAX_STAND_HANDOVERS) return false;
+		if (!siteWalkableFromStreet(c, ref, origin, dir, steps)) return false;
+		int count = STAND_HANDOVERS.merge(origin.asLong(), 1, Integer::sum);
+		excludePlanOwner(c.v().getUUID(), c.now() + STUCK_OWNER_EXCLUSION_TICKS);
+		STAND_BEST.remove(origin.asLong());
+		STAND_MOVE_ANCHOR.remove(origin.asLong());
+		STAND_BEST_NODES.remove(origin.asLong());
+		STAND_FAILURE_SINCE.remove(origin.asLong());
+		noteStandProgress(origin.asLong(), c.now());
+		c.v().getNavigation().stop();
+		c.v().getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
+		LOGGER.info("Villagers: Repurposed: Bau '{}' Schritt 0: Besitzer {} kommt nicht zum Stand ({}), der Bauplatz ist von der Dorfstrasse aus begehbar: Besitzer pausiert {} Ticks, Plan bleibt (Uebergabe {}/{})",
+			d.planType, c.v().blockPosition().toShortString(), reason, STUCK_OWNER_EXCLUSION_TICKS, count, MAX_STAND_HANDOVERS);
+		return true;
+	}
+
+	/** Diagnostic: block map around a worker, one 9x9 layer per row group (feet, head, below), chars: . air, # solid, d door, f fence/wall/gate, l leaves, t trunk, w water, p plant. */
+	static String surroundings(ServerLevel level, BlockPos center, int radius) {
+		StringBuilder out = new StringBuilder();
+		for (int dy : new int[]{0, 1, -1}) {
+			out.append(dy == 0 ? "\nFuesse:" : dy == 1 ? "\nKopf:" : "\nBoden:");
+			for (int dz = -radius; dz <= radius; dz++) {
+				out.append('\n');
+				for (int dx = -radius; dx <= radius; dx++) {
+					BlockPos q = center.offset(dx, dy, dz);
+					BlockState st = level.getBlockState(q);
+					char ch;
+					if (dx == 0 && dz == 0 && dy == 0) ch = '@';
+					else if (st.isAir()) ch = '.';
+					else if (!st.getFluidState().isEmpty()) ch = 'w';
+					else if (st.is(net.minecraft.tags.BlockTags.DOORS) || st.is(net.minecraft.tags.BlockTags.TRAPDOORS)) ch = 'd';
+					else if (st.is(net.minecraft.tags.BlockTags.FENCES) || st.is(net.minecraft.tags.BlockTags.FENCE_GATES) || st.is(net.minecraft.tags.BlockTags.WALLS)) ch = 'f';
+					else if (st.is(net.minecraft.tags.BlockTags.LEAVES)) ch = 'l';
+					else if (st.is(net.minecraft.tags.BlockTags.LOGS)) ch = 't';
+					else if (st.getCollisionShape(level, q).isEmpty()) ch = 'p';
+					else ch = '#';
+					out.append(ch);
+				}
+			}
+		}
+		return out.toString();
+	}
+
+	/** Diagnostic: last stand and last report tick per civic plan origin. */
+	private static final java.util.Map<Long, BlockPos> STAND_LAST = new java.util.HashMap<>();
+	private static final java.util.Map<Long, Long> STAND_DIAG_AT = new java.util.HashMap<>();
 	/** First tick without a reachable stand; reset after recovery or server restart. */
 	private static final java.util.Map<Long, Long> STAND_FAILURE_SINCE = new java.util.HashMap<>();
 	/** Step 0 gives up well before the 20000-tick walk budget when the stand is not getting closer. */
@@ -5818,6 +6336,7 @@ public final class Builder {
 		}
 		PREP_RECORD.remove(origin.asLong());
 		STAND_BEST.remove(origin.asLong());
+		forgetStandWatch(origin.asLong());
 		PLAN_DIAGNOSTICS.remove(origin.asLong());
 		if (REPAIRS.remove(origin.asLong())) {
 			JobUtil.tellNearbyPlayers(c.level(), c.v(), 40, Component.literal("Ausgebessert: " + label(d.planType) + "."));

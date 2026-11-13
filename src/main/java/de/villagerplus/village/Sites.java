@@ -65,6 +65,34 @@ public final class Sites {
 	private static long houseStructureCacheTick = Long.MIN_VALUE;
 	private static final Map<StructureChunkKey, StructureChunkSnapshot> HOUSE_STRUCTURE_CACHE = new LinkedHashMap<>(32, 0.75F, true);
 
+	/**
+	 * Diagnostic: why scanned site columns were rejected since the last log line. Indices: 0 scanned columns, 1 unloaded,
+	 * 2 village level, 3 market reservation, 4 rect unloaded, 5 rim too high, 6 uneven (height spread), 7 ground,
+	 * 8 headroom, 9 existing building within margin, 11-15 relief class of 5/6 rejects. okRect and tolerantBase share the indices 3..9.
+	 */
+	public static final int[] SCAN_REJECT = new int[16]; // slot 10 unused
+	public static final String SCAN_REJECT_LEGEND = "[Spalten, ungeladen, Hoehenlage, Markt, Rand-ungeladen, Randhoehe, uneben, Untergrund, Kopffreiheit, Gebaeude, Randhoehe/uneben nur wegen Baumstaemmen, echte Spreizung 2, 3, 4-5, >5]";
+
+	/** Diagnostic: true when the column top (as the MOTION_BLOCKING_NO_LEAVES height sees it) is a tree trunk. */
+	private static int groundHeight(ServerLevel level, int x, int h, int z) {
+		int y = h;
+		while (y > level.getMinY() + 1 && level.getBlockState(new BlockPos(x, y - 1, z)).is(BlockTags.OVERWORLD_NATURAL_LOGS)) y--;
+		return y;
+	}
+
+	/** Diagnostic, only on rejection: 11 when the rect would be level (spread <= 1) with trunks counted at their root, else 12. */
+	private static void classifyRelief(ServerLevel level, BlockPos c, int minX, int maxX, int minZ, int maxZ) {
+		int lo = Integer.MAX_VALUE, hi = Integer.MIN_VALUE;
+		for (int dx = minX; dx <= maxX; dx++) for (int dz = minZ; dz <= maxZ; dz++) {
+			int x = c.getX() + dx, z = c.getZ() + dz;
+			int g = groundHeight(level, x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
+			lo = Math.min(lo, g);
+			hi = Math.max(hi, g);
+		}
+		int spread = hi - lo;
+		SCAN_REJECT[spread <= 1 ? 11 : spread == 2 ? 12 : spread == 3 ? 13 : spread <= 5 ? 14 : 15]++;
+	}
+
 	/** One bounded portion of the deterministic site scan. */
 	public record SearchPage(BlockPos site, int nextCandidate, boolean complete) { }
 
@@ -228,6 +256,33 @@ public final class Sites {
 	public static SearchPage findSystematicPage(ServerLevel level, BlockPos around, int minDist, int maxDist,
 		int minX, int maxX, int minZ, int maxZ, int headroom, boolean tolerant, int startCandidate,
 		int candidateBudget, long phaseSeed, Set<Long> visitedColumns, Predicate<BlockPos> fits, int referenceY) {
+		return findSystematicPage(level, around, minDist, maxDist, minX, maxX, minZ, maxZ, headroom, tolerant ? 1 : 0,
+			startCandidate, candidateBudget, phaseSeed, visitedColumns, fits, referenceY);
+	}
+
+	/** Natural height difference a last-resort civic site may span; the lower columns get a supported foundation. */
+	public static final int TERRACED_CIVIC_RELIEF = 3;
+
+	/**
+	 * {@code maxRelief} 0 requires a flat plot, 1 the usual one-block tolerance, up to {@link #TERRACED_CIVIC_RELIEF} a
+	 * terraced plot: the anchor stays at the highest column (nothing is dug into the slope), lower columns are filled.
+	 */
+	public static SearchPage findSystematicPage(ServerLevel level, BlockPos around, int minDist, int maxDist,
+		int minX, int maxX, int minZ, int maxZ, int headroom, int maxRelief, int startCandidate,
+		int candidateBudget, long phaseSeed, Set<Long> visitedColumns, Predicate<BlockPos> fits, int referenceY) {
+		return findSystematicPage(level, around, minDist, maxDist, minX, maxX, minZ, maxZ, headroom, maxRelief, false,
+			startCandidate, candidateBudget, phaseSeed, visitedColumns, fits, referenceY);
+	}
+
+	/**
+	 * {@code clearableTrees}: rooted natural trees do not count as terrain. Their trunks are measured at the soil under them
+	 * and trunk/leaf blocks do not fail the headroom test; the caller must verify with
+	 * {@code NaturalSitePreparation.inspect} that the trees can really be cleared and must clear them before building.
+	 */
+	public static SearchPage findSystematicPage(ServerLevel level, BlockPos around, int minDist, int maxDist,
+		int minX, int maxX, int minZ, int maxZ, int headroom, int maxRelief, boolean clearableTrees, int startCandidate,
+		int candidateBudget, long phaseSeed, Set<Long> visitedColumns, Predicate<BlockPos> fits, int referenceY) {
+		boolean tolerant = maxRelief > 0;
 		int total = systematicCandidateCount(minDist, maxDist);
 		if (total == 0 || candidateBudget <= 0) return new SearchPage(null, Math.max(0, startCandidate), true);
 		int start = Math.max(0, Math.min(total, startCandidate));
@@ -244,12 +299,13 @@ public final class Sites {
 			long column = BlockPos.asLong(x, 0, z);
 			if (visitedColumns.contains(column) || !pageColumns.add(column)) continue;
 			BlockPos probe = new BlockPos(x, around.getY(), z);
-			if (!level.hasChunkAt(probe)) continue;
+			if (!level.hasChunkAt(probe)) { SCAN_REJECT[1]++; continue; }
 			visitedColumns.add(column);
+			SCAN_REJECT[0]++;
 			BlockPos candidate = new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
-			if (!villageLevel(referenceY, candidate.getY())) continue;
+			if (!villageLevel(referenceY, candidate.getY())) { SCAN_REJECT[2]++; continue; }
 			if (tolerant) {
-				int base = tolerantBase(level, candidate, minX, maxX, minZ, maxZ, headroom);
+				int base = tolerantBase(level, candidate, minX, maxX, minZ, maxZ, headroom, maxRelief, clearableTrees);
 				if (base == Integer.MIN_VALUE) continue;
 				candidate = new BlockPos(x, base, z);
 			} else if (!okRect(level, candidate, minX, maxX, minZ, maxZ, headroom)) {
@@ -351,40 +407,48 @@ public final class Sites {
 
 	/** Rechteckiger Bauplatz relativ zu c: innen muss alles eben und frei sein, im 1-Block-Rand darf nichts hoeher aufragen. */
 	public static boolean okRect(ServerLevel level, BlockPos c, int minX, int maxX, int minZ, int maxZ, int headroom) {
-		if (Market.reserved(level, c, Math.max(Math.max(Math.abs(minX), Math.abs(maxX)), Math.max(Math.abs(minZ), Math.abs(maxZ))))) return false;
+		if (Market.reserved(level, c, Math.max(Math.max(Math.abs(minX), Math.abs(maxX)), Math.max(Math.abs(minZ), Math.abs(maxZ))))) { SCAN_REJECT[3]++; return false; }
 		for (int dx = minX - 1; dx <= maxX + 1; dx++) {
 			for (int dz = minZ - 1; dz <= maxZ + 1; dz++) {
 				int x = c.getX() + dx;
 				int z = c.getZ() + dz;
 				if (!level.hasChunkAt(new BlockPos(x, c.getY(), z))) {
+					SCAN_REJECT[4]++;
 					return false;
 				}
 				int h = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 				boolean inner = dx >= minX && dx <= maxX && dz >= minZ && dz <= maxZ;
 				if (!inner) {
 					if (h > c.getY() + 1) {
+						SCAN_REJECT[5]++;
+						classifyRelief(level, c, minX, maxX, minZ, maxZ);
 						return false;
 					}
 					continue;
 				}
 				if (h != c.getY()) {
+					SCAN_REJECT[6]++;
+					classifyRelief(level, c, minX, maxX, minZ, maxZ);
 					return false;
 				}
 				BlockPos ground = new BlockPos(x, c.getY() - 1, z);
 				BlockState gs = level.getBlockState(ground);
 				if (!gs.isFaceSturdy(level, ground, Direction.UP) || !gs.getFluidState().isEmpty()
 					|| gs.is(Blocks.FARMLAND) || gs.is(Blocks.DIRT_PATH) || gs.is(BlockTags.LEAVES)) {
+					SCAN_REJECT[7]++;
 					return false;
 				}
 				for (int dy = 0; dy < headroom; dy++) {
 					BlockState s = level.getBlockState(new BlockPos(x, c.getY() + dy, z));
 					if (!s.isAir() && !s.canBeReplaced()) {
+						SCAN_REJECT[8]++;
 						return false;
 					}
 				}
 			}
 		}
-		return !touchesBuilding(level, c, minX, maxX, minZ, maxZ, headroom);
+		if (touchesBuilding(level, c, minX, maxX, minZ, maxZ, headroom)) { SCAN_REJECT[9]++; return false; }
+		return true;
 	}
 
 	/**
@@ -860,7 +924,12 @@ public final class Sites {
 	}
 
 	private static int tolerantBase(ServerLevel level, BlockPos c, int minX, int maxX, int minZ, int maxZ, int headroom) {
-		if (Market.reserved(level,c,Math.max(Math.max(Math.abs(minX),Math.abs(maxX)),Math.max(Math.abs(minZ),Math.abs(maxZ))))) return Integer.MIN_VALUE;
+		return tolerantBase(level, c, minX, maxX, minZ, maxZ, headroom, 1, false);
+	}
+
+	private static int tolerantBase(ServerLevel level, BlockPos c, int minX, int maxX, int minZ, int maxZ, int headroom, int maxRelief,
+		boolean clearableTrees) {
+		if (Market.reserved(level,c,Math.max(Math.max(Math.abs(minX),Math.abs(maxX)),Math.max(Math.abs(minZ),Math.abs(maxZ))))) { SCAN_REJECT[3]++; return Integer.MIN_VALUE; }
 		int w = maxX - minX + 1;
 		int d = maxZ - minZ + 1;
 		int[] heights = new int[w * d];
@@ -870,23 +939,28 @@ public final class Sites {
 				int x = c.getX() + dx;
 				int z = c.getZ() + dz;
 				if (!level.hasChunkAt(new BlockPos(x, c.getY(), z))) {
+					SCAN_REJECT[4]++;
 					return Integer.MIN_VALUE;
 				}
-				heights[n++] = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+				int surface = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+				heights[n++] = clearableTrees ? groundHeight(level, x, surface, z) : surface;
 			}
 		}
 		int[] sorted = heights.clone();
 		java.util.Arrays.sort(sorted);
 		// Bauhoehe = hoechster Punkt der Flaeche; nur ein Block darf aufgefuellt werden.
 		int base = sorted[sorted.length - 1];
-		if (base - sorted[0] > 1) {
+		if (base - sorted[0] > maxRelief) {
+			SCAN_REJECT[6]++;
+			classifyRelief(level, c, minX, maxX, minZ, maxZ);
 			return Integer.MIN_VALUE;
 		}
 		n = 0;
 		for (int dx = minX; dx <= maxX; dx++) {
 			for (int dz = minZ; dz <= maxZ; dz++) {
 				int h = heights[n++];
-				if (Math.abs(h - base) > 1) {
+				if (Math.abs(h - base) > maxRelief) {
+					SCAN_REJECT[6]++;
 					return Integer.MIN_VALUE;
 				}
 				int x = c.getX() + dx;
@@ -894,16 +968,20 @@ public final class Sites {
 				BlockPos ground = new BlockPos(x, h - 1, z);
 				BlockState gs = level.getBlockState(ground);
 				if (!de.villagerplus.village.VillageStyle.natural(gs) || !gs.getFluidState().isEmpty()) {
+					SCAN_REJECT[7]++;
 					return Integer.MIN_VALUE;
 				}
 				for (int y = Math.max(h, base); y < base + headroom; y++) {
 					BlockState s = level.getBlockState(new BlockPos(x, y, z));
+					if (clearableTrees && (s.is(BlockTags.OVERWORLD_NATURAL_LOGS) || s.is(BlockTags.LEAVES))) continue;
 					if (!s.isAir() && !s.canBeReplaced()) {
+						SCAN_REJECT[8]++;
 						return Integer.MIN_VALUE;
 					}
 				}
 			}
 		}
-		return touchesBuilding(level, new BlockPos(c.getX(), base, c.getZ()), minX, maxX, minZ, maxZ, headroom) ? Integer.MIN_VALUE : base;
+		if (touchesBuilding(level, new BlockPos(c.getX(), base, c.getZ()), minX, maxX, minZ, maxZ, headroom)) { SCAN_REJECT[9]++; return Integer.MIN_VALUE; }
+		return base;
 	}
 }

@@ -51,6 +51,81 @@ public final class CompatChecks {
 		var registry = level.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.VILLAGER_PROFESSION);
 		long modded = registry.listElements().filter(h -> !h.key().identifier().getNamespace().equals("minecraft")).count();
 		check(modded > 0, "dev pack exposes at least one modded villager profession"); checks++;
+		checks += professionMapping(registry);
+		checks += seasonTags(level);
+		checks += villageStructures(level);
+		return checks;
+	}
+
+	/** Professions of More Villagers (ids read from its acquirable_job_site POI list) and Village Taverns that must exist once the mod is present. */
+	private static final String[] EXPECTED_PROFESSIONS = {
+		"morevillagers:oceanographer", "morevillagers:netherian", "morevillagers:woodworker", "morevillagers:enderian", "morevillagers:engineer",
+		"morevillagers:florist", "morevillagers:hunter", "morevillagers:miner", "morevillagers:iceman", "morevillagers:explorer",
+		"village_taverns:bartender"
+	};
+
+	/**
+	 * Runtime view of the profession mapping: every modded profession is listed with the job {@link Compat#jobKey} derives (null = porter),
+	 * and each expected profession of a loaded mod must be registered. The mapping itself is reported, not asserted: it is a design choice
+	 * (see CLOUD-LOG.md: Compat.counterpart can replace Vanilla professions by modded ones with the same job).
+	 */
+	private static int professionMapping(net.minecraft.core.HolderLookup.RegistryLookup<VillagerProfession> registry) {
+		int checks = 0;
+		java.util.List<String> lines = new java.util.ArrayList<>();
+		registry.listElements().filter(h -> !h.key().identifier().getNamespace().equals("minecraft")).forEach(h -> {
+			String job = Compat.jobKey(h);
+			lines.add(h.key().identifier() + " -> " + (job == null ? "porter (kein Tag/Schluesselwort)" : job));
+		});
+		java.util.Collections.sort(lines);
+		for (String line : lines) System.out.println("COMPAT profession " + line);
+		for (String id : EXPECTED_PROFESSIONS) {
+			String namespace = id.substring(0, id.indexOf(':'));
+			if (!modPresent(namespace)) continue;
+			boolean registered = registry.get(net.minecraft.resources.ResourceKey.create(net.minecraft.core.registries.Registries.VILLAGER_PROFESSION,
+				Identifier.parse(id))).isPresent();
+			check(registered, "profession " + id + " is registered while " + namespace + " is loaded"); checks++;
+		}
+		for (String line : lines) {
+			String job = line.substring(line.indexOf("-> ") + 3);
+			check(job.startsWith("porter") || java.util.Arrays.asList(Compat.JOBS).contains(job), "modded profession maps to a known job: " + line); checks++;
+		}
+		return checks;
+	}
+
+	/**
+	 * Villages of Towns and Towers must be part of the vanilla village structure tag (that is how bell/village detection and CTOV-style
+	 * logic see them); reported with the count, asserted only when the mod is loaded.
+	 */
+	private static int villageStructures(ServerLevel level) {
+		if (!modPresent("t_and_t")) return 0;
+		var structures = level.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.STRUCTURE);
+		long members = structures.get(net.minecraft.tags.StructureTags.VILLAGE).map(t -> t.stream()
+			.filter(h -> h.unwrapKey().map(k -> k.identifier().getNamespace().equals("towns_and_towers")).orElse(false)).count()).orElse(0L);
+		System.out.println("COMPAT towns_and_towers village structures in #minecraft:village=" + members);
+		check(members > 0, "Towns and Towers villages are members of the vanilla village structure tag"); 
+		return 1;
+	}
+
+	/** Serene Seasons ships crop tags per season; with the mod loaded they must resolve to real blocks (soil for seasonal farming decisions). */
+	private static int seasonTags(ServerLevel level) {
+		if (!modPresent("sereneseasons")) return 0;
+		int checks = 0;
+		var blocks = level.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.BLOCK);
+		for (String season : new String[] { "spring", "summer", "autumn", "winter", "year_round" }) {
+			var tag = net.minecraft.tags.TagKey.create(net.minecraft.core.registries.Registries.BLOCK,
+				Identifier.parse("sereneseasons:" + season + "_crops"));
+			long members = blocks.get(tag).map(t -> t.stream().count()).orElse(0L);
+			System.out.println("COMPAT season crop tag " + tag.location() + " members=" + members);
+			check(blocks.get(tag).isPresent(), "block tag " + tag.location() + " is registered"); checks++;
+		}
+		// The adapter (de.villagerplus.compat.SeasonCompat) must reach the mod's API and name the season of this world.
+		boolean hook = de.villagerplus.compat.SeasonCompat.hasDevOverride();
+		if (!hook) {
+			var season = de.villagerplus.compat.SeasonCompat.currentSeason(level);
+			System.out.println("COMPAT serene seasons adapter season=" + season);
+			check(de.villagerplus.compat.SeasonCompat.apiResolved(), "Serene Seasons API resolves through the adapter"); checks++;
+			check(season != null, "Serene Seasons adapter returns the current season"); checks++;
+		}
 		return checks;
 	}
 

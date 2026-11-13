@@ -870,11 +870,83 @@ public final class JobManager {
 		tickVillager(level, villager, level.getGameTime());
 	}
 
+	/** Vertical margin below the lowest village anchor (bed, bell, plaza) that counts as "deep". */
+	static final int DEEP_MARGIN = 8;
 	/**
-	 * Gestrandete Dorfbewohner (weit vom Dorf weg oder tief unter der Dorfmitte, z. B. in einer Hoehle gefallen) werden zur
+	 * A resident that is deep (see {@link #DEEP_MARGIN}) is only stranded after staying deep this long without a break. Villages on slopes
+	 * have terraces, gullies and shores more than eight blocks below the bell or a hill-top bed; residents stroll, chat and take their breaks
+	 * there and walk back up on their own (measured in natural runs: 10 to 2180 ticks). A rescue on first sight teleported them to the
+	 * village chest in the middle of the walk home, from where the same stroll or break stand led them straight back down.
+	 */
+	static final long DEEP_STRAND_GRACE_TICKS = 3_600L;
+	/** A gap of at least this many ticks without a deep observation (night, sleep, indoors) restarts the deep timer. */
+	static final long DEEP_STRAND_GAP_TICKS = 600L;
+	private record DeepWatch(long since, long lastSeen) { }
+	private static final Map<UUID, DeepWatch> DEEP_WATCH = new HashMap<>();
+
+	/** True once {@code id} has been observed deep, with gaps of less than {@link #DEEP_STRAND_GAP_TICKS}, for {@link #DEEP_STRAND_GRACE_TICKS}. */
+	static boolean deepStrandConfirmed(UUID id, long now) {
+		if (DEEP_WATCH.size() > 512) DEEP_WATCH.clear();
+		DeepWatch watch = DEEP_WATCH.get(id);
+		if (watch == null || now - watch.lastSeen() >= DEEP_STRAND_GAP_TICKS || now < watch.since()) {
+			DEEP_WATCH.put(id, new DeepWatch(now, now));
+			return false;
+		}
+		DEEP_WATCH.put(id, new DeepWatch(watch.since(), now));
+		return now - watch.since() >= DEEP_STRAND_GRACE_TICKS;
+	}
+
+	/** A fall of more than 3.5 blocks into deep terrain (vanilla paths never drop that far) leaves no way back up: no grace period. */
+	static final long DEEP_FALL_WINDOW_TICKS = 600L;
+
+	static void noteFall(UUID id, long now) {
+		FALL_LOG.put(id, now);
+	}
+
+	static boolean fellRecently(UUID id, long now) {
+		Long at = FALL_LOG.get(id);
+		return at != null && now >= at && now - at <= DEEP_FALL_WINDOW_TICKS;
+	}
+
+	static void clearDeepWatch(UUID id) {
+		DEEP_WATCH.remove(id);
+	}
+
+	static void clearDeepWatches() {
+		DEEP_WATCH.clear();
+		FALL_LOG.clear();
+		WALK_HOME.clear();
+	}
+
+	private record WalkHome(long checkedAt, BlockPos at, boolean ok) { }
+	private static final Map<UUID, WalkHome> WALK_HOME = new HashMap<>();
+	private static final long WALK_HOME_RECHECK_TICKS = 400L;
+
+	/** Bounded walk-back search from the resident to the village street, cached per resident (the search is the expensive part). */
+	private static boolean walksHomeCached(Ctx c, VillageRef ref) {
+		if (WALK_HOME.size() > 512) WALK_HOME.clear();
+		BlockPos at = c.v().blockPosition();
+		WalkHome cached = WALK_HOME.get(c.v().getUUID());
+		if (cached != null && c.now() >= cached.checkedAt() && c.now() - cached.checkedAt() < WALK_HOME_RECHECK_TICKS && cached.at().distSqr(at) <= 16.0) {
+			return cached.ok();
+		}
+		BlockPos arrival = de.villagerplus.build.Builder.villageReturn(c.level(), ref.bell());
+		boolean ok = arrival != null && de.villagerplus.village.Sites.walksBackTo(c.level(), at, arrival);
+		WALK_HOME.put(c.v().getUUID(), new WalkHome(c.now(), at.immutable(), ok));
+		return ok;
+	}
+
+	/** Ticks {@code id} has been continuously deep (0 when not tracked). */
+	static long deepFor(UUID id, long now) {
+		DeepWatch watch = DEEP_WATCH.get(id);
+		return watch == null ? 0L : Math.max(0L, now - watch.since());
+	}
+
+	/**
+	 * Gestrandete Dorfbewohner (weit vom Dorf weg oder dauerhaft tief unter der Dorfmitte, z. B. in einer Hoehle gefallen) werden zur
 	 * Dorfkiste zurueckgeholt. Bergleute bei der Arbeit und Expeditionsmitglieder sind ausgenommen.
 	 */
-	private static boolean rescueStranded(Ctx c) {
+	static boolean rescueStranded(Ctx c) {
 		VillageRef ref = c.village();
 		if (ref == null || c.now() < c.st().miningUntil + 400L) {
 			return false;
@@ -892,24 +964,63 @@ public final class JobManager {
 		double farLimit = Woodcutting.onWoodExpedition(c) ? Woodcutting.EXPEDITION_LIMIT : Config.VILLAGE_RADIUS;
 		boolean far=distance>farLimit*farLimit;
 		boolean expedition = Woodcutting.onWoodExpedition(c);
-		boolean deep = c.v().getY()<(expedition ? Math.min(lowest, Woodcutting.expeditionTarget(c).getY()) - 12 : lowest-8);
+		boolean deep = c.v().getY()<(expedition ? Math.min(lowest, Woodcutting.expeditionTarget(c).getY()) - 12 : lowest-DEEP_MARGIN);
 
 		// Fischer am (tiefer liegenden) Ufer sind nicht gestrandet.
 		if (deep && !far && c.st().target != null && c.level().getFluidState(c.st().target).is(net.minecraft.tags.FluidTags.WATER)
 			&& c.v().getY() >= c.st().target.getY() - 3 && c.st().target.getY() >= lowest - 14) {
 			deep = false;
 		}
-		if (!far && !deep) {
+		// Deep terrain inside the village radius is a rescue case only when the resident stays there (see DEEP_STRAND_GRACE_TICKS), and
+		// never while it works at a task target down there (field, shore, stand on a lower terrace) and can walk back up.
+		if (!deep) {
+			clearDeepWatch(c.v().getUUID());
+		} else if (!far && !expedition) {
+			net.minecraft.core.BlockPos goal = c.st().target;
+			boolean lowTask = goal != null && c.v().getY() >= goal.getY() - 3 && goal.getY() >= lowest - 14;
+			if (lowTask && walksHomeCached(c, ref)) {
+				clearDeepWatch(c.v().getUUID());
+				deep = false;
+			} else {
+				deep = deepStrandConfirmed(c.v().getUUID(), c.now()) | fellRecently(c.v().getUUID(), c.now());
+			}
+		}
+		net.minecraft.core.BlockPos arrival = null;
+		// Route-less strand: repeated unreachable long routes (<= 4 nodes) from one spot. The bounded walk-back search on the
+		// real blocks decides; a worker that can walk home is on a legitimate task (or merely has an unreachable goal).
+		boolean routeStuck = false;
+		if (!far && !deep && !expedition && JobUtil.routeStrandSuspected(c.v().getUUID(), c.v().blockPosition(), c.now())) {
+			arrival = de.villagerplus.build.Builder.villageReturn(c.level(), ref.bell());
+			boolean modelWalksHome = arrival != null && de.villagerplus.village.Sites.walksBackTo(c.level(), c.v().blockPosition(), arrival);
+			// The block model is only a model: a resident perched on a fence post (collision height 1.5) "walks home" in it, while vanilla
+			// navigation finds a single node and never gets off. Real navigation that cannot leave the spot (at most a few nodes, no
+			// complete path) outweighs the model.
+			boolean navigationTrapped = false;
+			if (modelWalksHome) {
+				var homeRoute = de.villagerplus.build.Builder.workPath(c, arrival);
+				navigationTrapped = homeRoute == null || (!homeRoute.canReach() && homeRoute.getNodeCount() <= JobUtil.STRAND_MAX_ROUTE_NODES);
+			}
+			if (arrival == null || (modelWalksHome && !navigationTrapped)) {
+				JobUtil.clearRouteFailures(c.v().getUUID());
+			} else {
+				routeStuck = true;
+			}
+		}
+		if (!far && !deep && !routeStuck) {
 			return false;
 		}
-		var arrival = de.villagerplus.build.Builder.villageReturn(c.level(), ref.bell());
+		if (arrival == null) arrival = de.villagerplus.build.Builder.villageReturn(c.level(), ref.bell());
 		if (arrival == null) return false;
+		net.minecraft.core.BlockPos rescuedFrom = c.v().blockPosition();
+		long deepTicks = deepFor(c.v().getUUID(), c.now());
+		clearDeepWatch(c.v().getUUID());
 		c.v().getNavigation().stop();
 		c.v().teleportTo(arrival.getX() + 0.5, arrival.getY(), arrival.getZ() + 0.5);
 		c.st().builderRelocations++;
 		c.v().resetFallDistance();
 		c.st().cooldownUntil = c.now() + 40;
-		LOGGER.info("Villagers: Repurposed: {} war gestrandet und wurde zur Dorfkiste zurueckgeholt (far={}, deep={}, Expedition={}, Ziel={}, Position={}, Abstand={})", c.mem().name, far, deep, expedition, c.st().target == null ? "-" : c.st().target.toShortString(), c.v().blockPosition().toShortString(), (int) Math.sqrt(distance));
+		JobUtil.markRescued(c.v().getUUID(), c.now());
+		LOGGER.info("Villagers: Repurposed: {} war gestrandet und wurde zur Dorfkiste zurueckgeholt (far={}, deep={}, route={}, Expedition={}, Ziel={}, Position={}, Abstand={}, tief seit={} Ticks, Aktivitaet='{}')", c.mem().name, far, deep, routeStuck, expedition, c.st().target == null ? "-" : c.st().target.toShortString(), rescuedFrom.toShortString(), (int) Math.sqrt(distance), deepTicks, c.st().activity);
 		return true;
 	}
 

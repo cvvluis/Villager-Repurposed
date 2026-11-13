@@ -642,3 +642,10 @@ Karte/Balken/Tabs (Textausgabe), Expeditionen inkl. Verletzte und Beute, Lagersc
 - Audit bleibt **8/62 implemented, 54/62 partial/offen**. Nächster Schritt: frischen CTOV-Hausbau und Karawanenfahrt auf echter fertiger Straße visuell beobachten; der Bürgermeister als Rathausverwalter ist eine zusätzliche Nutzeridee, aber nicht Teil der 62 Master-Prompt-Punkte.
 
 
+
+## Cloud-Sitzung 11.11.2026 (Branch claude/village-growth-1111, nur lokal committet)
+- Neu: Rueckholung ohne Route (JobUtil StrandWatch + JobManager.rescueStranded, Gruppe `strandrescue`/StrandRescueChecks). Geprueft nur: kompiliert + Scratch-Logiktest (10). Kein Serverlauf (run/eula.txt fehlte), Fixture nicht ausgefuehrt.
+- fabric.mod.json suggests erweitert. Audit-Tabellen und Modpack-Analyse in CLOUD-LOG.md (Agentenberichte, unverifiziert; streng 19/62).
+- Naechster Schritt: EULA setzen, `bash tools/cloud/autotest.sh strandrescue` und `housesearch`, dann Naturlauf. Push war 403 (GitHub-App ohne Schreibzugriff).
+- Update 12.11.: gemergt claude/stone-supply, granary-site, walk-stall, tree-walkback; zusaetzlich rescueStranded (Navigation vs. Modell) und Saatgras-Rueckweg. Gruppen gruen (strandrescue 19, surfacestone 13, minewalk 27, treewalkback 32, builderpaths 79, builderchecks 318, houseplot 140, supply 30, planstonesupply 22, milestones 16, constructionsite 21, mining 68, miningcycle 199, minelifecycle 35, roles 112, woodcuttinggroup 48, buildhaul 20, a01behavior 20, farmexpand 172). Naturlaeufe: kein Haus fertig. Naechster Schritt: Hanna-Wiederholfalle (deep=true), Stollenmaterial-Wartezeit, Dschungel-Granary. Kein Push moeglich (403).
+- Update 13.11. (Abschluss): siehe CLOUD-LOG.md "Gesamtstand zum Abschluss". Naechster konkreter Schritt: Steinversorgung der Bauplaene (Verbuchung des Fehlbetrags an der Baustelle klaeren: cobblestone x48 trotz Lieferung; Builder-Besitzerpfad liefert mit keep=0; Bergmann-Pausen 15000-22000 Ticks; Holz fuer spruce_planks x30). Danach Haeuser (P4) und Dschungel-Granary. Push erst nach Reparatur der GitHub-App-Rechte.

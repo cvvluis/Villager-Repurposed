@@ -35,6 +35,11 @@ import net.minecraft.world.level.levelgen.Heightmap;
  */
 public final class Roads {
  public static final int TRADE_PARTNER = 30;
+
+ /** A neighbour link carries road work: an explicit route, or a relation of at least {@link #TRADE_PARTNER} (trade partner). */
+ public static boolean roadLinkActive(TradeNetwork.Link link) {
+  return link != null && (link.route() || link.relation() >= TRADE_PARTNER);
+ }
  public static final int LANTERN_EVERY = 16;
  static final int ROAD_HALF_WIDTH = 1;
  private static final long ROUTE_GEOMETRY_VERSION = 2; // rail cursor schema; route path schema lives in RoadRoute
@@ -382,7 +387,7 @@ public final class Roads {
    ref.bellEntity().setAttached(VillagerPlus.ROADS,Map.copyOf(state));ref.dirty();return expansion;
   }
   for(var link:Network.of(ref.bellEntity()).links()) {
-   if(!link.dimension().equals(Network.dim(level))||!(link.route()||link.relation()>=TRADE_PARTNER))continue;
+   if(!link.dimension().equals(Network.dim(level))||!roadLinkActive(link))continue;
    String key=link.dimension()+link.bell().asLong();
    VillageRef peer=Network.resolve(level,link);
    Map<String,Long> peerState=peer==null?null:peer.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of());
@@ -589,7 +594,7 @@ public final class Roads {
   Repair villageGap=nextVillageGap(level,ref,state);
   if(villageGap!=null){ref.bellEntity().setAttached(VillagerPlus.ROADS,Map.copyOf(state));ref.dirty();return villageGap;}
   for(var link:Network.of(ref.bellEntity()).links()) {
-   if(!link.dimension().equals(Network.dim(level))||!(link.route()||link.relation()>=TRADE_PARTNER))continue;
+   if(!link.dimension().equals(Network.dim(level))||!roadLinkActive(link))continue;
    String key=link.dimension()+link.bell().asLong();
    VillageRef peer=Network.resolve(level,link);
    Map<String,Long> peerState=peer==null?null:peer.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of());
@@ -1590,7 +1595,7 @@ public final class Roads {
   int bestCursor=-1,bestLength=0;BlockPos bestOther=null;double bestDistance=20*20;
   Map<String,Long> state=new HashMap<>(ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of()));
   for(TradeNetwork.Link link:Network.of(ref.bellEntity()).links()) {
-   if(!(link.route()||link.relation()>=TRADE_PARTNER)||!link.dimension().equals(Network.dim(level)))continue;
+   if(!roadLinkActive(link)||!link.dimension().equals(Network.dim(level)))continue;
    BlockPos other=link.bell();
    String routeKey=link.dimension()+other.asLong();
    VillageRef peer=Network.resolve(level,link);

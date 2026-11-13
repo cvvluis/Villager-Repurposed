@@ -4,6 +4,7 @@ import de.villagerplus.Config;
 import de.villagerplus.VillagerMemory;
 import de.villagerplus.build.Builder;
 import de.villagerplus.build.Blueprints;
+import de.villagerplus.compat.SeasonCompat;
 import de.villagerplus.village.Balance;
 import de.villagerplus.village.VillageRef;
 import de.villagerplus.village.Villages;
@@ -72,6 +73,52 @@ public class FarmerJob implements Job {
 		new SeedCrop(Items.WHEAT_SEEDS, Blocks.WHEAT), new SeedCrop(Items.CARROT, Blocks.CARROTS),
 		new SeedCrop(Items.POTATO, Blocks.POTATOES), new SeedCrop(Items.BEETROOT_SEEDS, Blocks.BEETROOTS));
 	private record SeedCrop(Item seed, Block crop) { }
+
+	/**
+	 * Seed for a new field at {@code pos}: the first-field rule (eight wheat seeds) or the most plentiful stocked seed. With Serene
+	 * Seasons active only crops that can grow now are candidates ({@link SeasonCompat#canPlant}); the starter then also accepts another
+	 * stocked in-season crop when wheat is out of season. Without the mod the result is exactly the pre-season rule. Null = nothing suitable.
+	 */
+	static Item seasonalSeed(ServerLevel level, BlockPos pos, List<Container> stores, boolean starter) {
+		int need = starter ? STARTER_SEEDS : CLUSTER_SEEDS;
+		if (starter) {
+			SeedCrop wheat = cropForSeed(Items.WHEAT_SEEDS);
+			if (count(stores, wheat.seed()) >= need && SeasonCompat.canPlant(level, pos, wheat.crop())) return wheat.seed();
+			if (!SeasonCompat.active(level)) return null;
+		}
+		Item inSeason = SEED_CROPS.stream()
+			.filter(sc -> count(stores, sc.seed()) >= need && SeasonCompat.canPlant(level, pos, sc.crop()))
+			.max(Comparator.comparingInt(sc -> count(stores, sc.seed()))).map(SeedCrop::seed).orElse(null);
+		// Starter exception: a village without any field must not wait weeks (a new Serene Seasons world starts in late winter) for
+		// the right season. Out of season the mod lets crops grow only slowly (default out_of_season_crop_behavior), not never: sow wheat.
+		if (inSeason == null && starter && count(stores, Items.WHEAT_SEEDS) >= need) return Items.WHEAT_SEEDS;
+		return inSeason;
+	}
+
+	/** Enough public seed exists for the field kind, regardless of the season (used to tell a seasonal wait from a seed shortage). */
+	private static boolean seedStockIgnoringSeason(List<Container> stores, boolean starter) {
+		return starter ? count(stores, Items.WHEAT_SEEDS) >= STARTER_SEEDS
+			: SEED_CROPS.stream().anyMatch(sc -> count(stores, sc.seed()) >= CLUSTER_SEEDS);
+	}
+
+	/** True while Serene Seasons forbids planting this seed's crop at {@code pos}; always false without the mod. */
+	static boolean seasonBlocksSeed(ServerLevel level, BlockPos pos, Item seed) {
+		return !SeasonCompat.canPlant(level, pos, cropForSeed(seed).crop());
+	}
+
+	/** Seasons are active and none of the four field crops can be planted at {@code pos} (winter, cold biome): the fields are dormant. */
+	static boolean fieldsDormant(ServerLevel level, BlockPos pos) {
+		return SeasonCompat.active(level) && SEED_CROPS.stream().noneMatch(sc -> SeasonCompat.canPlant(level, pos, sc.crop()));
+	}
+
+	/** A farmer standing in fishing fallback during a dormant season re-scans for harvestable crops only this often (ticks). */
+	private static final long DORMANT_RESCAN_TICKS = 200L;
+	private static final Map<java.util.UUID, Long> DORMANT_RESCAN = new java.util.HashMap<>();
+
+	private static boolean dormantFishing(Ctx c, BlockPos target) {
+		return target != null && !mature(c.level(), target) && c.level().getFluidState(target).is(net.minecraft.tags.FluidTags.WATER)
+			&& c.now() < DORMANT_RESCAN.getOrDefault(c.v().getUUID(), 0L) && fieldsDormant(c.level(), c.v().blockPosition());
+	}
 	private record FenceKit(Item fenceItem, Block fence, Item gateItem, Block gate) { }
 	private record Taken(Container source, Item item, int count) { }
 	private record ExpansionPlan(BlockPos center, Item seed, Item fenceItem, Item gateItem, int cursor, int version) {
@@ -266,6 +313,8 @@ public class FarmerJob implements Job {
 		JobState st = c.st();
 		ServerLevel level = c.level();
 		BlockPos target = st.target;
+		// Dormant season: keep fishing between the periodic harvest re-scans instead of clearing the water target every tick.
+		if (dormantFishing(c, target) && FISHING_FALLBACK.primary(c)) return true;
 		if (target == null || !mature(level, target) || !harvestAllowedByFarmZones(farmZones(c.village()), target)) {
 			// Keep the approach timer while an existing starter-seed route is active.
 			// JobUtil.approachLong owns that route while st.target remains null.
@@ -273,6 +322,11 @@ public class FarmerJob implements Job {
 			target = find(c);
 			if (target == null) {
 				if (forageStarterWheatSeeds(c)) return true;
+				// Nothing to harvest and (Serene Seasons) nothing that may be planted: fish instead of idling, like the seed-grass fallback.
+				if (fieldsDormant(level, c.v().blockPosition())) {
+					DORMANT_RESCAN.put(c.v().getUUID(), c.now() + DORMANT_RESCAN_TICKS);
+					if (FISHING_FALLBACK.primary(c)) return true;
+				}
 				c.setIdle(0, 200);
 				return false;
 			}
@@ -429,6 +483,11 @@ public class FarmerJob implements Job {
 		return completedFarms == 0 && !savedFarmerPlan && publicWheatSeeds < VISIBLE_STARTER_FIELD_SEEDS;
 	}
 
+	/** With Serene Seasons active and no public seed that may be sown now, the Builder's compact wheat field must not start either. */
+	private static boolean starterSeedBlockedBySeason(Ctx c, List<Container> publicStores) {
+		return SeasonCompat.active(c.level()) && seasonalSeed(c.level(), c.v().blockPosition(), publicStores, true) == null;
+	}
+
 	/** Builder fallback for the same compact starter field when direct site selection cannot proceed. */
 	static boolean shouldTryCompactStarterPlan(int completedFarms, boolean savedFarmerPlan,
 		boolean savedFarmerExpansion, int publicWheatSeeds) {
@@ -580,27 +639,71 @@ public class FarmerJob implements Job {
 			column.getX(), column.getZ()), column.getZ());
 	}
 
-	/** Search every column in a fixed local budget so sparse valid grass cannot be missed by random sampling. */
+	/** Grass regions (centre, until-tick) whose cells have no walk-back to the village street: a gully the forager cannot leave again. */
+	private static final List<long[]> SEED_TRAPS = new java.util.ArrayList<>();
+	private static final int SEED_TRAP_RADIUS = 6;
+	private static final long SEED_TRAP_TICKS = 24_000L;
+	private static final int SEED_WALKBACK_CHECKS = 3;
+
+	private static boolean inSeedTrap(BlockPos pos, long now) {
+		for (long[] trap : SEED_TRAPS) {
+			if (trap[3] <= now) continue;
+			long dx = pos.getX() - trap[0], dz = pos.getZ() - trap[1];
+			if (dx * dx + dz * dz <= (long) SEED_TRAP_RADIUS * SEED_TRAP_RADIUS && Math.abs(pos.getY() - trap[2]) <= 2) return true; // a gully floor condemns its own level, not the rim above it
+		}
+		return false;
+	}
+
+	static void clearSeedTraps() {
+		SEED_TRAPS.clear();
+	}
+
+	/**
+	 * Search every column in a fixed local budget so sparse valid grass cannot be missed by random sampling.
+	 * Vanilla navigation walks a forager down into a gully but not out of it (measured: the same farmers were rescued from one
+	 * hollow again and again), so the nearest few candidates must also have a walk-back to the village street.
+	 */
 	static BlockPos findSeedGrass(Ctx c, VillageRef ref) {
 		BlockPos center = c.v().blockPosition();
 		BlockPos bell = ref.bell();
-		BlockPos best = null;
-		long bestDistance = Long.MAX_VALUE;
+		List<BlockPos> candidates = new java.util.ArrayList<>();
+		List<Long> candidateDistance = new java.util.ArrayList<>();
 		for (int index = 0; index < MAX_STARTER_SEED_SEARCH_COLUMNS; index++) {
 			BlockPos column = starterSeedSearchColumn(center, index);
 			long distance = horizontalDistanceSquared(center, column);
 			if (distance > (long) STARTER_SEED_SEARCH_RADIUS * STARTER_SEED_SEARCH_RADIUS) continue;
-			if (distance >= bestDistance) continue;
+			if (candidates.size() >= SEED_WALKBACK_CHECKS && distance >= candidateDistance.get(candidateDistance.size() - 1)) continue;
 			BlockPos pos = seedGrassSurface(c.level(), column);
 			if (pos == null || !c.level().getBlockState(pos).is(Blocks.SHORT_GRASS)) continue;
 			long villageDistance = horizontalDistanceSquared(pos, bell);
 			if (villageDistance < 10L * 10L || villageDistance > (long) Config.VILLAGE_RADIUS * Config.VILLAGE_RADIUS) continue;
 			if (rejectedForageTarget(c.st(), pos) || !safeSeedGrass(c.level(), ref, pos)) continue;
 			if (nearbyHomePoi(c.level(), pos)) continue;
-			best = pos.immutable();
-			bestDistance = distance;
+			if (inSeedTrap(pos, c.now())) continue;
+			int at = candidates.size();
+			while (at > 0 && candidateDistance.get(at - 1) > distance) at--;
+			candidates.add(at, pos.immutable());
+			candidateDistance.add(at, distance);
+			if (candidates.size() > SEED_WALKBACK_CHECKS) {
+				candidates.remove(candidates.size() - 1);
+				candidateDistance.remove(candidateDistance.size() - 1);
+			}
 		}
-		return best;
+		if (candidates.isEmpty()) return null;
+		BlockPos home = de.villagerplus.build.Builder.villageReturn(c.level(), bell);
+		// No street cell known: keep the nearest candidate, as before this check existed.
+		if (home == null) return candidates.get(0);
+		for (BlockPos candidate : candidates) {
+			if (inSeedTrap(candidate, c.now())) continue;
+			BlockPos stand = JobUtil.safeSpot(c.level(), net.minecraft.world.phys.Vec3.atBottomCenterOf(candidate)) == null
+				? candidate : BlockPos.containing(JobUtil.safeSpot(c.level(), net.minecraft.world.phys.Vec3.atBottomCenterOf(candidate)));
+			if (de.villagerplus.village.Sites.walksBackTo(c.level(), stand, home)) return candidate;
+			if (SEED_TRAPS.size() > 64) SEED_TRAPS.remove(0);
+			SEED_TRAPS.add(new long[] { candidate.getX(), candidate.getZ(), candidate.getY(), c.now() + SEED_TRAP_TICKS });
+			org.slf4j.LoggerFactory.getLogger("villagerplus").info("Saatgras {}: Ziel {} verworfen (kein Rueckweg zur Dorfstrasse {})",
+				c.mem().name, candidate.toShortString(), home.toShortString());
+		}
+		return null;
 	}
 
 	/** Stable row-major index into the bounded square; callers skip its four corner triangles. */
@@ -710,6 +813,7 @@ public class FarmerJob implements Job {
 			|| (!prioritizeInitialPen && ref != null
 				&& shouldTryCompactStarterPlan(ref.data().farms, savedFarmerPlan, savedFarmExpansion,
 					builderWheatSeeds)
+				&& !starterSeedBlockedBySeason(c, publicFarmStores)
 				&& Livestock.withInitialPenPlanningSuppressed(() -> Builder.tick(c, false)))
 			|| (legacyBuilder && !firstFarm && !prioritizeInitialPen && !savedFarmExpansion
 				&& (ref == null || savedPenPlan || initialPenDue)
@@ -851,15 +955,14 @@ public class FarmerJob implements Job {
 		List<Villager> residents = Villages.residents(c.level(), ref, Config.VILLAGE_RADIUS, v -> true);
 		if (residents.isEmpty()) return false;
 		boolean starter = data.farms == 0;
-		int requiredSeeds = starter ? STARTER_SEEDS : CLUSTER_SEEDS;
 		int requiredFences = starter ? STARTER_FENCES : CLUSTER_FENCES;
 		FenceKit kit = fenceKit(stores, requiredFences);
-		SeedCrop crop = starter
-			? (count(stores, Items.WHEAT_SEEDS) >= requiredSeeds ? cropForSeed(Items.WHEAT_SEEDS) : null)
-			: SEED_CROPS.stream().filter(sc -> count(stores, sc.seed()) >= CLUSTER_SEEDS)
-				.max(Comparator.comparingInt(sc -> count(stores, sc.seed()))).orElse(null);
+		Item seed = seasonalSeed(c.level(), c.v().blockPosition(), stores, starter);
+		SeedCrop crop = seed == null ? null : cropForSeed(seed);
 		if (crop == null) {
-			c.setActivity(starter ? "wartet auf acht öffentliche Weizensamen für das erste Feld" : "wartet auf Saatgut für die nächste Feldfläche");
+			c.setActivity(SeasonCompat.active(c.level()) && seedStockIgnoringSeason(stores, starter)
+				? "wartet auf eine Jahreszeit, in der das Saatgut wächst"
+				: starter ? "wartet auf acht öffentliche Weizensamen für das erste Feld" : "wartet auf Saatgut für die nächste Feldfläche");
 			c.st().materialWaitUntil = c.now() + 600;
 			return false;
 		}
@@ -1017,8 +1120,7 @@ public class FarmerJob implements Job {
 		if (starter != (ref.data().farms == 0)) return false;
 		if (!starter && !belowFoodTarget(c)) return false;
 		List<Container> stores = Balance.storage(c.level(), ref);
-		boolean seedStockReady = starter ? count(stores, Items.WHEAT_SEEDS) >= STARTER_SEEDS
-			: SEED_CROPS.stream().anyMatch(seed -> count(stores, seed.seed()) >= CLUSTER_SEEDS);
+		boolean seedStockReady = seasonalSeed(c.level(), plan.field(), stores, starter) != null;
 		if (!seedStockReady) return false;
 		if (!clusterAllowedByZones(ref, plan.field(), plan.version())
 			|| !(starter ? safeStarterClusterSite(c.level(), plan.field()) : safeClusterSite(c.level(), plan.field()))) return false;
@@ -1252,6 +1354,14 @@ public class FarmerJob implements Job {
 			|| !c.level().hasChunkAt(step.pos().above())) {
 			c.setActivity("wartet auf geladenes Feldgebiet");
 			return true;
+		}
+		// Serene Seasons: never sow a crop that cannot grow now. The cursor stays untouched (fences, water and gate steps are not
+		// season-bound); returning false lets the farmer harvest, tend animals and craft until the season fits again.
+		boolean firstField = c.village() != null && c.village().data().farms == 0;
+		if (step.kind() == ExpansionStepKind.CROP && !stepAlreadyPlaced(c.level(), plan, step) && !firstField
+			&& seasonBlocksSeed(c.level(), step.pos(), plan.seed())) {
+			c.setActivity("wartet auf eine Jahreszeit, in der das Saatgut wächst");
+			return false;
 		}
 		c.setActivity(activityFor(step.kind()));
 		Anim.hold(c, Items.IRON_HOE);

@@ -285,7 +285,17 @@ public final class Checks090 {
    "placing powered rail consumes one rail plus one new support block and preserves unrelated stock");
   box.clearContent();
  }
+ /**
+  * Serene Seasons would make every farm fixture depend on the season of the test world, so all groups except the season group run with
+  * "seasons off"; the season group simulates each season itself (see SeasonFarmChecks).
+  */
  public static int run(CommandSourceStack source,String mode)throws Exception {
+  boolean hadOverride=de.villagerplus.compat.SeasonCompat.hasDevOverride();
+  if(!hadOverride&&!mode.startsWith("season")&&!mode.equals("compat"))de.villagerplus.compat.SeasonCompat.setDevOverrideOff();
+  try { return runMode(source,mode); }
+  finally { if(!hadOverride)de.villagerplus.compat.SeasonCompat.clearDevOverride(); }
+ }
+ private static int runMode(CommandSourceStack source,String mode)throws Exception {
   if(!java.util.Set.of("ctov","vp-ctov-headless","vp-master-test-2026-10-29","vp-master-test-2026-10-30","vp-k04-fresh-2026-10-30","vp-k04-fresh2-2026-10-30","vp-k04-fresh3-2026-10-30","vp-k04-fresh4-2026-10-30","vp-k04-fresh5-2026-10-30","vp-k04-fresh6-2026-10-30","vp-k04-fresh7-2026-10-30","vp-k04-fresh8-2026-10-30","vp-k04-fresh9-2026-10-30","vp-k04-fresh10-2026-10-30","vp-k04-fresh11-2026-10-30","vp-k04-fresh12-2026-10-30","vp-k04-fresh13-2026-10-30","vp-k04-fresh14-2026-10-30","vp-k04-fresh15-2026-10-30","vp-k04-fresh16-2026-10-30","vp-k04-fresh17-2026-10-30","vp-k04-fresh18-2026-10-30","vp-k04-fresh19-2026-10-30","vp-k04-fresh20-2026-10-30","vp-role-test","vp-g02-live-2026-10-31","vp-wave18-2026-11-01","vp-b05-debug-2026-11-01","vp-smithsmelting-serialization-2026-11-01","vp-path-cut-2026-11-01","vp-u07-quota-2026-11-01","vp-master-wave3-2026-11-01","vp-wave27-parallel-2026-11-01","vp-wave28-featurebatch-2026-11-01","vp-wave31-featurebatch-2026-11-01","vp-wave32-featurebatch-2026-11-01","vp-wave32-featurebatch-retry-2026-11-01","vp-wave33-featurebatch-2026-11-01","vp-wave34-featurebatch-2026-11-01","vp-g03-direct-set-2026-11-01","vp-continuation-batch-2026-11-02","vp-continuation-retry-2026-11-02","vp-continuation-final-2026-11-02","vp-continuation-settled-2026-11-02","vp-nextfeaturebatch-2026-11-02","vp-nextfeaturebatch-retry-2026-11-02","vp-nextfeaturebatch-final-2026-11-02","vp-lamp-spacing-2026-11-02","vp-featurebatch-2026-11-02","vp-master-progress-2026-11-02","vp-nextfeature-clean-2026-11-02","vp-nextfeature-final-2026-11-02","vp-nextfeature-verify-2026-11-02","vp-nextfeature-verify2-2026-11-02","vp-nextfeature-verify3-2026-11-02","vp-nextfeature-verify4-2026-11-02","vp-nextfeature-verify5-2026-11-02","vp-nextfeature-verify6-2026-11-02","vp-nextfeature-verify7-2026-11-02","vp-nextfeature-verify8-2026-11-02","vp-nextfeature-verify9-2026-11-02","vp-featurecontinuation-2026-11-02","vp-feature-wave-2026-11-02","vp-feature-wave-final-2026-11-02","vp-woodland-storage-checks-2026-11-02","vp-farmstart-test-2026-11-02","vp-farmstart-diagnostic-2026-11-02","vp-farmstart-verify-2026-11-02","vp-farmstart-final-2026-11-02","vp-farmstart-final2-2026-11-02","vp-farmstart-verify3-2026-11-02","vp-featurebatch37-verified-2026-11-02","vp-featurebatch37-2026-11-02","vp-featurebatch37-final-2026-11-02","vp-featurebatch37-final2-2026-11-02","vp-featurebatch39-2026-11-03","vp-featurebatch40-2026-11-03","vp-featurebatch40-retry-2026-11-03","vp-featurebatch41-2026-11-03","vp-featurebatch41-retry-2026-11-03","vp-featurebatch41-fixes-2026-11-03","vp-featurebatch41-fixes2-2026-11-03","vp-featurebatch41-fixes3-2026-11-03","vp-featurebatch41-fixes4-2026-11-03","vp-featurebatch42-recovery-2026-11-03","vp-featurebatch42-fixes-2026-11-03","vp-eqrepair03-2026-11-03","vp-housing-grade-2026-11-03","vp-farm-storage-parallel-2026-11-03","vp-caravan-visit-follow-2026-11-03","vp-featurebundle-2026-11-04","vp-featurebundle43-retry-2026-11-04","vp-featurebundle44-home-road-projects-2026-11-04","vp-featurebundle45-farms-market-crew-2026-11-04","vp-featurebundle46-2026-11-04","vp-featurebundle46-retry-2026-11-04","vp-featurebundle47-live","vp-featurebundle48-live","vp-featurebundle49-live","vp-featurebundle50-live","vp-featurebundle51-live","vp-featurebundle52-socialcrowd","vp-featurebundle53-design-live","vp-featurebundle54-live","vp-featurebundle55-live","vp-featurebundle56-live","vp-featurebundle56-retry-live","vp-featurebundle56-final-live","vp-featurebundle56-verify-live","vp-featurebundle58-live","vp-featurebundle59-live","vp-featurebundle59-retry-live","vp-featurebundle59-final-live","vp-featurebundle59-final2-live","vp-featurebundle59-final3-live","vp-featurebundle59-final4-live","vp-featurebundle58-retry-live","vp-featurebundle58-retry2-live").contains(source.getLevel().getServer().getWorldData().getLevelName())&&!java.util.Set.of("vp-village-expansion-ui-2026-11-02","vp-cityscape-2026-11-02","vp-cityscape-final-2026-11-02","vp-cityscape-retry-2026-11-02","vp-settlement-next-2026-11-02").contains(source.getLevel().getServer().getWorldData().getLevelName()))throw new IllegalStateException("Checks only allowed in explicitly named development worlds; received: " + source.getLevel().getServer().getWorldData().getLevelName());
   ServerLevel level=source.getLevel();ServerPlayer player=level.getServer().getPlayerList().getPlayers().stream().findFirst().orElse(null);
   if(mode.equals("g02status")) {
@@ -324,6 +334,10 @@ public final class Checks090 {
   if(mode.equals("palette")) {
    int count=de.villagerplus.build.PaletteChecks.run(level,new BlockPos(30000,201,30000));
    source.sendSuccess(()->Component.literal("VP090 palette PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("palettefallback")) {
+   int count=de.villagerplus.build.PaletteFallbackChecks.run(level,new BlockPos(31600,201,31600));
+   source.sendSuccess(()->Component.literal("VP090 palettefallback PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("buildhaul")) {
    int count=de.villagerplus.job.BuildHaulChecks.run(level,fixtureForEquipment(level,new BlockPos(30200,201,30200)));
@@ -424,6 +438,10 @@ public final class Checks090 {
    int checks=count;
    source.sendSuccess(()->Component.literal("VP090 houseplot PASS "+checks+" checks"),false);return checks;
   }
+  if(mode.equals("housesitesearch")) {
+   int count=de.villagerplus.build.HouseSiteSearchChecks.run(level,new BlockPos(36000,201,36000));
+   source.sendSuccess(()->Component.literal("VP090 housesitesearch PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("houseconnection")) {
    int count=de.villagerplus.build.HouseConnectionChecks.run(level,new BlockPos(24200,201,24200));
    source.sendSuccess(()->Component.literal("VP090 houseconnection PASS "+count+" checks"),false);return count;
@@ -506,6 +524,76 @@ public final class Checks090 {
    var ref=fixtureForEquipment(level,A);
    int count=de.villagerplus.build.MilestoneWaitingChecks.run(level,ref);
    source.sendSuccess(()->Component.literal("VP090 milestones PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("minewalk")) {
+   int count=de.villagerplus.job.MineWalkChecks.run(level,new BlockPos(43000,201,43000));
+   source.sendSuccess(()->Component.literal("VP090 minewalk PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("minekit")) {
+   BlockPos at=new BlockPos(47000,201,47000);
+   BlockPos at2=new BlockPos(47300,201,47000);
+   int count=de.villagerplus.job.MineKitChecks.run(level,fixtureForEquipment(level,at),at)
+    +de.villagerplus.job.MineKitChecks.runDelivery(level,fixtureForEquipment(level,at2),at2);
+   source.sendSuccess(()->Component.literal("VP090 minekit PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("stoneeconomy")) {
+   BlockPos at=new BlockPos(47600,201,47000);
+   int count=de.villagerplus.job.StoneEconomyChecks.run(level,fixtureForEquipment(level,at),at);
+   source.sendSuccess(()->Component.literal("VP090 stoneeconomy PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("treewalkback")) {
+   int count=de.villagerplus.job.TreeWalkbackChecks.run(level,new BlockPos(46000,201,46000));
+   source.sendSuccess(()->Component.literal("VP090 treewalkback PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("housesign")) {
+   int count=de.villagerplus.village.HousingSignChecks.run(level,new BlockPos(47000,201,47000));
+   source.sendSuccess(()->Component.literal("VP090 housesign PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("strandrescue")) {
+   int count=de.villagerplus.job.StrandRescueChecks.run(level,new BlockPos(41000,201,41000));
+   source.sendSuccess(()->Component.literal("VP090 strandrescue PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("freightload")) {
+   int count=de.villagerplus.job.FreightLoadingChecks.run(level,new BlockPos(49000,201,49000));
+   source.sendSuccess(()->Component.literal("VP090 freightload PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("lamplighter")) {
+   int count=de.villagerplus.job.LamplighterJobChecks.run(level,new BlockPos(51008,201,51008));
+   source.sendSuccess(()->Component.literal("VP090 lamplighter PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("butcherslaughter")) {
+   int count=de.villagerplus.job.ButcherSlaughterChecks.run(level,new BlockPos(50400,201,50400));
+   if(count<0) { source.sendSuccess(()->Component.literal("VP090 butcherslaughter PREPARING entity-ticking fixture; retry after server ticks"),false);return -1; }
+   source.sendSuccess(()->Component.literal("VP090 butcherslaughter PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("butchercooking")) {
+   int count=de.villagerplus.job.ButcherCookingChecks.run(level,new BlockPos(50608,201,50608));
+   source.sendSuccess(()->Component.literal("VP090 butchercooking PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("expedition")) {
+   int count=de.villagerplus.village.ExpeditionChecks.run(level,new BlockPos(49408,201,49408));
+   if(count<0) { source.sendSuccess(()->Component.literal("VP090 expedition PREPARING multi-tick fixture; retry after server ticks"),false);return -1; }
+   source.sendSuccess(()->Component.literal("VP090 expedition PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("a04idle")) {
+   long oldClock=level.getOverworldClockTime();
+   int count;
+   try {
+    level.getServer().getCommands().performPrefixedCommand(source,"time set 4000");
+    count=de.villagerplus.job.A04IdleChecks.run(level,new BlockPos(51408,201,51408));
+   } finally {
+    level.getServer().getCommands().performPrefixedCommand(source,"time set "+oldClock);
+   }
+   source.sendSuccess(()->Component.literal("VP090 a04idle PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("a04lease")) {
+   int count=de.villagerplus.village.A04LeaseChecks.run(level,new BlockPos(52000,201,52000));
+   if(count<0) { source.sendSuccess(()->Component.literal("VP090 a04lease PREPARING; retry after server ticks"),false);return -1; }
+   source.sendSuccess(()->Component.literal("VP090 a04lease PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("deepstrand")) {
+   int count=de.villagerplus.job.DeepStrandChecks.run(level,new BlockPos(47500,201,47500));
+   source.sendSuccess(()->Component.literal("VP090 deepstrand PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("farmexpand")) {
    var ref=fixtureForEquipment(level,A);
@@ -676,6 +764,13 @@ public final class Checks090 {
    int count=de.villagerplus.job.PlanStoneSupplyChecks.run(level);
    source.sendSuccess(()->Component.literal("VP090 planstonesupply PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("surfacestone")) {
+   BlockPos at=new BlockPos(33000,201,33000);
+   BlockPos metalAt=new BlockPos(33300,201,33000);
+   int count=de.villagerplus.job.SurfaceStoneChecks.run(level,fixtureForEquipment(level,at),at)
+    +de.villagerplus.job.SurfaceStoneChecks.runMetalPickaxe(level,fixtureForEquipment(level,metalAt),metalAt);
+   source.sendSuccess(()->Component.literal("VP090 surfacestone PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("planmaterialwait")) {
    int count=de.villagerplus.build.PlanMaterialWaitChecks.run();
    source.sendSuccess(()->Component.literal("VP090 planmaterialwait PASS "+count+" checks"),false);return count;
@@ -736,6 +831,10 @@ public final class Checks090 {
    VillageRef ref=fixtureForEquipment(level,new BlockPos(27800,201,27800));
    int count=de.villagerplus.village.BuildingRelocationWorldChecks.run(level,ref);
    source.sendSuccess(()->Component.literal("VP090 buildingrelocation PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("seasonfarm")) {
+   int count=de.villagerplus.job.SeasonFarmChecks.run(level,new BlockPos(52000,201,52000));
+   source.sendSuccess(()->Component.literal("VP090 seasonfarm PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("compat")) {
    int count=CompatChecks.runStrict(level);

@@ -250,10 +250,11 @@ public final class GravelQuarryChecks {
 					+ level.getBlockState(supportFace.above(3)) + "/"
 					+ level.getBlockState(supportFace.relative(supportSide, 2).above(3)) + ", carried="
 					+ total(worker.getInventory(), Items.OAK_FENCE) + "/" + total(worker.getInventory(), Items.OAK_PLANKS) + ")"); checks++;
+			// Light sections are the indices 3, 9, 15 ... (Mining.lightSection: index % 6 == 3, asserted in miningcycle/minelifecycle); the old fixture used 12, which is no light section.
 
-			VillageData.Mine lightMine = new VillageData.Mine(entrance, mineDirection.get2DDataValue(), 12, origin.getY(), false);
+			VillageData.Mine lightMine = new VillageData.Mine(entrance, mineDirection.get2DDataValue(), 9, origin.getY(), false);
 			data.mine = Optional.of(lightMine);
-			BlockPos lightFace = origin.offset(12, 0, 6);
+			BlockPos lightFace = origin.offset(9, 0, 6);
 			level.setBlock(lightFace.below(), Blocks.STONE.defaultBlockState(), 3);
 			level.setBlock(lightFace, Blocks.STONE.defaultBlockState(), 3);
 			level.setBlock(lightFace.above(), Blocks.STONE.defaultBlockState(), 3);
@@ -281,17 +282,17 @@ public final class GravelQuarryChecks {
 			}
 			check(loadedTorch && total(box, Items.TORCH) + JobUtil.count(worker.getInventory(), s -> s.is(Items.TORCH)) > 0
 				&& total(box, Items.CHARCOAL) == 0 && total(box, Items.STICK) == 0
-				&& JobUtil.count(worker.getInventory(), s -> s.is(Items.TORCH)) == 1 && lightMine.index == 12,
+				&& JobUtil.count(worker.getInventory(), s -> s.is(Items.TORCH)) == 1 && lightMine.index == 9,
 				"the next lit section crafts and carries a torch from real public charcoal and stick stock without advancing early"
 					+ " (loaded=" + loadedTorch + ", cursor=" + lightMine.index + ", activity=" + state.activity
 					+ ", mineCheckAt=" + state.mineCheckAt + ", cooldown=" + state.cooldownUntil
 					+ ", chest torch/charcoal/stick=" + total(box, Items.TORCH) + "/" + total(box, Items.CHARCOAL) + "/" + total(box, Items.STICK)
 					+ ", carried torch=" + total(worker.getInventory(), Items.TORCH) + ", face=" + level.getBlockState(lightFace)
 					+ ", worker=" + worker.blockPosition() + ")"); checks++;
-			worker.teleportTo(origin.getX() + 11.5, origin.getY(), origin.getZ() + 6.5);
+			worker.teleportTo(origin.getX() + 8.5, origin.getY(), origin.getZ() + 6.5);
 			long litSectionAt = Math.max(torchLoadedAt + 11, state.mineCheckAt + 1L);
 			boolean litSection = Mining.tick(new Ctx(level, worker, state, context.mem(), ref, litSectionAt), Mining.Need.STONE);
-			check(litSection && lightMine.index == 13 && level.getBlockState(torchSpot).is(Blocks.WALL_TORCH)
+			check(litSection && lightMine.index == 10 && level.getBlockState(torchSpot).is(Blocks.WALL_TORCH)
 				&& level.getBlockState(torchSpot).getValue(HorizontalDirectionalBlock.FACING) == Direction.NORTH
 				&& JobUtil.count(worker.getInventory(), s -> s.is(Items.TORCH)) == 0,
 				"the miner spends the staged torch on a supported wall-mounted gallery light"
@@ -304,8 +305,8 @@ public final class GravelQuarryChecks {
 			BlockPos dressedEntrance = origin.offset(0, descent, -8);
 			VillageData.Mine dressedMine = new VillageData.Mine(dressedEntrance, mineDirection.get2DDataValue(), 13, origin.getY(), false);
 			data.mine = Optional.of(dressedMine);
-			BlockPos firstLightCenter = new BlockPos(dressedEntrance.east(4).getX(), origin.getY(), dressedEntrance.east(4).getZ());
-			BlockPos secondLightCenter = new BlockPos(dressedEntrance.east(12).getX(), origin.getY(), dressedEntrance.east(12).getZ());
+			BlockPos firstLightCenter = new BlockPos(dressedEntrance.east(3).getX(), origin.getY(), dressedEntrance.east(3).getZ());
+			BlockPos secondLightCenter = new BlockPos(dressedEntrance.east(9).getX(), origin.getY(), dressedEntrance.east(9).getZ());
 			BlockPos firstFloorTorch = firstLightCenter.relative(gallerySide, -2);
 			BlockPos secondFloorTorch = secondLightCenter.relative(gallerySide, 2);
 			BlockPos firstWallTorch = firstLightCenter.relative(gallerySide, -1).above();
@@ -347,9 +348,9 @@ public final class GravelQuarryChecks {
 				&& level.getBlockState(existingSupport).is(Blocks.OAK_FENCE)
 				&& level.getBlockState(firstLightCenter.below()).is(Blocks.STONE)
 				&& level.getBlockState(secondLightCenter.below()).is(Blocks.STONE),
-				"the mason raises alternating eight-block gallery lights without spending torches or narrowing the supported floor"); checks++;
+				"the mason raises alternating gallery lights (sections 3 and 9) without spending torches or narrowing the supported floor"); checks++;
 			dressedMine.index = 21;
-			BlockPos unsupportedCenter = new BlockPos(dressedEntrance.east(20).getX(), origin.getY(), dressedEntrance.east(20).getZ());
+			BlockPos unsupportedCenter = new BlockPos(dressedEntrance.east(15).getX(), origin.getY(), dressedEntrance.east(15).getZ());
 			BlockPos unsupportedFloorTorch = unsupportedCenter.relative(gallerySide, -2);
 			BlockPos unsupportedWallTorch = unsupportedCenter.relative(gallerySide, -1).above();
 			level.setBlock(unsupportedCenter.below(), Blocks.STONE.defaultBlockState(), 3);

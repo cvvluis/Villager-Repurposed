@@ -175,11 +175,39 @@ public class VillageData {
 			CivicSiteSearch.CODEC.optionalFieldOf("civic_site_search"),
 			extra -> com.mojang.datafixers.util.Pair.of(extra.civicSiteSearch, CivicSiteSearch.CODEC.optionalFieldOf("civic_site_search")),
 			(extra, search) -> { extra.civicSiteSearch = search; return extra; }
+		).dependent(
+			HouseSiteSearch.CODEC.optionalFieldOf("house_site_search"),
+			extra -> com.mojang.datafixers.util.Pair.of(extra.houseSiteSearch, HouseSiteSearch.CODEC.optionalFieldOf("house_site_search")),
+			(extra, search) -> { extra.houseSiteSearch = search; return extra; }
 		).codec();
+
+		/** Small persisted cursor for resuming the step-wise house site search after reload. Absent in older saves. */
+		public record HouseSiteSearch(int variant, int minRadius, long phaseSeed, int nextCandidate, long retryAt, long lastUsedAt) {
+			public static final Codec<HouseSiteSearch> CODEC = RecordCodecBuilder.create(i -> i.group(
+				Codec.INT.optionalFieldOf("variant", 0).forGetter(HouseSiteSearch::variant),
+				Codec.INT.optionalFieldOf("min_radius", 0).forGetter(HouseSiteSearch::minRadius),
+				Codec.LONG.optionalFieldOf("phase_seed", 0L).forGetter(HouseSiteSearch::phaseSeed),
+				Codec.INT.optionalFieldOf("next_candidate", 0).forGetter(HouseSiteSearch::nextCandidate),
+				Codec.LONG.optionalFieldOf("retry_at", 0L).forGetter(HouseSiteSearch::retryAt),
+				Codec.LONG.optionalFieldOf("last_used_at", 0L).forGetter(HouseSiteSearch::lastUsedAt)
+			).apply(i, HouseSiteSearch::new));
+
+			public HouseSiteSearch {
+				minRadius = Math.max(0, minRadius);
+				nextCandidate = Math.max(0, nextCandidate);
+				retryAt = Math.max(0L, retryAt);
+				lastUsedAt = Math.max(0L, lastUsedAt);
+			}
+		}
 
 		/** Small persisted cursor for resuming a bounded civic building-site scan after reload. */
 		public record CivicSiteSearch(String type, List<Integer> variants, long phaseSeed, int variantIndex,
-			int nextCandidate, boolean tolerant, long retryAt) {
+			int nextCandidate, boolean tolerant, long retryAt, boolean terraced) {
+			public CivicSiteSearch(String type, List<Integer> variants, long phaseSeed, int variantIndex,
+				int nextCandidate, boolean tolerant, long retryAt) {
+				this(type, variants, phaseSeed, variantIndex, nextCandidate, tolerant, retryAt, false);
+			}
+
 			public static final Codec<CivicSiteSearch> CODEC = RecordCodecBuilder.create(i -> i.group(
 				Codec.STRING.optionalFieldOf("type", "").forGetter(CivicSiteSearch::type),
 				Codec.INT.listOf().optionalFieldOf("variants", List.of(0)).forGetter(CivicSiteSearch::variants),
@@ -187,7 +215,8 @@ public class VillageData {
 				Codec.INT.optionalFieldOf("variant_index", 0).forGetter(CivicSiteSearch::variantIndex),
 				Codec.INT.optionalFieldOf("next_candidate", 0).forGetter(CivicSiteSearch::nextCandidate),
 				Codec.BOOL.optionalFieldOf("tolerant", false).forGetter(CivicSiteSearch::tolerant),
-				Codec.LONG.optionalFieldOf("retry_at", 0L).forGetter(CivicSiteSearch::retryAt)
+				Codec.LONG.optionalFieldOf("retry_at", 0L).forGetter(CivicSiteSearch::retryAt),
+				Codec.BOOL.optionalFieldOf("terraced", false).forGetter(CivicSiteSearch::terraced)
 			).apply(i, CivicSiteSearch::new));
 
 			public CivicSiteSearch {
@@ -249,6 +278,8 @@ public class VillageData {
 		public Optional<String> planMaterialWait = Optional.empty();
 		/** Resumable pre-plan civic site search; absent when no civic search is in progress. */
 		public Optional<CivicSiteSearch> civicSiteSearch = Optional.empty();
+		/** Resumable step-wise house site search (cursor only); absent when none is running or in older saves. */
+		public Optional<HouseSiteSearch> houseSiteSearch = Optional.empty();
 
 		public Extra() {
 			this(Optional.empty(), 0L, 0L, 0L, List.of(), 0, 0L, Optional.empty(), Optional.empty(), List.of(), Optional.empty(), List.of(), List.of(), 0L,
