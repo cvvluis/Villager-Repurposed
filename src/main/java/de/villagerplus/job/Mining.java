@@ -11,6 +11,7 @@ import de.villagerplus.build.Palette;
 import de.villagerplus.build.Supply;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -184,8 +185,15 @@ public final class Mining {
 	private static final java.util.Map<Long, Long> KIT_WAIT_SINCE = new java.util.HashMap<>();
 	/** Section the running kit wait belongs to: a new section starts a fresh wait, so one timeout never unlocks the whole mine. */
 	private static final java.util.Map<Long, Integer> KIT_WAIT_INDEX = new java.util.HashMap<>();
-	/** Timber or coal may simply not exist near a village: after ten minutes of waiting for one section's kit the miners work that section without it. */
-	static final long KIT_WAIT_TICKS = 12000L;
+	/** Timber or coal may simply not exist near a village: after this much working time spent on one section's kit (restock trips, crafting, waiting) the miners dig that section without it, and the following ones too for {@link #KIT_SKIP_TICKS}. */
+	static final long KIT_WAIT_TICKS = 1800L;
+	/** After such a release the following sections are dug without waiting for the same kit again for this long. */
+	static final long KIT_SKIP_TICKS = 12000L;
+	/** One call counts at most this much waiting time, so nights and rest periods between two work spells are not charged. */
+	static final long KIT_WAIT_STEP_CAP = 400L;
+	private static final java.util.Map<Long, Long> KIT_WAIT_SPENT = new java.util.HashMap<>();
+	private static final java.util.Map<Long, Long> KIT_WAIT_LAST = new java.util.HashMap<>();
+	private static final java.util.Map<Long, Long> KIT_SKIP_UNTIL = new java.util.HashMap<>();
 	/** The supply trip also covers the next few sections (only what the depot holds), so a trip is not made for every support or torch. */
 	static final int KIT_LOOKAHEAD_SECTIONS = 6;
 	private static final java.util.Map<java.util.UUID, Long> NOSTART_DIAG = new java.util.HashMap<>();
@@ -321,6 +329,7 @@ public final class Mining {
 				exitStep(c);
 				return true;
 			}
+			if (noLanePathWatchdog(c, m)) return true;
 			int queueSlot = waitingSlot(currentRoute);
 			if (queueSlot < 0 || !mineWaitingStandAvailable(c, m, queueSlot)) {
 				queueSlot = findMineWaitingSlot(c, m);
@@ -361,6 +370,7 @@ public final class Mining {
 			}
 			return true;
 		}
+		NO_LANE_PATH_SINCE.remove(c.v().getUUID());
 		if (isWaitingRoute(currentRoute)) {
 			stopMineApproach(c);
 			clearMineRoute(c.v());
@@ -570,12 +580,18 @@ public final class Mining {
 
 	// --- Anlegen --------------------------------------------------------------------------------
 
+	/** Failed site searches per village (by bell), so the next search looks farther out. */
+	private static final Map<Long, Integer> MINE_CREATE_FAILS = new HashMap<>();
+
 	private static Optional<VillageData.Mine> create(Ctx c, VillageRef ref) {
 		ServerLevel level = c.level();
 		int[] why = new int[7];
+		// Every failed round widens the ring (up to +24 blocks): a village that already lost a mine to a cave has fewer sites left near it.
+		int failedRounds = MINE_CREATE_FAILS.getOrDefault(ref.bell().asLong(), 0);
+		int ring = 24 + 8 * Math.min(failedRounds, 3);
 		for (int attempt = 0; attempt < 200; attempt++) {
 			double angle = c.v().getRandom().nextDouble() * Math.PI * 2;
-			double dist = 14 + c.v().getRandom().nextInt(24);
+			double dist = 14 + c.v().getRandom().nextInt(ring);
 			int x = ref.bell().getX() + (int) Math.round(Math.cos(angle) * dist);
 			int z = ref.bell().getZ() + (int) Math.round(Math.sin(angle) * dist);
 			if (!level.hasChunkAt(new BlockPos(x, ref.bell().getY(), z))) {
@@ -626,8 +642,10 @@ public final class Mining {
 				continue;
 			}
 			JobUtil.tellNearbyPlayers(level, c.v(), 48, Component.literal("Das Dorf legt eine Mine an."));
+			MINE_CREATE_FAILS.remove(ref.bell().asLong());
 			return Optional.of(m);
 		}
+		MINE_CREATE_FAILS.merge(ref.bell().asLong(), 1, Integer::sum);
 		LOGGER.info("Mine: kein Eingang gefunden, Ablehnungen [ungeladen,Hoehe,Boden,Altmine,Bauplan,Vorschau,Eingangsplatz]={}, Vorschau-Gruende={}, nicht abbaubar={}", java.util.Arrays.toString(why), java.util.Arrays.toString(PREVIEW_WHY), NONMINEABLE);
 		return Optional.empty();
 	}
@@ -1918,6 +1936,9 @@ public final class Mining {
 	static void resetKitWaitForTest() {
 		KIT_WAIT_SINCE.clear();
 		KIT_WAIT_INDEX.clear();
+		KIT_WAIT_SPENT.clear();
+		KIT_WAIT_LAST.clear();
+		KIT_SKIP_UNTIL.clear();
 	}
 
 	static SupplyStatus kitStatus(Ctx c, VillageRef ref, VillageData.Mine m) {
@@ -1926,19 +1947,39 @@ public final class Mining {
 		if (waitIndex != null && waitIndex != m.index) {
 			KIT_WAIT_SINCE.remove(entranceKey);
 			KIT_WAIT_INDEX.remove(entranceKey);
+			KIT_WAIT_SPENT.remove(entranceKey);
 		}
 		Long since = KIT_WAIT_SINCE.get(entranceKey);
 		if (since != null && since > c.now()) { // stale entry from another world/session
 			KIT_WAIT_SINCE.remove(entranceKey);
+			KIT_WAIT_SPENT.remove(entranceKey);
 			since = null;
 		}
-		if (since != null && c.now() - since > KIT_WAIT_TICKS) return SupplyStatus.READY;
+		// After a section was released without its kit the depot evidently cannot supply one: the next sections are not held up
+		// again one by one for the same missing wood or coal (each hold-up used to cost about a working day) until the hold-off ends.
+		Long skipUntil = KIT_SKIP_UNTIL.get(entranceKey);
+		if (skipUntil != null && c.now() < skipUntil && skipUntil - c.now() <= KIT_SKIP_TICKS) return SupplyStatus.READY;
+		if (since != null && KIT_WAIT_SPENT.getOrDefault(entranceKey, 0L) > KIT_WAIT_TICKS) {
+			KIT_SKIP_UNTIL.put(entranceKey, c.now() + KIT_SKIP_TICKS);
+			return SupplyStatus.READY;
+		}
 		SupplyStatus supplies = ensureMineSupplies(c, ref, m);
 		if (supplies == SupplyStatus.READY) {
 			KIT_WAIT_SINCE.remove(entranceKey);
 			KIT_WAIT_INDEX.remove(entranceKey);
+			KIT_WAIT_SPENT.remove(entranceKey);
 		} else {
-			KIT_WAIT_SINCE.putIfAbsent(entranceKey, c.now());
+			// Only time the miners actually spend on the kit counts (restock trips, crafting, waiting at the depot): the nights and
+			// rest periods in between do not, so the limit is a share of a working day and not a share of the calendar.
+			Long last = KIT_WAIT_LAST.get(entranceKey);
+			long step = last == null || last > c.now() ? 0L : Math.min(KIT_WAIT_STEP_CAP, c.now() - last);
+			if (since == null) {
+				KIT_WAIT_SINCE.put(entranceKey, c.now());
+				KIT_WAIT_SPENT.put(entranceKey, 0L);
+			} else {
+				KIT_WAIT_SPENT.merge(entranceKey, step, Long::sum);
+			}
+			KIT_WAIT_LAST.put(entranceKey, c.now());
 			KIT_WAIT_INDEX.put(entranceKey, m.index);
 		}
 		return supplies;
@@ -2765,6 +2806,7 @@ public final class Mining {
 
 		// Far from the mine (vanilla navigation range is short): hand the walk to the bounded long-route search first.
 		double farSq = c.v().position().distanceToSqr(Vec3.atBottomCenterOf(cell));
+		if (farSq > 8.0 * 8.0 && onMineSurface(mine, c.v()) && approachStalled(c, farSq)) return MineWalk.MOVING;
 		if (farSq > 20.0 * 20.0 && onMineSurface(mine, c.v())) {
 			c.setActivity("geht zur Mine");
 			if (!JobUtil.approachLong(c, cell, 10.0)) return c.st().cooldownUntil > c.now() ? MineWalk.STUCK : MineWalk.MOVING;
@@ -2800,6 +2842,127 @@ public final class Mining {
 			}
 		}
 		return approachMineStep(c, cell);
+	}
+
+	/** First time a resident found a free lane it could not path to, per resident (see {@link #noLanePathWatchdog}). */
+	private static final Map<UUID, Long> NO_LANE_PATH_SINCE = new HashMap<>();
+	static final long NO_LANE_PATH_TICKS = 900L;
+
+	/** True when at least one work lane is unoccupied and safe, so that a failed admission is down to the resident's own position, not to the crowd. */
+	static boolean freeLaneExists(Ctx c, VillageData.Mine mine) {
+		if (c == null || mine == null || mineEntranceAdmissionBlocked(c, mine)) return false;
+		List<Villager> routeWorkers = mineRouteWorkers(c.level(), mine);
+		Set<Integer> occupied = new HashSet<>();
+		for (Villager other : routeWorkers) {
+			if (other == c.v() || !holdsLaneNow(mine, other)) continue;
+			MineRoute route = mineRoute(other);
+			if (route != null && route.index() >= 0) occupied.add(workSlotForRoute(route, other));
+		}
+		AABB nearMine = new AABB(mine.entrance).inflate(WAITING_STAND_SCAN_MARGIN, 4, WAITING_STAND_SCAN_MARGIN);
+		List<LivingEntity> nearby = c.level().getEntitiesOfClass(LivingEntity.class, nearMine,
+			entity -> entity != c.v() && entity.isAlive());
+		int section = Math.max(0, mine.index - 1);
+		for (int slot = 0; slot < MINE_WORK_STAND_COUNT; slot++) {
+			if (!occupied.contains(slot) && mineWorkStandAvailable(c, mine, slot, section, routeWorkers, nearby)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * A resident who finds free, safe lanes but no path to any of them (observed: a miner living on a terrace above the mine, 14 blocks
+	 * higher, asked again and again for 6000 ticks while the other miner worked alone) is put on the village street after
+	 * {@link #NO_LANE_PATH_TICKS}, from where the walk to the mine works. Returns true when the resident was moved.
+	 */
+	static boolean noLanePathWatchdog(Ctx c, VillageData.Mine mine) {
+		UUID id = c.v().getUUID();
+		long now = c.now();
+		if (!freeLaneExists(c, mine)) {
+			NO_LANE_PATH_SINCE.remove(id);
+			return false;
+		}
+		Long since = NO_LANE_PATH_SINCE.get(id);
+		if (since == null || since > now || now - since > 6000L) {
+			NO_LANE_PATH_SINCE.put(id, now);
+			return false;
+		}
+		if (now - since < NO_LANE_PATH_TICKS) return false;
+		NO_LANE_PATH_SINCE.remove(id);
+		BlockPos arrival = c.village() == null ? null : de.villagerplus.build.Builder.villageReturn(c.level(), c.village().bell());
+		if (arrival == null) return false;
+		c.v().getNavigation().stop();
+		c.v().getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
+		c.st().clearTarget();
+		c.v().teleportTo(arrival.getX() + 0.5, arrival.getY(), arrival.getZ() + 0.5);
+		c.v().resetFallDistance();
+		c.st().cooldownUntil = now + 20;
+		c.st().mineCheckAt = now + 20;
+		LOGGER.info("Mine: {} fand {} Ticks lang freie Arbeitsplaetze, aber keinen Weg dorthin (bei {}) und wurde auf die Dorfstrasse gesetzt",
+			c.mem().name, NO_LANE_PATH_TICKS, c.v().blockPosition().toShortString());
+		return true;
+	}
+
+	/** Test hook: forget the lane-path bookkeeping. */
+	static void resetNoLanePathForTest() {
+		NO_LANE_PATH_SINCE.clear();
+	}
+
+	/** Per resident: closest distance (squared) reached on the current overland walk to the mine, when it was reached, last visit, stalls so far. */
+	private record ApproachProgress(double bestSq, long bestAt, long lastSeen, int stalls) { }
+	private static final Map<UUID, ApproachProgress> MINE_APPROACH = new HashMap<>();
+	/** A walk to the mine that gets no closer for this long is stuck (a doorway, a yard, a fight over the walk target), not slow. */
+	static final long APPROACH_STALL_TICKS = 600L;
+	static final int APPROACH_STALLS_BEFORE_GIVING_UP = 3;
+
+	/**
+	 * Watches the long walk to the mine: observed in the natural run, residents stood in their doorway for 3300 ticks (half a working
+	 * day) on "geht zur Mine" without moving. After {@link #APPROACH_STALL_TICKS} without getting closer the resident is put back on
+	 * the village street, exactly like a waiter who stands too far from the shaft; after three such resets the walk is dropped for a while.
+	 * Returns true when this call handled the resident.
+	 */
+	static boolean approachStalled(Ctx c, double farSq) {
+		UUID id = c.v().getUUID();
+		long now = c.now();
+		ApproachProgress p = MINE_APPROACH.get(id);
+		if (p == null || now - p.lastSeen() > 200L) {
+			MINE_APPROACH.put(id, new ApproachProgress(farSq, now, now, p == null || now - p.lastSeen() > 6000L ? 0 : p.stalls()));
+			return false;
+		}
+		if (farSq < p.bestSq() - 4.0) {
+			MINE_APPROACH.put(id, new ApproachProgress(farSq, now, now, p.stalls()));
+			return false;
+		}
+		if (now - p.bestAt() <= APPROACH_STALL_TICKS) {
+			MINE_APPROACH.put(id, new ApproachProgress(p.bestSq(), p.bestAt(), now, p.stalls()));
+			return false;
+		}
+		int stalls = p.stalls() + 1;
+		MINE_APPROACH.put(id, new ApproachProgress(Double.MAX_VALUE, now, now, stalls));
+		c.v().getNavigation().stop();
+		c.v().getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
+		c.st().clearTarget();
+		if (stalls >= APPROACH_STALLS_BEFORE_GIVING_UP) {
+			clearMineRoute(c.v());
+			c.st().mineCheckAt = now + 1200;
+			c.st().cooldownUntil = now + 40;
+			MINE_APPROACH.remove(id);
+			LOGGER.info("Mine: {} kommt auf dem Weg zur Mine bei {} nicht voran (Abstand {}); der Gang wird fuer eine Weile aufgegeben",
+				c.mem().name, c.v().blockPosition().toShortString(), (int) Math.sqrt(farSq));
+			return true;
+		}
+		BlockPos arrival = c.village() == null ? null : de.villagerplus.build.Builder.villageReturn(c.level(), c.village().bell());
+		if (arrival != null) {
+			c.v().teleportTo(arrival.getX() + 0.5, arrival.getY(), arrival.getZ() + 0.5);
+			c.v().resetFallDistance();
+		}
+		c.st().cooldownUntil = now + 20;
+		LOGGER.info("Mine: {} kam auf dem Weg zur Mine {} Ticks nicht naeher (Abstand {}, bei {}) und wurde auf die Dorfstrasse gesetzt",
+			c.mem().name, APPROACH_STALL_TICKS, (int) Math.sqrt(farSq), c.v().blockPosition().toShortString());
+		return true;
+	}
+
+	/** Test hook: forget the walk-progress bookkeeping. */
+	static void resetApproachForTest() {
+		MINE_APPROACH.clear();
 	}
 
 	/** Propagates JobUtil's anti-stuck abort instead of immediately recreating the same mine waypoint. */

@@ -70,16 +70,28 @@ public final class MineKitChecks {
 			var waiting = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now), ref, mine);
 			check(waiting == Mining.SupplyStatus.WAITING && worker.getInventory().isEmpty(),
 				"a support section without any depot stock waits, got " + waiting); checks++;
-			Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now + 6000L), ref, mine);
+			// A night between two work spells is not charged to the kit: a 20000 tick gap adds one capped step only.
+			var afterNight = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now + 20000L), ref, mine);
+			check(afterNight == Mining.SupplyStatus.WAITING,
+				"a long pause between two work spells does not use up the kit limit, got " + afterNight); checks++;
+			long spent = 20000L;
+			while (spent < 20000L + Mining.KIT_WAIT_TICKS + 4L * Mining.KIT_WAIT_STEP_CAP) {
+				spent += 200L;
+				Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now + spent), ref, mine);
+			}
 			worker.setPos(chestPos.getX() + 40.5, chestPos.getY(), chestPos.getZ() + 0.5);
-			var expired = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now + Mining.KIT_WAIT_TICKS + 1L), ref, mine);
+			var expired = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now + spent + 200L), ref, mine);
 			check(expired == Mining.SupplyStatus.READY && Math.abs(worker.getX() - (chestPos.getX() + 40.5)) < 0.01
 				&& worker.getBrain().getMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET).isEmpty(),
-				"after the fallback the section is released without sending the resident to the depot, got " + expired); checks++;
+				"after the working-time limit the section is released without sending the resident to the depot, got " + expired); checks++;
 			mine.index = 3;
-			var next = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now + Mining.KIT_WAIT_TICKS + 2L), ref, mine);
-			check(next != Mining.SupplyStatus.READY,
-				"the fallback does not unlock the next structural section (a torch needs coal), got " + next); checks++;
+			var next = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now + spent + 400L), ref, mine);
+			check(next == Mining.SupplyStatus.READY,
+				"the following structural section is not held up again for the same missing stock (hold-off), got " + next); checks++;
+			mine.index = 6;
+			var after = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now + spent + Mining.KIT_SKIP_TICKS + 600L), ref, mine);
+			check(after != Mining.SupplyStatus.READY,
+				"once the hold-off is over a structural section asks for its kit again, got " + after); checks++;
 			worker.setPos(chestPos.getX() - 0.5, chestPos.getY(), chestPos.getZ() + 0.5);
 
 			// 3. One trip carries the next support, the following torch and the support after it: complete structures only.
