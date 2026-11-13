@@ -29,6 +29,13 @@ public final class StoneEconomyChecks {
 			BlockPos entrance = bell.offset(30, 0, 0);
 			level.getChunk(entrance);
 			level.getChunk(bell);
+			// A walkable village street around the bell: this is where stalled walkers are put back.
+			for (int dx = -4; dx <= 4; dx++) for (int dz = -4; dz <= 4; dz++) {
+				if (dx == 0 && dz == 0 || dx == 3 && dz == 0) continue; // the bell and the fixture chest stay
+				level.setBlock(bell.offset(dx, -1, dz), net.minecraft.world.level.block.Blocks.DIRT_PATH.defaultBlockState(), 3);
+				level.setBlock(bell.offset(dx, 0, dz), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+				level.setBlock(bell.offset(dx, 1, dz), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+			}
 			worker = EntityTypes.VILLAGER.create(level, EntitySpawnReason.COMMAND);
 			if (worker == null) throw new IllegalStateException("STONE ECONOMY CHECK FAILED: villager missing");
 			worker.setNoAi(true);
@@ -61,7 +68,7 @@ public final class StoneEconomyChecks {
 			boolean first = Mining.approachStalled(ctx(level, worker, state, memory, ref, now + Mining.APPROACH_STALL_TICKS + 40L), far);
 			check(first && worker.getBrain().getMemory(MemoryModuleType.WALK_TARGET).isEmpty()
 				&& state.cooldownUntil > now + Mining.APPROACH_STALL_TICKS + 40L
-				&& (street == null || worker.blockPosition().distSqr(street) <= 4),
+				&& street != null && worker.blockPosition().distSqr(street) <= 4,
 				"after the stall limit the resident is put on the village street (street " + street + ", now at " + worker.blockPosition() + ")"); checks++;
 
 			// 3. Getting closer renews the allowance: a walk that advances a little at a time is never reset.
@@ -103,11 +110,36 @@ public final class StoneEconomyChecks {
 			}
 			check(gaveUp && state.mineCheckAt > u - 100L,
 				"after three stalls the walk is dropped for a while (gave up " + gaveUp + ", teleports " + teleports + ", mineCheckAt in " + (state.mineCheckAt - u) + ")"); checks++;
+
+			// 6. Free, safe lanes but no path to them (a resident on a terrace above the mine): after the allowance the resident is put
+			// on the village street instead of asking again and again for hours.
+			Mining.resetNoLanePathForTest();
+			ref.data().mine = Optional.of(new VillageData.Mine(entrance, Direction.EAST.get2DDataValue(), 1, entrance.getY() - 3, false));
+			for (int dx = -4; dx <= 6; dx++) for (int dz = -4; dz <= 4; dz++) {
+				level.setBlock(entrance.offset(dx, -1, dz), net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(), 3);
+				for (int dy = 0; dy <= 3; dy++) level.setBlock(entrance.offset(dx, dy, dz), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+			}
+			BlockPos perch = entrance.offset(-10, 12, 0);
+			for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) {
+				level.setBlock(perch.offset(dx, -1, dz), net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(), 3);
+				for (int dy = 0; dy <= 3; dy++) level.setBlock(perch.offset(dx, dy, dz), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+			}
+			worker.teleportTo(perch.getX() + 0.5, perch.getY(), perch.getZ() + 0.5);
+			long v = level.getGameTime() + 40_000L;
+			boolean lanes = Mining.freeLaneExists(ctx(level, worker, state, memory, ref, v), ref.data().mine.get());
+			check(lanes, "the fixture mine offers free safe lanes"); checks++;
+			boolean movedEarly = Mining.noLanePathWatchdog(ctx(level, worker, state, memory, ref, v), ref.data().mine.get())
+				|| Mining.noLanePathWatchdog(ctx(level, worker, state, memory, ref, v + Mining.NO_LANE_PATH_TICKS - 100L), ref.data().mine.get());
+			check(!movedEarly && worker.blockPosition().distSqr(perch) <= 4, "a resident without a path to free lanes is left alone within the allowance"); checks++;
+			boolean moved = Mining.noLanePathWatchdog(ctx(level, worker, state, memory, ref, v + Mining.NO_LANE_PATH_TICKS + 50L), ref.data().mine.get());
+			check(moved && worker.blockPosition().distSqr(perch) > 100 && state.mineCheckAt > v,
+				"after the allowance the resident is put on the village street (moved " + moved + ", now at " + worker.blockPosition() + ")"); checks++;
 			return checks;
 		} finally {
 			if (worker != null) worker.discard();
 			ref.data().mine = Optional.empty();
 			Mining.resetApproachForTest();
+			Mining.resetNoLanePathForTest();
 		}
 	}
 

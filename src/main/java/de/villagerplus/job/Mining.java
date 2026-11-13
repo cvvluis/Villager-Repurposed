@@ -329,6 +329,7 @@ public final class Mining {
 				exitStep(c);
 				return true;
 			}
+			if (noLanePathWatchdog(c, m)) return true;
 			int queueSlot = waitingSlot(currentRoute);
 			if (queueSlot < 0 || !mineWaitingStandAvailable(c, m, queueSlot)) {
 				queueSlot = findMineWaitingSlot(c, m);
@@ -369,6 +370,7 @@ public final class Mining {
 			}
 			return true;
 		}
+		NO_LANE_PATH_SINCE.remove(c.v().getUUID());
 		if (isWaitingRoute(currentRoute)) {
 			stopMineApproach(c);
 			clearMineRoute(c.v());
@@ -2832,6 +2834,68 @@ public final class Mining {
 			}
 		}
 		return approachMineStep(c, cell);
+	}
+
+	/** First time a resident found a free lane it could not path to, per resident (see {@link #noLanePathWatchdog}). */
+	private static final Map<UUID, Long> NO_LANE_PATH_SINCE = new HashMap<>();
+	static final long NO_LANE_PATH_TICKS = 900L;
+
+	/** True when at least one work lane is unoccupied and safe, so that a failed admission is down to the resident's own position, not to the crowd. */
+	static boolean freeLaneExists(Ctx c, VillageData.Mine mine) {
+		if (c == null || mine == null || mineEntranceAdmissionBlocked(c, mine)) return false;
+		List<Villager> routeWorkers = mineRouteWorkers(c.level(), mine);
+		Set<Integer> occupied = new HashSet<>();
+		for (Villager other : routeWorkers) {
+			if (other == c.v() || !holdsLaneNow(mine, other)) continue;
+			MineRoute route = mineRoute(other);
+			if (route != null && route.index() >= 0) occupied.add(workSlotForRoute(route, other));
+		}
+		AABB nearMine = new AABB(mine.entrance).inflate(WAITING_STAND_SCAN_MARGIN, 4, WAITING_STAND_SCAN_MARGIN);
+		List<LivingEntity> nearby = c.level().getEntitiesOfClass(LivingEntity.class, nearMine,
+			entity -> entity != c.v() && entity.isAlive());
+		int section = Math.max(0, mine.index - 1);
+		for (int slot = 0; slot < MINE_WORK_STAND_COUNT; slot++) {
+			if (!occupied.contains(slot) && mineWorkStandAvailable(c, mine, slot, section, routeWorkers, nearby)) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * A resident who finds free, safe lanes but no path to any of them (observed: a miner living on a terrace above the mine, 14 blocks
+	 * higher, asked again and again for 6000 ticks while the other miner worked alone) is put on the village street after
+	 * {@link #NO_LANE_PATH_TICKS}, from where the walk to the mine works. Returns true when the resident was moved.
+	 */
+	static boolean noLanePathWatchdog(Ctx c, VillageData.Mine mine) {
+		UUID id = c.v().getUUID();
+		long now = c.now();
+		if (!freeLaneExists(c, mine)) {
+			NO_LANE_PATH_SINCE.remove(id);
+			return false;
+		}
+		Long since = NO_LANE_PATH_SINCE.get(id);
+		if (since == null || since > now || now - since > 6000L) {
+			NO_LANE_PATH_SINCE.put(id, now);
+			return false;
+		}
+		if (now - since < NO_LANE_PATH_TICKS) return false;
+		NO_LANE_PATH_SINCE.remove(id);
+		BlockPos arrival = c.village() == null ? null : de.villagerplus.build.Builder.villageReturn(c.level(), c.village().bell());
+		if (arrival == null) return false;
+		c.v().getNavigation().stop();
+		c.v().getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
+		c.st().clearTarget();
+		c.v().teleportTo(arrival.getX() + 0.5, arrival.getY(), arrival.getZ() + 0.5);
+		c.v().resetFallDistance();
+		c.st().cooldownUntil = now + 20;
+		c.st().mineCheckAt = now + 20;
+		LOGGER.info("Mine: {} fand {} Ticks lang freie Arbeitsplaetze, aber keinen Weg dorthin (bei {}) und wurde auf die Dorfstrasse gesetzt",
+			c.mem().name, NO_LANE_PATH_TICKS, c.v().blockPosition().toShortString());
+		return true;
+	}
+
+	/** Test hook: forget the lane-path bookkeeping. */
+	static void resetNoLanePathForTest() {
+		NO_LANE_PATH_SINCE.clear();
 	}
 
 	/** Per resident: closest distance (squared) reached on the current overland walk to the mine, when it was reached, last visit, stalls so far. */
