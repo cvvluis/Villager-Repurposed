@@ -84,13 +84,15 @@ public final class SeasonFarmChecks {
 		boolean warm = level.getBiome(site).value().warmEnoughToRain(site, level.getSeaLevel());
 		System.out.println("SEASONCHECK real season=" + season + " biome=" + level.getBiome(site).unwrapKey().map(k -> k.identifier().toString()).orElse("?")
 			+ " warmEnoughToRain=" + warm);
+		boolean tropical = SeasonCompat.tropical(level, site);
+		System.out.println("SEASONCHECK tropical=" + tropical);
 		if (warm) {
 			for (int i = 0; i < CROPS.length; i++) {
-				check(SeasonCompat.canPlant(level, site, CROPS[i]) == expected(season, i),
-					"the mod's fertility rule agrees with the season tags for " + CROPS[i] + " in " + season + " (temperate biome)"); checks++;
+				check(SeasonCompat.canPlant(level, site, CROPS[i]) == SeasonCompat.fertileIn(season, CROPS[i], tropical),
+					"the mod's fertility rule agrees with the tag rule for " + CROPS[i] + " in " + season + " (tropical=" + tropical + ")"); checks++;
 			}
 		} else {
-			System.out.println("SEASONCHECK site biome is cold or tropical: mod-vs-tag agreement not asserted");
+			System.out.println("SEASONCHECK site biome is cold: mod-vs-tag agreement not asserted");
 		}
 		return checks;
 	}

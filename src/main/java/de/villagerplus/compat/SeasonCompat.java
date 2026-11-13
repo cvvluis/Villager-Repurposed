@@ -146,6 +146,19 @@ public final class SeasonCompat {
 		}
 	}
 
+	/** Whether the mod applies its tropical (dry/wet) cycle at {@code pos}; false without the mod, seasons or a resolvable API. */
+	public static boolean tropical(Level level, BlockPos pos) {
+		if (override != null) return false;
+		Handles h = resolved();
+		if (h == null || h.tropical == null) return false;
+		try {
+			return (boolean) h.tropical.invoke(level, pos);
+		} catch (Throwable t) {
+			fail("usesTropicalSeasons", t);
+			return false;
+		}
+	}
+
 	/** Short text for logs and checks: the season name, {@code off} or {@code absent}. */
 	public static String describe(Level level) {
 		if (override == null && !modLoaded()) return "absent";
