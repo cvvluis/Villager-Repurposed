@@ -53,6 +53,7 @@ public final class CompatChecks {
 		check(modded > 0, "dev pack exposes at least one modded villager profession"); checks++;
 		checks += professionMapping(registry);
 		checks += seasonTags(level);
+		checks += villageStructures(level);
 		return checks;
 	}
 
@@ -89,6 +90,20 @@ public final class CompatChecks {
 			check(job.startsWith("porter") || java.util.Arrays.asList(Compat.JOBS).contains(job), "modded profession maps to a known job: " + line); checks++;
 		}
 		return checks;
+	}
+
+	/**
+	 * Villages of Towns and Towers must be part of the vanilla village structure tag (that is how bell/village detection and CTOV-style
+	 * logic see them); reported with the count, asserted only when the mod is loaded.
+	 */
+	private static int villageStructures(ServerLevel level) {
+		if (!modPresent("t_and_t")) return 0;
+		var structures = level.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.STRUCTURE);
+		long members = structures.get(net.minecraft.tags.StructureTags.VILLAGE).map(t -> t.stream()
+			.filter(h -> h.unwrapKey().map(k -> k.identifier().getNamespace().equals("towns_and_towers")).orElse(false)).count()).orElse(0L);
+		System.out.println("COMPAT towns_and_towers village structures in #minecraft:village=" + members);
+		check(members > 0, "Towns and Towers villages are members of the vanilla village structure tag"); 
+		return 1;
 	}
 
 	/** Serene Seasons ships crop tags per season; with the mod loaded they must resolve to real blocks (soil for seasonal farming decisions). */
