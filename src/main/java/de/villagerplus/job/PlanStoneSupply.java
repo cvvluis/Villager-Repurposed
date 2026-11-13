@@ -38,6 +38,29 @@ public final class PlanStoneSupply {
 			&& spareCobble < Math.min(16, missingStone);
 	}
 
+	/** A load of this many cobblestones is worth the walk to the public chest while the plan waits for stone. */
+	static final int DELIVERY_LOAD = 12;
+
+	/** Cobblestone the plan asks for (directly, or as stairs and slabs to craft) beyond what the public chest holds. */
+	static int cobbleShortage(VillageData data, Container stock) {
+		if (data == null || stock == null || !data.hasPlan()) return 0;
+		int stairs = wanted(data, Items.COBBLESTONE_STAIRS);
+		int slabs = wanted(data, Items.COBBLESTONE_SLAB);
+		int demand = wanted(data, Items.COBBLESTONE) + (stairs * 3 + 1) / 2 + (slabs + 1) / 2;
+		return Math.max(0, demand - count(stock, Items.COBBLESTONE));
+	}
+
+	/**
+	 * True when a resident who carries {@code carried} cobblestones should bring them to the public chest now: the plan (or its
+	 * stone chain) is short of cobblestone and the load is either a full delivery or covers the whole shortage.
+	 */
+	public static boolean cobbleDeliveryDue(ServerLevel level, VillageData data, Container stock, int carried) {
+		if (carried <= 0 || data == null || stock == null || !data.hasPlan()) return false;
+		int shortage = cobbleShortage(data, stock);
+		if (shortage <= 0 && !needsCobble(level, data, stock)) return false;
+		return carried >= DELIVERY_LOAD || (shortage > 0 && carried >= shortage);
+	}
+
 	/** Starts plan mining with an actual stored pickaxe or one paid from loaded recipes and public stock. */
 	public static boolean supplyMiningPickaxe(Ctx c, Container stock) {
 		return supplyMiningPickaxe(c, stock, false);

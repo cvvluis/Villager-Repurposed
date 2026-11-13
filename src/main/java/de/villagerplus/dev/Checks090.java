@@ -521,7 +521,9 @@ public final class Checks090 {
   }
   if(mode.equals("minekit")) {
    BlockPos at=new BlockPos(47000,201,47000);
-   int count=de.villagerplus.job.MineKitChecks.run(level,fixtureForEquipment(level,at),at);
+   BlockPos at2=new BlockPos(47300,201,47000);
+   int count=de.villagerplus.job.MineKitChecks.run(level,fixtureForEquipment(level,at),at)
+    +de.villagerplus.job.MineKitChecks.runDelivery(level,fixtureForEquipment(level,at2),at2);
    source.sendSuccess(()->Component.literal("VP090 minekit PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("treewalkback")) {

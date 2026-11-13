@@ -259,6 +259,18 @@ public final class Mining {
 		}
 		VillageData.Mine m = d.mine.get();
 		ensureMineEntrance(c.level(), ref, m, c.v(), c.now());
+		// Cobblestone the village plan is waiting for goes to the public chest as soon as a useful load is on board. Residents who
+		// mine for the plan without owning it used to keep it until their pockets held 64 items, while the plan waited for it.
+		if (need == Need.STONE && PlanStoneSupply.cobbleDeliveryDue(c.level(), ref.data(), box,
+				JobUtil.count(c.v().getInventory(), stack -> stack.is(net.minecraft.world.item.Items.COBBLESTONE)))) {
+			if (c.v().getY() < m.entrance.getY() - 0.5 && nearest(m, c.v().position()) >= 1) {
+				requestCapacityReturn(c, m);
+				return true;
+			}
+			if (JobUtil.depositSurplus(c, stack -> stack.is(net.minecraft.world.item.Items.COBBLESTONE), 1, 0)) {
+				return true;
+			}
+		}
 		MineRoute currentRoute = mineRoute(c.v());
 		// Only as many residents may hold a mine route as there are stands (plus one waiting): the rest do other work.
 		// Without this cap everybody with a stone job walks in and the gallery jams for good.

@@ -131,6 +131,90 @@ public final class MineKitChecks {
 		}
 	}
 
+	/** Cobblestone mined for a waiting plan reaches the public chest in useful loads instead of staying in the miner's pockets. */
+	public static int runDelivery(ServerLevel level, VillageRef ref, BlockPos bell) {
+		Villager worker = null;
+		int checks = 0;
+		VillageData data = ref.data();
+		String oldType = data.planType;
+		Optional<BlockPos> oldOrigin = data.planOrigin;
+		var oldWanted = new java.util.ArrayList<>(data.wanted);
+		try {
+			Container chest = ref.chest(level);
+			if (chest == null) throw new IllegalStateException("MINE KIT CHECK FAILED: fixture chest missing");
+			chest.clearContent();
+			data.planType = "granary";
+			data.planOrigin = Optional.of(bell.offset(0, 0, 20));
+			data.wanted.clear();
+			data.wanted.add("minecraft:cobblestone#18");
+			check(!PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 11), "eleven cobblestones do not yet justify the walk while 18 are missing"); checks++;
+			check(PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 12), "a full load of twelve is delivered while the plan waits"); checks++;
+			check(!PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 0), "nothing carried, nothing to deliver"); checks++;
+			data.wanted.clear();
+			data.wanted.add("minecraft:cobblestone#5");
+			check(PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 5) && !PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 4),
+				"a load that covers the whole remaining shortage is delivered at once, a smaller one is not"); checks++;
+			add(chest, Items.COBBLESTONE, 5);
+			check(!PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 30), "nothing is delivered once the public chest already covers the plan"); checks++;
+			chest.clearContent();
+			data.planType = "";
+			data.planOrigin = Optional.empty();
+			check(!PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 40), "without a plan the miner keeps its stone for the ordinary 64-item delivery"); checks++;
+
+			// Real tick: a resident at the chest with a load and a pickaxe brings it to the public chest.
+			data.planType = "granary";
+			data.planOrigin = Optional.of(bell.offset(0, 0, 20));
+			data.wanted.clear();
+			data.wanted.add("minecraft:cobblestone#18");
+			BlockPos entrance = bell.offset(30, 0, 0);
+			level.getChunk(entrance);
+			VillageData.Mine mine = new VillageData.Mine(entrance, Direction.EAST.get2DDataValue(), 0, entrance.getY() - 3, false);
+			data.mine = Optional.of(mine);
+			worker = EntityTypes.VILLAGER.create(level, EntitySpawnReason.COMMAND);
+			if (worker == null) throw new IllegalStateException("MINE KIT CHECK FAILED: villager missing");
+			worker.setNoAi(true);
+			worker.setInvulnerable(true);
+			worker.addTag("vp090_fixture");
+			BlockPos chestPos = ref.chestPos(level);
+			for (int dx = -3; dx <= 3; dx++) for (int dz = -3; dz <= 3; dz++) {
+				if (dx == 0 && dz == 0) continue;
+				level.setBlock(chestPos.offset(dx, -1, dz), net.minecraft.world.level.block.Blocks.STONE.defaultBlockState(), 3);
+				level.setBlock(chestPos.offset(dx, 0, dz), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+				level.setBlock(chestPos.offset(dx, 1, dz), net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+			}
+			worker.setPos(chestPos.getX() + 1.5, chestPos.getY(), chestPos.getZ() + 0.5);
+			worker.setOnGround(true);
+			level.addFreshEntity(worker);
+			worker.getInventory().setItem(0, new ItemStack(Items.IRON_PICKAXE));
+			add(worker.getInventory(), Items.COBBLESTONE, 14);
+			JobState state = new JobState();
+			VillagerMemory memory = worker.getAttachedOrCreate(VillagerPlus.MEMORY);
+			long now = level.getGameTime() + 5_000L;
+			for (int i = 0; i < 12 && count(chest, Items.COBBLESTONE) == 0; i++) {
+				state.mineCheckAt = 0;
+				state.cooldownUntil = 0;
+				Mining.tick(new Ctx(level, worker, state, memory, ref, now + i * 30L), Mining.Need.STONE);
+				// The fixture villager has no AI: set it onto the delivery stand the job chose (a real one walks there).
+				if (state.target != null) worker.setPos(state.target.getX() + 0.5, state.target.getY(), state.target.getZ() + 0.5);
+			}
+			check(count(chest, Items.COBBLESTONE) == 14 && count(worker.getInventory(), Items.COBBLESTONE) == 0
+				&& count(worker.getInventory(), Items.IRON_PICKAXE) == 1,
+				"a miner carrying a load for the waiting plan puts it into the public chest (chest " + count(chest, Items.COBBLESTONE)
+					+ ", carried " + count(worker.getInventory(), Items.COBBLESTONE) + ", activity " + state.activity
+					+ ", due " + PlanStoneSupply.cobbleDeliveryDue(level, ref.data(), ref.chest(level), count(worker.getInventory(), Items.COBBLESTONE))
+					+ ", needed " + Mining.needed(level, ref, ref.data(), ref.chest(level), Mining.Need.STONE)
+					+ ", blocked " + (worker.level() == level ? state.depositBlockedUntil - now : 0) + ", cd " + (state.cooldownUntil - now) + ")"); checks++;
+			return checks;
+		} finally {
+			if (worker != null) worker.discard();
+			data.mine = Optional.empty();
+			data.planType = oldType;
+			data.planOrigin = oldOrigin;
+			data.wanted.clear();
+			data.wanted.addAll(oldWanted);
+		}
+	}
+
 	private static void add(Container container, Item item, int count) {
 		net.minecraft.world.level.block.entity.HopperBlockEntity.addItem(null, container, new ItemStack(item, count), null);
 	}
