@@ -60,6 +60,16 @@ public final class FoodDiag {
 			.append(" foodStock=").append(Balance.stock(stores, Balance.Kind.FOOD)).append(" target=").append(de.villagerplus.job.FarmerJob.foodTarget(residents.size()))
 			.append(" items=").append(items).append("\n");
 		long now = level.getGameTime();
+		int hungry = 0, carriers = 0, farmers = 0;
+		for (Villager v : residents) {
+			VillagerMemory m = v.getAttached(VillagerPlus.MEMORY);
+			if (m == null) continue;
+			if (Wellbeing.of(level, v, m).satiety() < 25) hungry++;
+			if (v.getVillagerData().profession().getRegisteredName().endsWith("farmer")) farmers++;
+			for (int i = 0; i < v.getInventory().getContainerSize(); i++) if (Meals.isFood(v.getInventory().getItem(i))) { carriers++; break; }
+		}
+		sb.append("  SUMMARY t=").append(now).append(" hungry=").append(hungry).append(" residents=").append(residents.size()).append(" farmers=").append(farmers)
+			.append(" foodCarriers=").append(carriers).append(" harvests=").append(de.villagerplus.job.FarmerJob.HARVESTS).append("\n");
 		Map<String, Integer> all = new java.util.TreeMap<>();
 		for (Container box : stores) for (int i = 0; i < box.getContainerSize(); i++) {
 			ItemStack s = box.getItem(i);

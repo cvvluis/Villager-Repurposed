@@ -300,13 +300,27 @@ public class FarmerJob implements Job {
 		int carriedBefore = JobUtil.count(c.v().getInventory(), foodProduce);
 		// In a food deficit every unit is delivered at once, but a farmer whose generated field lies far from the depot keeps
 		// harvesting until a small batch is full or no ripe crop is left (otherwise one crop costs one round trip of 100+ blocks).
-		boolean batching = foodDeficit && carriedBefore > 0 && carriedBefore < DEFICIT_DEPOSIT_BATCH && ripeCropLeft(c);
+		int carriedSeeds = JobUtil.count(c.v().getInventory(), stack -> stack.is(Items.WHEAT_SEEDS));
+		Boolean ripeLeft = null;
+		boolean batching = false;
+		if (foodDeficit && carriedBefore > 0 && carriedBefore < DEFICIT_DEPOSIT_BATCH) {
+			ripeLeft = ripeCropLeft(c);
+			batching = ripeLeft;
+		}
 		boolean depositing = !batching && JobUtil.depositSurplus(c, foodProduce, foodDeficit ? 1 : Config.FARM_DEPOSIT_THRESHOLD,
 			foodDeficit ? 0 : Config.FARM_KEEP);
 		if (depositing) {
 			return true;
 		}
-		if (starterSeedDepositDue(c) && JobUtil.depositSurplus(c, stack -> stack.is(Items.WHEAT_SEEDS), 1, 0)) {
+		// The harvest drops seeds too: do not walk to the depot for two seeds while ripe crops are waiting in a distant field.
+		boolean seedsWait = false;
+		if (carriedSeeds > 0 && carriedSeeds < SEED_HARVEST_BATCH) {
+			if (ripeLeft == null) ripeLeft = ripeCropLeft(c);
+			// The unfunded first field still needs its eight public seeds promptly; otherwise they travel with the food batch.
+			seedsWait = ripeLeft && c.village() != null && (c.village().data().farms > 0
+				|| publicFarmSeedCount(Balance.storage(c.level(), c.village())) + carriedSeeds >= VISIBLE_STARTER_FIELD_SEEDS);
+		}
+		if (!seedsWait && starterSeedDepositDue(c) && JobUtil.depositSurplus(c, stack -> stack.is(Items.WHEAT_SEEDS), 1, 0)) {
 			return true;
 		}
 		String waterPlanTag = farmWaterPlanTag(c.v());
@@ -982,6 +996,18 @@ public class FarmerJob implements Job {
 
 	/** Development counter of harvested crops since server start. */
 	public static int HARVESTS;
+	private record FenceWait(long until, int signature) { }
+	private static final Map<Long, FenceWait> FENCE_WAIT = new java.util.HashMap<>();
+	private static final long FENCE_WAIT_TICKS = 6000L;
+
+	/** Public wood the fence kit could be made from (logs, planks, sticks, fences); a change reopens a waiting field plan. */
+	static int woodSignature(List<Container> stores) {
+		int total = 0;
+		for (Container box : stores) total += JobUtil.count(box, stack -> stack.is(ItemTags.LOGS) || stack.is(ItemTags.PLANKS)
+			|| stack.is(ItemTags.WOODEN_FENCES) || stack.is(Items.STICK));
+		return total;
+	}
+
 	private static boolean expandCluster(Ctx c) {
 		VillageRef ref = c.village();
 		if (ref == null) return false;
@@ -1043,6 +1069,15 @@ public class FarmerJob implements Job {
 			c.st().materialWaitUntil = c.now() + 600;
 			return false;
 		}
+		// A farmer who found the public wood missing at the site must not walk there again on every shift: wait until the
+		// public wood stock changes (m11: five farmers kept walking to a field site they could never fence).
+		int woodSignature = woodSignature(stores);
+		FenceWait fenceWait = FENCE_WAIT.get(ref.bell().asLong());
+		if (kit == null && fenceWait != null && c.now() < fenceWait.until() && fenceWait.signature() == woodSignature) {
+			c.setActivity("wartet auf Holz für Zaun und Tor");
+			c.st().materialWaitUntil = c.now() + 600;
+			return false;
+		}
 		BlockPos site = findClusterSite(c, ref, starter);
 		if (site == null) {
 			c.setActivity("wartet auf ein sicheres, freies Feldgrundstück");
@@ -1063,7 +1098,8 @@ public class FarmerJob implements Job {
 			kit = fenceKit(stores, requiredFences);
 			if (kit == null) {
 				c.setActivity("wartet auf öffentliche Zutaten für Zaun und Tor");
-				farmBlocked(c, "blocked: no fence kit");
+				farmBlocked(c, "blocked: no fence kit (wood signature " + woodSignature + ")");
+				FENCE_WAIT.put(ref.bell().asLong(), new FenceWait(c.now() + FENCE_WAIT_TICKS, woodSignature));
 				c.st().materialWaitUntil = c.now() + 600;
 				return false;
 			}
@@ -1898,6 +1934,7 @@ public class FarmerJob implements Job {
 
 	/** With a food deficit a farmer delivers at once only when this many food units are carried or nothing ripe is left to harvest. */
 	private static final int DEFICIT_DEPOSIT_BATCH = 8;
+	private static final int SEED_HARVEST_BATCH = 16;
 
 	private static boolean ripeCropLeft(Ctx c) {
 		BlockPos target = c.st().target;
