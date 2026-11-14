@@ -71,7 +71,6 @@ import net.minecraft.world.phys.AABB;
 public final class Builder {
 	private static final Map<Long, VillageStyle> STYLES = new HashMap<>();
 	private static final Map<Long, List<Step>> STEPS = new HashMap<>();
-	static int fbTotal(long origin) { List<Step> l = STEPS.get(origin); return l == null ? -1 : l.size(); }
 	private static final Map<Long, String> PLAN_DIAGNOSTICS = new HashMap<>();
 	private static final Map<Long, Optional<HouseTemplate>> TEMPLATES = new HashMap<>();
 	private static final long STUCK_TICKS = 36000L;
@@ -3608,7 +3607,6 @@ public final class Builder {
 		if (needsNaturalHousePreparation(type, variant, source != null)) {
 			persistProjectView(c, ref, d, null, siteStock, cargoManifest, plannedHouseLotBounds);
 		}
-		FbTrace.cost(type, steps);
 		LOGGER.info("Villagers: Repurposed: Bauplan {} gestartet bei {} (Tick {}, {} Schritte, Variante {}, Vorlage {}, Glocke {})",
 			type, site.toShortString(), c.now(), steps.size(), variant,
 			ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.of()).contains(site.asLong()),

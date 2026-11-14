@@ -23,6 +23,8 @@ public class JobState {
 	public BlockPos forageTarget;
 	/** Next game time at which a forager may run the wide (far meadow) seed-grass search again. */
 	public long forageFarSearchAt;
+	/** Game time of this forager's latest seed-grass roll (a forager that has stopped rolling delivers what it carries). */
+	public long forageLastRollAt;
 	/** Last safe grass patch that yielded no seeds; avoid immediately retrying the same low-yield spot. */
 	public BlockPos forageRejectedTarget;
 	public Entity targetEntity;

@@ -405,7 +405,6 @@ public final class JobManager {
 		VillagerMemory mem = v.getAttachedOrCreate(VillagerPlus.MEMORY);
 		VillageRef village = Villages.find(level, v);
 		if (village != null) de.villagerplus.village.VillageAdmin.maintain(level, village, now);
-		de.villagerplus.build.FbTrace.sample(level, v, mem, state(v).activity == null ? "" : state(v).activity, v.getVillagerData().profession().unwrapKey().map(k -> k.identifier().getPath()).orElse("?"), village, now);
 		if (v.fallDistance > 3.5 && !v.onGround() && FALL_LOG.getOrDefault(v.getUUID(), -1000L) + 200L < now) {
 			// Dev aid: where and while doing what do residents fall from heights?
 			FALL_LOG.put(v.getUUID(), now);

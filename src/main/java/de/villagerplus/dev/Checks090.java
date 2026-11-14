@@ -607,6 +607,11 @@ public final class Checks090 {
    int total=count;
    source.sendSuccess(()->Component.literal("VP090 farmexpand PASS "+total+" checks"),false);return total;
   }
+  if(mode.equals("firstbuilding")) {
+   var ref=fixtureForEquipment(level,A);
+   int count=de.villagerplus.job.FirstBuildingChecks.run(level,ref);
+   source.sendSuccess(()->Component.literal("VP090 firstbuilding PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("livestockherding")) {
    var ref=fixtureForEquipment(level,new BlockPos(27000,201,27000));
    int count=de.villagerplus.job.LivestockHerdingChecks.run(level,ref);
