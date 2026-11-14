@@ -111,7 +111,8 @@ public final class FoodChainChecks {
 			memory.name = "FoodCarrier";
 			carrier.getInventory().setItem(0, new ItemStack(Items.BREAD, 5));
 			carrier.getInventory().setItem(1, new ItemStack(Items.CARROT, 3));
-			check(deliver(level, ref, carrier, memory, level.getGameTime() + 10),
+			boolean delivered = deliver(level, ref, carrier, memory, level.getGameTime() + 10);
+			check(delivered,
 				"a farmer's harvest reaches the public chest through the real delivery path while no granary exists");
 			checks++;
 			check(JobUtil.count(carrier.getInventory(), Meals::isFood) == 0
@@ -176,7 +177,7 @@ public final class FoodChainChecks {
 		state.cooldownUntil = 0;
 		state.walkStart = 0;
 		for (int attempt = 0; attempt < 60; attempt++) {
-			Ctx ctx = new Ctx(level, carrier, state, memory, ref, start + attempt * 200L);
+			Ctx ctx = new Ctx(level, carrier, state, memory, ref, start + attempt);
 			state.cooldownUntil = 0;
 			boolean busy = JobUtil.depositSurplus(ctx, Meals::isFood, 1, 0);
 			if (JobUtil.count(carrier.getInventory(), Meals::isFood) == 0) return true;

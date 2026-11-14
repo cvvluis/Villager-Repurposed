@@ -249,7 +249,9 @@ public final class StockPolicy {
 	public static int foodBridgeRoom(ServerLevel level, VillageRef ref) {
 		int residents = Villages.residents(level, ref, de.villagerplus.Config.VILLAGE_RADIUS, v -> true).size();
 		long stored = 0;
-		for (Container box : Balance.storage(level, ref)) {
+		// Only the public material chests count: food in a registered granary must not close the overflow route.
+		for (BlockPos pos : Lager.materialChests(level, ref)) {
+			Container box = Lager.publicContainerAt(level, pos);
 			if (box == null) continue;
 			for (int slot = 0; slot < box.getContainerSize(); slot++) {
 				ItemStack stack = box.getItem(slot);

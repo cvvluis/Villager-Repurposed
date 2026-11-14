@@ -5341,6 +5341,12 @@ public final class Builder {
 	private static final long PEN_SITE_RETRY_TICKS = 12000L;
 	private static final java.util.Map<Long, Long> PEN_SITE_BLOCKED_UNTIL = new java.util.HashMap<>();
 
+	/** Whether a farmer could open a new Builder project right now (a free cursor slot and, for the third, a real crew). */
+	public static boolean farmerCanStartProject(Ctx c) {
+		VillageRef ref = c.village();
+		return ref != null && canStartProject(c.level(), ref, ref.data(), c.v(), false);
+	}
+
 	/** True while a failed first-pen site search is waiting for its retry; the farmer then plans fields instead of shadowing them with the pen. */
 	public static boolean penSiteRetryPending(VillageRef ref, long now) {
 		return ref != null && now < PEN_SITE_BLOCKED_UNTIL.getOrDefault(ref.bell().asLong(), 0L);

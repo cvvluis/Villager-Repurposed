@@ -115,9 +115,10 @@ public class FarmerJob implements Job {
 	private static final long DORMANT_RESCAN_TICKS = 200L;
 	private static final Map<java.util.UUID, Long> DORMANT_RESCAN = new java.util.HashMap<>();
 
-	private static boolean dormantFishing(Ctx c, BlockPos target) {
+	private static boolean dormantFishing(Ctx c, BlockPos target, boolean foodDeficit) {
 		return target != null && !mature(c.level(), target) && c.level().getFluidState(target).is(net.minecraft.tags.FluidTags.WATER)
-			&& c.now() < DORMANT_RESCAN.getOrDefault(c.v().getUUID(), 0L) && fieldsDormant(c.level(), c.v().blockPosition());
+			&& c.now() < DORMANT_RESCAN.getOrDefault(c.v().getUUID(), 0L)
+			&& (foodDeficit || fieldsDormant(c.level(), c.v().blockPosition()));
 	}
 	private record FenceKit(Item fenceItem, Block fence, Item gateItem, Block gate) { }
 	private record Taken(Container source, Item item, int count) { }
@@ -297,10 +298,11 @@ public class FarmerJob implements Job {
 		// be half-inserted into one depot and then reported as a failed delivery.
 		Predicate<ItemStack> foodProduce = stack -> isCrop(stack.getItem()) && !stack.is(Items.WHEAT_SEEDS);
 		int carriedBefore = JobUtil.count(c.v().getInventory(), foodProduce);
-		boolean depositing = JobUtil.depositSurplus(c, foodProduce, foodDeficit ? 1 : Config.FARM_DEPOSIT_THRESHOLD,
+		// In a food deficit every unit is delivered at once, but a farmer whose generated field lies far from the depot keeps
+		// harvesting until a small batch is full or no ripe crop is left (otherwise one crop costs one round trip of 100+ blocks).
+		boolean batching = foodDeficit && carriedBefore > 0 && carriedBefore < DEFICIT_DEPOSIT_BATCH && ripeCropLeft(c);
+		boolean depositing = !batching && JobUtil.depositSurplus(c, foodProduce, foodDeficit ? 1 : Config.FARM_DEPOSIT_THRESHOLD,
 			foodDeficit ? 0 : Config.FARM_KEEP);
-		if (carriedBefore > 0) farmBlocked(c, "deposit: carried=" + carriedBefore + " -> " + JobUtil.count(c.v().getInventory(), foodProduce) + " result=" + depositing
-			+ " deficit=" + foodDeficit + " blockedUntil=" + (c.st().depositBlockedUntil - c.now()) + " act='" + c.st().activity + "'");
 		if (depositing) {
 			return true;
 		}
@@ -318,7 +320,7 @@ public class FarmerJob implements Job {
 		ServerLevel level = c.level();
 		BlockPos target = st.target;
 		// Dormant season: keep fishing between the periodic harvest re-scans instead of clearing the water target every tick.
-		if (dormantFishing(c, target) && FISHING_FALLBACK.primary(c)) return true;
+		if (dormantFishing(c, target, foodDeficit) && FISHING_FALLBACK.primary(c)) return true;
 		if (target == null || !mature(level, target) || !harvestAllowedByFarmZones(farmZones(c.village()), target)) {
 			// Keep the approach timer while an existing starter-seed route is active.
 			// JobUtil.approachLong owns that route while st.target remains null.
@@ -327,7 +329,8 @@ public class FarmerJob implements Job {
 			if (target == null) {
 				if (forageStarterWheatSeeds(c)) return true;
 				// Nothing to harvest and (Serene Seasons) nothing that may be planted: fish instead of idling, like the seed-grass fallback.
-				if (fieldsDormant(level, c.v().blockPosition())) {
+				// Also fish while the village is below its food reserve and no crop is ripe: real catches, delivered like any food.
+				if (foodDeficit || fieldsDormant(level, c.v().blockPosition())) {
 					DORMANT_RESCAN.put(c.v().getUUID(), c.now() + DORMANT_RESCAN_TICKS);
 					if (FISHING_FALLBACK.primary(c)) return true;
 				}
@@ -368,6 +371,7 @@ public class FarmerJob implements Job {
 			JobUtil.give(level, c.v(), drop);
 		}
 		level.setBlock(target, crop.getStateForAge(0), 3);
+		HARVESTS++;
 		level.levelEvent(2001, target, Block.getId(state));
 		level.playSound(null, target, SoundEvents.CROP_BREAK, SoundSource.BLOCKS, 1.0F, 1.0F);
 		JobUtil.swing(c.v());
@@ -844,8 +848,8 @@ public class FarmerJob implements Job {
 				initialPenDue = shouldStartInitialPen(ref.data().farms, true, residents,
 					eligibleLivestock, publicStorageReady, savedPenPlan)
 					&& Livestock.canPlanInitialPen(c.level(), ref, c.v())
-					// A pen without a site must not shadow the starter field (m11: the farmers never reached the field path).
-					&& (savedPenPlan || !Builder.penSiteRetryPending(ref, c.now()));
+					// A pen that cannot start (no site, or all three project slots held by stalled plans) must not shadow the starter field (m11: the farmers never reached the field path).
+					&& (savedPenPlan || !Builder.penSiteRetryPending(ref, c.now()) && Builder.farmerCanStartProject(c));
 				penReadinessMarker = initialPenReadinessMarker(true, savedFieldPlan, savedPenPlan,
 					ref.data().farms, residents, eligibleLivestock, publicStorageReady,
 					ref.data().activeBuildProjectCount(), initialPenStockSignature(builderStock));
@@ -862,9 +866,6 @@ public class FarmerJob implements Job {
 		}
 		boolean prioritizeInitialPen = shouldPrioritizeInitialPenBeforeNewExpansion(
 			savedFieldPlan, initialPenDue, savedFarmExpansion);
-		farmBlocked(c, "secondary: firstFarm=" + firstFarm + " savedFarmerPlan=" + savedFarmerPlan + " waitVisible=" + waitForVisibleStarterFarm
-			+ " newStarter=" + newStarterFarm + " prioPen=" + prioritizeInitialPen + " legacy=" + legacyBuilder + " seeds=" + builderWheatSeeds
-			+ " hasPlan=" + (ref != null && ref.data().hasPlan()) + " penMissing=" + (ref != null && ref.data().extra.pen.isEmpty()));
 		if (prioritizeInitialPen && Builder.tick(c, false)) return true;
 		// If the paid direct plot cannot find a safe site, let Builder try its terrain-aware compact plot.
 		if ((firstFarm && savedFarmerPlan && !waitForVisibleStarterFarm && Builder.tick(c, false))
@@ -968,16 +969,19 @@ public class FarmerJob implements Job {
 		org.slf4j.LoggerFactory.getLogger("villagerplus").info("Farmstart {}: {}", c.mem().name, message);
 	}
 
-	private static final java.util.Map<java.util.UUID, Long> FARM_BLOCKED_DIAG = new java.util.HashMap<>();
+	private static final java.util.Map<String, Long> FARM_BLOCKED_DIAG = new java.util.HashMap<>();
 
-	/** Why the farmer's field plan did not start (rate-limited like {@link #farmDiag}). */
+	/** Why the farmer's field plan did not start (rate-limited per farmer and message kind, like {@link #farmDiag}). */
 	private static void farmBlocked(Ctx c, String message) {
-		long last = FARM_BLOCKED_DIAG.getOrDefault(c.v().getUUID(), -1_000_000L);
+		String key = c.v().getUUID() + message.substring(0, Math.min(14, message.length()));
+		long last = FARM_BLOCKED_DIAG.getOrDefault(key, -1_000_000L);
 		if (c.now() - last < 2400L) return;
-		FARM_BLOCKED_DIAG.put(c.v().getUUID(), c.now());
+		FARM_BLOCKED_DIAG.put(key, c.now());
 		org.slf4j.LoggerFactory.getLogger("villagerplus").info("Farmstart {}: {}", c.mem().name, message);
 	}
 
+	/** Development counter of harvested crops since server start. */
+	public static int HARVESTS;
 	private static boolean expandCluster(Ctx c) {
 		VillageRef ref = c.village();
 		if (ref == null) return false;
@@ -1048,7 +1052,8 @@ public class FarmerJob implements Job {
 		}
 		c.setActivity(starter ? "legt das erste bewässerte Feld an" : "erweitert die bewässerten Nahrungsfelder");
 		Anim.hold(c, Items.IRON_HOE);
-		if (!JobUtil.approach(c, site, 3.0)) return true;
+		boolean arrived = JobUtil.approach(c, site, 3.0);
+		if (!arrived) return true;
 		int version = starter ? 3 : 2;
 		if (!clusterAllowedByZones(ref, site, version)
 			|| !(starter ? safeStarterClusterSite(c.level(), site) : safeClusterSite(c.level(), site))) return false;
@@ -1889,6 +1894,15 @@ public class FarmerJob implements Job {
 		}
 		if (best == null) best = nearestVillageCrop(c, zones);
 		return best;
+	}
+
+	/** With a food deficit a farmer delivers at once only when this many food units are carried or nothing ripe is left to harvest. */
+	private static final int DEFICIT_DEPOSIT_BATCH = 8;
+
+	private static boolean ripeCropLeft(Ctx c) {
+		BlockPos target = c.st().target;
+		if (target != null && mature(c.level(), target) && harvestAllowedByFarmZones(farmZones(c.village()), target)) return true;
+		return find(c) != null;
 	}
 
 	/** Planted field cells within this radius of the bell are harvest candidates even when the farmer has no job site or work memory nearby. */
