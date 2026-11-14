@@ -8,7 +8,7 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
 
-/** Client -> Server: Dorf an der Dorftafel umbenennen (leerer Name = prozeduraler Name). */
+/** Client -> Server request. Treat {@code name} as untrusted; the server validates, normalizes, and persists it via {@code Network.rename}. */
 public record RenameVillage(BlockPos board, String name) implements CustomPacketPayload {
 	public static final CustomPacketPayload.Type<RenameVillage> TYPE =
 		new CustomPacketPayload.Type<>(Identifier.fromNamespaceAndPath(VillagerPlus.MOD_ID, "rename_village"));

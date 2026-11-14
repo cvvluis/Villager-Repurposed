@@ -3,43 +3,59 @@ package de.villagerplus.job;
 import de.villagerplus.village.VillageData;
 import de.villagerplus.village.VillageRef;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
-import net.minecraft.tags.ItemTags;
 import net.minecraft.world.Container;
+import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.crafting.CraftingInput;
+import net.minecraft.world.item.crafting.CraftingRecipe;
+import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.world.level.block.entity.HopperBlockEntity;
 
 /**
  * Werkstatt: Wenn dem Dorf fuer einen Bau ein bestimmtes Material fehlt ({@code VillageData.wanted}), versucht der
- * Handwerker, es aus vorhandenen Rohstoffen der Dorfkiste herzustellen (Bretter aus Stamm, Treppen/Halbstufen/Mauern/
- * Zaeune aus dem Grundblock, Tueren aus Brettern, Glasscheiben aus Glas, Steinziegel aus Stein ...). Die Regeln arbeiten
- * ueber die Item-Namen und funktionieren deshalb auch fuer Bloecke aus Mods, die der Vanilla-Benennung folgen.
+ * Handwerker, es mit den tatsächlich geladenen Rezepten herzustellen. Fehlende Rezept-Zwischenprodukte können in
+ * späteren Arbeitstakten ebenfalls nur über geladene Rezepte entstehen; unbekannte Namensähnlichkeiten gelten nicht als Rezept.
  * Nicht herstellbares (Bruchstein, Sandstein ...) muss abgebaut werden ({@link Mining}).
  */
 public final class Workshop {
 	private Workshop() {
 	}
 
-	private record Rule(Predicate<ItemStack> input, int in, int out, String label) { }
-
 	/** true = beschaeftigt. */
 	public static boolean tick(Ctx c) {
 		VillageRef ref = c.village();
-		if (ref == null || ref.data().wanted.isEmpty()) {
-			return false;
-		}
+		if (ref == null) return false;
 		BlockPos chest = JobUtil.chest(c);
 		Container box = chest == null ? null : JobUtil.box(c);
 		if (box == null) {
 			return false;
 		}
+		if (ref.data().wanted.isEmpty()) return SmithSmelting.workPlanStone(c, ref, box);
 		if (fetchFromLager(c, ref, box)) {
+			return true;
+		}
+		if (ref.data().hasPlan() && PlanStoneSupply.craftRequestedBricks(c.level(), ref.data(), box, false)) {
+			if (!JobUtil.approachLong(c, chest, 3.0)) return true;
+			if (PlanStoneSupply.craftRequestedBricks(c.level(), ref.data(), box, true)) {
+				c.setActivity("stellt Steinziegel für den Bauplan her");
+				Anim.hold(c, Items.STONE_BRICKS);
+				c.st().cooldownUntil = c.now() + 100;
+				c.mem().jobsDone++;
+				return true;
+			}
+		}
+		if (ref.data().hasPlan() && SmithSmelting.workPlanStone(c, ref, box)) {
 			return true;
 		}
 		for (String entry : new ArrayList<>(ref.data().wanted)) {
@@ -56,28 +72,149 @@ public final class Workshop {
 			if (RecipeCrafting.craft(c, box, stack -> stack.is(target.get()), wanted)) {
 				return true;
 			}
-			Rule rule = ruleFor(target.get(), box);
-			if (rule == null) {
-				continue;
-			}
-			int batches = Math.min(Math.max(1, (missing + rule.out() - 1) / rule.out()), Math.min(8, JobUtil.count(box, rule.input()) / rule.in()));
-			if (batches <= 0) {
-				continue;
-			}
-			c.setActivity("stellt her: " + rule.label());
-			Anim.hold(c, Items.IRON_AXE);
-			if (!JobUtil.approach(c, chest, 3.0)) {
+			if (fetchRecipeInputsFromLager(c, ref, box, target.get())) return true;
+			if (RecipeCrafting.craftPrerequisite(c, box, chest, target.get())) {
 				return true;
 			}
-			JobUtil.take(box, rule.input(), rule.in() * batches);
-			JobUtil.insert(c, box, new ItemStack(target.get(), rule.out() * batches));
-			JobUtil.swing(c.v());
+		}
+		return false;
+	}
+
+	/**
+	 * Move only the exact missing inputs for one loaded recipe from registered public lager chests into the communal
+	 * chest. RecipeCrafting operates on the communal chest, so ingredients that exist only in a warehouse otherwise
+	 * remain invisible to both target crafting and its prerequisite chain.
+	 */
+	private static boolean fetchRecipeInputsFromLager(Ctx c, VillageRef ref, Container chest, Item target) {
+		if (ref.data().extra.lager.isEmpty()) return false;
+		List<Container> stores = de.villagerplus.village.Lager.containers(c.level(), ref.data()).stream()
+			.filter(store -> store != chest).distinct().toList();
+		if (stores.isEmpty()) return false;
+		Container combined = de.villagerplus.village.Lager.combined(c.level(), ref);
+		if (combined == null) return false;
+
+		for (RecipeHolder<?> holder : c.level().recipeAccess().getRecipes()) {
+			if (!(holder.value() instanceof CraftingRecipe recipe)) continue;
+			CraftingInput input = RecipeCrafting.inputFor(recipe, combined, c.level());
+			if (input == null) continue;
+			ItemStack output = recipe.assemble(input);
+			if (output.isEmpty() || !output.is(target) || JobUtil.count(chest, stack -> stack.is(target)) >= targetDemand(ref, target)) continue;
+
+			List<StackNeed> needs = new ArrayList<>();
+			for (int slot = 0; slot < input.size(); slot++) {
+				ItemStack ingredient = input.getItem(slot);
+				if (ingredient.isEmpty()) continue;
+				int found = -1;
+				for (int i = 0; i < needs.size(); i++) {
+					if (ItemStack.isSameItemSameComponents(needs.get(i).sample(), ingredient)) { found = i; break; }
+				}
+				if (found < 0) needs.add(new StackNeed(ingredient.copyWithCount(1), 1));
+				else {
+					StackNeed prior = needs.get(found);
+					needs.set(found, new StackNeed(prior.sample(), prior.count() + 1));
+				}
+			}
+
+			List<Withdrawal> withdrawals = new ArrayList<>();
+			Map<StoreSlot, Integer> reserved = new LinkedHashMap<>();
+			boolean complete = true;
+			for (StackNeed need : needs) {
+				int missing = need.count() - JobUtil.count(chest,
+					stack -> ItemStack.isSameItemSameComponents(stack, need.sample()));
+				for (Container store : stores) {
+					for (int slot = 0; slot < store.getContainerSize() && missing > 0; slot++) {
+						ItemStack stack = store.getItem(slot);
+						if (!ItemStack.isSameItemSameComponents(stack, need.sample())) continue;
+						StoreSlot key = new StoreSlot(store, slot);
+						int available = stack.getCount() - reserved.getOrDefault(key, 0);
+						int amount = Math.min(missing, available);
+						if (amount <= 0) continue;
+						reserved.merge(key, amount, Integer::sum);
+						withdrawals.add(new Withdrawal(store, slot, need.sample(), amount));
+						missing -= amount;
+					}
+				}
+				if (missing > 0) { complete = false; break; }
+			}
+			if (!complete || withdrawals.isEmpty()) continue;
+
+			SimpleContainer preview = copy(chest);
+			for (Withdrawal withdrawal : withdrawals) {
+				ItemStack remainder = HopperBlockEntity.addItem(null, preview,
+					withdrawal.sample().copyWithCount(withdrawal.count()), null);
+				if (!remainder.isEmpty()) { complete = false; break; }
+			}
+			if (!complete) continue;
+			CraftingInput stagedInput = RecipeCrafting.inputFor(recipe, preview, c.level());
+			if (stagedInput == null || !recipe.assemble(stagedInput).is(target)
+				|| !RecipeCrafting.commit(copy(preview), stagedInput, recipe.assemble(stagedInput), recipe.getRemainingItems(stagedInput))) continue;
+			c.setActivity("holt Zutaten für den Bauplan aus dem öffentlichen Lager");
+			if (!JobUtil.approach(c, ref.data().extra.lager.get(), 4.5)) return true;
+			if (!applyWithdrawals(chest, withdrawals)) continue;
 			c.st().cooldownUntil = c.now() + 60;
 			c.mem().jobsDone++;
 			return true;
 		}
 		return false;
 	}
+
+	private static int targetDemand(VillageRef ref, Item target) {
+		String id = BuiltInRegistries.ITEM.getKey(target).toString();
+		int requested = 0;
+		for (String entry : ref.data().wanted) {
+			String[] fields = entry.split("#", 2);
+			if (!fields[0].equals(id)) continue;
+			try { requested = (int)Math.min(Integer.MAX_VALUE, (long)requested + (fields.length == 2 ? Integer.parseInt(fields[1]) : 1)); }
+			catch (NumberFormatException ignored) { return 0; }
+		}
+		return requested;
+	}
+
+	private static SimpleContainer copy(Container source) {
+		SimpleContainer copy = new SimpleContainer(source.getContainerSize());
+		for (int slot = 0; slot < source.getContainerSize(); slot++) copy.setItem(slot, source.getItem(slot).copy());
+		return copy;
+	}
+
+	private static boolean applyWithdrawals(Container chest, List<Withdrawal> withdrawals) {
+		Map<Container, List<ItemStack>> before = new IdentityHashMap<>();
+		before.put(chest, snapshot(chest));
+		for (Withdrawal withdrawal : withdrawals) before.computeIfAbsent(withdrawal.store(), Workshop::snapshot);
+		for (Withdrawal withdrawal : withdrawals) {
+			ItemStack source = withdrawal.store().getItem(withdrawal.slot());
+			if (!ItemStack.isSameItemSameComponents(source, withdrawal.sample()) || source.getCount() < withdrawal.count()) {
+				restore(before);
+				return false;
+			}
+			ItemStack paid = withdrawal.store().removeItem(withdrawal.slot(), withdrawal.count());
+			if (paid.getCount() != withdrawal.count()
+				|| !HopperBlockEntity.addItem(null, chest, paid, null).isEmpty()) {
+				restore(before);
+				return false;
+			}
+		}
+		before.keySet().forEach(Container::setChanged);
+		return true;
+	}
+
+	private static List<ItemStack> snapshot(Container container) {
+		List<ItemStack> result = new ArrayList<>(container.getContainerSize());
+		for (int slot = 0; slot < container.getContainerSize(); slot++) result.add(container.getItem(slot).copy());
+		return result;
+	}
+
+	private static void restore(Map<Container, List<ItemStack>> snapshots) {
+		for (Map.Entry<Container, List<ItemStack>> entry : snapshots.entrySet()) {
+			Container container = entry.getKey();
+			List<ItemStack> contents = entry.getValue();
+			for (int slot = 0; slot < contents.size(); slot++) container.setItem(slot, contents.get(slot).copy());
+			container.setChanged();
+		}
+	}
+
+	private record StackNeed(ItemStack sample, int count) { }
+	private record StoreSlot(Container container, int slot) { }
+	private record Withdrawal(Container store, int slot, ItemStack sample, int count) { }
 
 	/**
 	 * Fehlt der Dorfkiste etwas aus der Wunschliste, das im Lagerschuppen liegt, holt der Handwerker es dort ab (fuer Bretter
@@ -89,6 +226,8 @@ public final class Workshop {
 			return false;
 		}
 		List<Container> lagers = de.villagerplus.village.Lager.containers(c.level(), d);
+		Container allStock = de.villagerplus.village.Lager.combined(c.level(), ref);
+		boolean planStoneChain = PlanStoneSupply.needsFurnace(c.level(), d, allStock == null ? box : allStock);
 		for (String entry : new ArrayList<>(d.wanted)) {
 			String[] parts = entry.split("#");
 			Optional<Item> target = BuiltInRegistries.ITEM.getOptional(Identifier.parse(parts[0]));
@@ -100,7 +239,22 @@ public final class Workshop {
 				continue;
 			}
 			boolean planks = parts[0].endsWith("_planks");
-			Predicate<ItemStack> match = s -> s.is(target.get()) || (planks && s.is(ItemTags.LOGS));
+			boolean stoneBricks = target.get() == Items.STONE_BRICKS
+				&& PlanStoneSupply.supports(c.level(), true, false);
+			boolean planCobble = planStoneChain;
+			if (stoneBricks) {
+				int requestedStone = 0;
+				for (String request : d.wanted) {
+					String[] fields = request.split("#", 2);
+					if (fields[0].equals("minecraft:stone"))
+						requestedStone = Math.max(requestedStone, parseInt(fields.length > 1 ? fields[1] : "1"));
+				}
+				missing -= Math.max(0, JobUtil.count(box, s -> s.is(Items.STONE)) - requestedStone);
+				if (missing <= 0) continue;
+			}
+			java.util.Set<String> requestedLogs = planks ? Woodcutting.demandedLogIds(d.wanted) : java.util.Set.of();
+			Predicate<ItemStack> match = s -> s.is(target.get()) || (planks && Woodcutting.matchesRequestedLog(s, requestedLogs))
+				|| (stoneBricks && s.is(Items.STONE)) || (planCobble && s.is(Items.COBBLESTONE));
 			int inLager = 0;
 			for (Container l : lagers) {
 				inLager += JobUtil.count(l, match);
@@ -119,7 +273,7 @@ public final class Workshop {
 			})) {
 				continue;
 			}
-			int left = Math.min(Math.max(missing, planks ? 16 : 1), 4096);
+			int left = Math.min(Math.max(missing, planks || planCobble ? 16 : 1), 4096);
 			for (Container l : lagers) {
 				for (int i = 0; i < l.getContainerSize() && left > 0; i++) {
 					ItemStack stack = l.getItem(i);
@@ -154,55 +308,4 @@ public final class Workshop {
 		}
 	}
 
-	private static Predicate<ItemStack> ofIds(Container box, String ns, String... paths) {
-		List<Item> items = new ArrayList<>();
-		for (String p : paths) {
-			BuiltInRegistries.ITEM.getOptional(Identifier.fromNamespaceAndPath(ns, p)).ifPresent(items::add);
-		}
-		if (items.isEmpty()) {
-			return null;
-		}
-		return s -> items.stream().anyMatch(s::is);
-	}
-
-	/** Findet ein Herstellungsrezept fuer {@code target}, dessen Zutat in der Kiste liegt (sonst null). */
-	private static Rule ruleFor(Item target, Container box) {
-		Identifier id = BuiltInRegistries.ITEM.getKey(target);
-		String ns = id.getNamespace();
-		String path = id.getPath();
-
-		if (path.endsWith("_planks")) {
-			String wood = path.substring(0, path.length() - "_planks".length());
-			return pick(box, new Rule(ofIds(box, ns, wood + "_log", wood + "_stem", wood + "_wood", wood + "_hyphae", "stripped_" + wood + "_log"),
-				1, 4, "Bretter"));
-		}
-		String[][] derived = {
-			{"_stairs", "1"}, {"_slab", "2"}, {"_wall", "1"}, {"_fence", "1"}, {"_fence_gate", "1"}, {"_pressure_plate", "1"},
-			{"_button", "1"}, {"_trapdoor", "1"}, {"_door", "1"}, {"_sign", "1"}
-		};
-		for (String[] d : derived) {
-			if (path.endsWith(d[0])) {
-				String prefix = path.substring(0, path.length() - d[0].length());
-				Predicate<ItemStack> in = ofIds(box, ns, prefix + "_planks", prefix, prefix + "s", prefix + "_block", prefix + "_bricks");
-				int cost = d[0].equals("_door") || d[0].equals("_trapdoor") ? 2 : 1;
-				return pick(box, new Rule(in, cost, Integer.parseInt(d[1]), "Zuschnitt"));
-			}
-		}
-		if (path.equals("glass_pane")) {
-			return pick(box, new Rule(ofIds(box, ns, "glass"), 1, 2, "Glasscheiben"));
-		}
-		if (path.endsWith("_bricks") || path.equals("stone_bricks")) {
-			String prefix = path.substring(0, path.length() - "_bricks".length());
-			return pick(box, new Rule(ofIds(box, ns, prefix.isEmpty() ? "stone" : prefix, "stone"), 1, 1, "Steinziegel"));
-		}
-		if (path.startsWith("cut_") || path.startsWith("smooth_") || path.startsWith("polished_") || path.startsWith("chiseled_")) {
-			String base = path.substring(path.indexOf('_') + 1);
-			return pick(box, new Rule(ofIds(box, ns, base, base + "_block"), 1, 1, "Steinmetzarbeit"));
-		}
-		return null;
-	}
-
-	private static Rule pick(Container box, Rule r) {
-		return r.input() == null ? null : r;
-	}
 }

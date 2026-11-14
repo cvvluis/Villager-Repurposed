@@ -1,0 +1,964 @@
+{
+ "variants": {
+  "facing=north,half=lower,part=left,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_left_lower"
+  },
+  "facing=east,half=lower,part=left,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_left_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=left,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_left_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=left,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_left_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=left,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_left_upper"
+  },
+  "facing=east,half=upper,part=left,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_left_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=left,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_left_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=left,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_left_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=middle,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_middle_lower"
+  },
+  "facing=east,half=lower,part=middle,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_middle_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=middle,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_middle_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=middle,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_middle_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=middle,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_middle_upper"
+  },
+  "facing=east,half=upper,part=middle,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_middle_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=middle,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_middle_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=middle,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_middle_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=inner,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_inner_lower"
+  },
+  "facing=east,half=lower,part=inner,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_inner_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=inner,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_inner_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=inner,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_inner_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=inner,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_inner_upper"
+  },
+  "facing=east,half=upper,part=inner,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_inner_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=inner,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_inner_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=inner,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_inner_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=right,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_right_lower"
+  },
+  "facing=east,half=lower,part=right,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_right_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=right,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_right_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=right,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_right_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=right,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_right_upper"
+  },
+  "facing=east,half=upper,part=right,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_right_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=right,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_right_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=right,wood=oak": {
+   "model": "villagerplus:block/dorftafel_gross_oak_right_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=left,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_left_lower"
+  },
+  "facing=east,half=lower,part=left,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_left_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=left,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_left_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=left,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_left_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=left,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_left_upper"
+  },
+  "facing=east,half=upper,part=left,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_left_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=left,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_left_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=left,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_left_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=middle,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_middle_lower"
+  },
+  "facing=east,half=lower,part=middle,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_middle_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=middle,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_middle_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=middle,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_middle_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=middle,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_middle_upper"
+  },
+  "facing=east,half=upper,part=middle,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_middle_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=middle,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_middle_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=middle,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_middle_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=inner,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_inner_lower"
+  },
+  "facing=east,half=lower,part=inner,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_inner_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=inner,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_inner_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=inner,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_inner_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=inner,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_inner_upper"
+  },
+  "facing=east,half=upper,part=inner,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_inner_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=inner,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_inner_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=inner,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_inner_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=right,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_right_lower"
+  },
+  "facing=east,half=lower,part=right,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_right_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=right,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_right_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=right,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_right_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=right,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_right_upper"
+  },
+  "facing=east,half=upper,part=right,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_right_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=right,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_right_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=right,wood=spruce": {
+   "model": "villagerplus:block/dorftafel_gross_spruce_right_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=left,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_left_lower"
+  },
+  "facing=east,half=lower,part=left,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_left_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=left,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_left_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=left,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_left_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=left,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_left_upper"
+  },
+  "facing=east,half=upper,part=left,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_left_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=left,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_left_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=left,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_left_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=middle,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_middle_lower"
+  },
+  "facing=east,half=lower,part=middle,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_middle_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=middle,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_middle_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=middle,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_middle_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=middle,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_middle_upper"
+  },
+  "facing=east,half=upper,part=middle,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_middle_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=middle,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_middle_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=middle,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_middle_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=inner,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_inner_lower"
+  },
+  "facing=east,half=lower,part=inner,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_inner_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=inner,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_inner_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=inner,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_inner_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=inner,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_inner_upper"
+  },
+  "facing=east,half=upper,part=inner,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_inner_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=inner,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_inner_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=inner,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_inner_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=right,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_right_lower"
+  },
+  "facing=east,half=lower,part=right,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_right_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=right,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_right_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=right,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_right_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=right,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_right_upper"
+  },
+  "facing=east,half=upper,part=right,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_right_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=right,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_right_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=right,wood=birch": {
+   "model": "villagerplus:block/dorftafel_gross_birch_right_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=left,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_left_lower"
+  },
+  "facing=east,half=lower,part=left,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_left_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=left,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_left_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=left,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_left_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=left,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_left_upper"
+  },
+  "facing=east,half=upper,part=left,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_left_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=left,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_left_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=left,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_left_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=middle,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_middle_lower"
+  },
+  "facing=east,half=lower,part=middle,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_middle_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=middle,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_middle_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=middle,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_middle_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=middle,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_middle_upper"
+  },
+  "facing=east,half=upper,part=middle,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_middle_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=middle,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_middle_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=middle,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_middle_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=inner,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_inner_lower"
+  },
+  "facing=east,half=lower,part=inner,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_inner_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=inner,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_inner_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=inner,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_inner_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=inner,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_inner_upper"
+  },
+  "facing=east,half=upper,part=inner,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_inner_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=inner,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_inner_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=inner,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_inner_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=right,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_right_lower"
+  },
+  "facing=east,half=lower,part=right,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_right_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=right,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_right_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=right,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_right_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=right,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_right_upper"
+  },
+  "facing=east,half=upper,part=right,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_right_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=right,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_right_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=right,wood=jungle": {
+   "model": "villagerplus:block/dorftafel_gross_jungle_right_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=left,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_left_lower"
+  },
+  "facing=east,half=lower,part=left,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_left_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=left,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_left_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=left,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_left_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=left,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_left_upper"
+  },
+  "facing=east,half=upper,part=left,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_left_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=left,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_left_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=left,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_left_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=middle,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_middle_lower"
+  },
+  "facing=east,half=lower,part=middle,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_middle_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=middle,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_middle_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=middle,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_middle_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=middle,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_middle_upper"
+  },
+  "facing=east,half=upper,part=middle,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_middle_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=middle,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_middle_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=middle,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_middle_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=inner,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_inner_lower"
+  },
+  "facing=east,half=lower,part=inner,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_inner_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=inner,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_inner_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=inner,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_inner_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=inner,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_inner_upper"
+  },
+  "facing=east,half=upper,part=inner,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_inner_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=inner,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_inner_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=inner,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_inner_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=right,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_right_lower"
+  },
+  "facing=east,half=lower,part=right,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_right_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=right,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_right_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=right,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_right_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=right,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_right_upper"
+  },
+  "facing=east,half=upper,part=right,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_right_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=right,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_right_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=right,wood=acacia": {
+   "model": "villagerplus:block/dorftafel_gross_acacia_right_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=left,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_left_lower"
+  },
+  "facing=east,half=lower,part=left,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_left_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=left,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_left_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=left,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_left_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=left,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_left_upper"
+  },
+  "facing=east,half=upper,part=left,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_left_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=left,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_left_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=left,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_left_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=middle,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_middle_lower"
+  },
+  "facing=east,half=lower,part=middle,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_middle_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=middle,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_middle_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=middle,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_middle_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=middle,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_middle_upper"
+  },
+  "facing=east,half=upper,part=middle,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_middle_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=middle,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_middle_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=middle,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_middle_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=inner,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_inner_lower"
+  },
+  "facing=east,half=lower,part=inner,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_inner_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=inner,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_inner_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=inner,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_inner_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=inner,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_inner_upper"
+  },
+  "facing=east,half=upper,part=inner,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_inner_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=inner,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_inner_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=inner,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_inner_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=right,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_right_lower"
+  },
+  "facing=east,half=lower,part=right,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_right_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=right,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_right_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=right,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_right_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=right,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_right_upper"
+  },
+  "facing=east,half=upper,part=right,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_right_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=right,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_right_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=right,wood=dark_oak": {
+   "model": "villagerplus:block/dorftafel_gross_dark_oak_right_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=left,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_left_lower"
+  },
+  "facing=east,half=lower,part=left,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_left_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=left,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_left_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=left,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_left_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=left,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_left_upper"
+  },
+  "facing=east,half=upper,part=left,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_left_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=left,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_left_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=left,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_left_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=middle,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_middle_lower"
+  },
+  "facing=east,half=lower,part=middle,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_middle_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=middle,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_middle_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=middle,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_middle_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=middle,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_middle_upper"
+  },
+  "facing=east,half=upper,part=middle,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_middle_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=middle,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_middle_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=middle,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_middle_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=inner,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_inner_lower"
+  },
+  "facing=east,half=lower,part=inner,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_inner_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=inner,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_inner_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=inner,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_inner_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=inner,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_inner_upper"
+  },
+  "facing=east,half=upper,part=inner,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_inner_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=inner,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_inner_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=inner,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_inner_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=right,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_right_lower"
+  },
+  "facing=east,half=lower,part=right,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_right_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=right,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_right_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=right,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_right_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=right,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_right_upper"
+  },
+  "facing=east,half=upper,part=right,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_right_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=right,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_right_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=right,wood=mangrove": {
+   "model": "villagerplus:block/dorftafel_gross_mangrove_right_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=left,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_left_lower"
+  },
+  "facing=east,half=lower,part=left,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_left_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=left,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_left_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=left,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_left_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=left,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_left_upper"
+  },
+  "facing=east,half=upper,part=left,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_left_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=left,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_left_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=left,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_left_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=middle,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_middle_lower"
+  },
+  "facing=east,half=lower,part=middle,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_middle_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=middle,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_middle_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=middle,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_middle_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=middle,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_middle_upper"
+  },
+  "facing=east,half=upper,part=middle,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_middle_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=middle,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_middle_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=middle,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_middle_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=inner,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_inner_lower"
+  },
+  "facing=east,half=lower,part=inner,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_inner_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=inner,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_inner_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=inner,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_inner_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=inner,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_inner_upper"
+  },
+  "facing=east,half=upper,part=inner,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_inner_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=inner,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_inner_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=inner,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_inner_upper",
+   "y": 270
+  },
+  "facing=north,half=lower,part=right,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_right_lower"
+  },
+  "facing=east,half=lower,part=right,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_right_lower",
+   "y": 90
+  },
+  "facing=south,half=lower,part=right,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_right_lower",
+   "y": 180
+  },
+  "facing=west,half=lower,part=right,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_right_lower",
+   "y": 270
+  },
+  "facing=north,half=upper,part=right,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_right_upper"
+  },
+  "facing=east,half=upper,part=right,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_right_upper",
+   "y": 90
+  },
+  "facing=south,half=upper,part=right,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_right_upper",
+   "y": 180
+  },
+  "facing=west,half=upper,part=right,wood=cherry": {
+   "model": "villagerplus:block/dorftafel_gross_cherry_right_upper",
+   "y": 270
+  }
+ }
+}

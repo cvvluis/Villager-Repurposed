@@ -1,10 +1,12 @@
 package de.villagerplus.block;
 
 import de.villagerplus.VillagerPlus;
+import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
 import net.fabricmc.fabric.api.creativetab.v1.CreativeModeTabEvents;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.BlockItem;
@@ -18,6 +20,13 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
 public final class ModBlocks {
 	public static final Block DORFTAFEL = register("dorftafel", DorftafelBlock::new,
 		BlockBehaviour.Properties.of().strength(1.5F).sound(SoundType.WOOD).noOcclusion());
+	/** The large four-by-two board with a wood frame; the old board above stays for saved worlds. */
+	public static final Block DORFTAFEL_GROSS = register("dorftafel_gross", DorftafelGrossBlock::new,
+		BlockBehaviour.Properties.of().strength(1.5F).sound(SoundType.WOOD).noOcclusion());
+	public static final BlockEntityType<DorftafelNameBlockEntity> DORFTAFEL_NAME = Registry.register(
+		BuiltInRegistries.BLOCK_ENTITY_TYPE,
+		Identifier.fromNamespaceAndPath(VillagerPlus.MOD_ID, "dorftafel_name"),
+		FabricBlockEntityTypeBuilder.create(DorftafelNameBlockEntity::new, DORFTAFEL, DORFTAFEL_GROSS).build());
 
 	public static final Block DORFSCHILD = register("dorfschild", DorfschildBlock::new,
 		BlockBehaviour.Properties.of().strength(0.8F).sound(SoundType.WOOD).noCollision());
@@ -35,7 +44,7 @@ public final class ModBlocks {
 
 	public static void initialize() {
 		CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.FUNCTIONAL_BLOCKS).register(tab -> {
-			tab.accept(DORFTAFEL.asItem());
+			tab.accept(DORFTAFEL_GROSS.asItem());
 			tab.accept(DORFSCHILD.asItem());
 		});
 	}

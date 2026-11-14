@@ -16,7 +16,11 @@ public final class Craft {
 
 	public record Ing(Predicate<ItemStack> test, int count) { }
 
-	public record Recipe(String label, List<Ing> in, Supplier<ItemStack> out) { }
+	public record Recipe(String label, List<Ing> in, Supplier<ItemStack> out, boolean manualFallback) {
+		public Recipe(String label, List<Ing> in, Supplier<ItemStack> out) {
+			this(label, in, out, false);
+		}
+	}
 
 	public static Ing of(Item item, int count) {
 		return new Ing(s -> s.is(item), count);
@@ -31,7 +35,12 @@ public final class Craft {
 	}
 
 	public static Recipe recipe(String label, Supplier<ItemStack> out, Ing... in) {
-		return new Recipe(label, List.of(in), out);
+		return new Recipe(label, List.of(in), out, false);
+	}
+
+	/** Explicitly permits a non-crafting job path after loaded crafting recipes have been tried. */
+	public static Recipe manualRecipe(String label, Supplier<ItemStack> out, Ing... in) {
+		return new Recipe(label, List.of(in), out, true);
 	}
 
 	/** Fuehrt das erste moegliche Rezept aus. true = beschaeftigt (unterwegs zur Kiste oder am Herstellen). */
@@ -42,14 +51,13 @@ public final class Craft {
 			return false;
 		}
 		for (Recipe recipe : recipes) {
-			if (!hasInputs(box, recipe)) continue;
 			ItemStack expected = recipe.out().get();
 			if (!expected.isEmpty() && RecipeCrafting.craft(c, box,
 				stack -> ItemStack.isSameItemSameComponents(stack, expected), 64)) return true;
 		}
 		Recipe chosen = null;
 		for (Recipe r : recipes) {
-			if (hasInputs(box, r)) {
+			if (r.manualFallback() && hasInputs(box, r)) {
 				chosen = r;
 				break;
 			}

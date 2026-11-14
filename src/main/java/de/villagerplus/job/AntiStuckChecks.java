@@ -16,6 +16,10 @@ public final class AntiStuckChecks {
 	private AntiStuckChecks() { }
 
 	public static int run(ServerLevel level, VillageRef ref) {
+		check(Routine.nextGatherCursorAfterReject(3, 8) == 4
+			&& Routine.nextGatherCursorAfterReject(7, 8) == 8
+			&& Routine.nextGatherCursorAfterReject(8, 8) == 8,
+			"a rejected pause stand advances to the next candidate instead of retrying the same blocked route");
 		BlockPos fixture = ref.bell().offset(12, 6, 12);
 		Villager v = EntityTypes.VILLAGER.spawn(level, fixture, EntitySpawnReason.COMMAND);
 		if (v == null) throw new IllegalStateException("ANTI-STUCK CHECK FAILED: cannot spawn fixture");
@@ -24,7 +28,7 @@ public final class AntiStuckChecks {
 		v.setNoAi(true);
 		// A separate state leaves the scheduler's state and all real villagers untouched.
 		JobState st = new JobState();
-		int checks = 0;
+		int checks = 1;
 		try {
 			Vec3 origin = v.position();
 			Vec3 target = origin.add(16.0, 0.0, 0.0);
@@ -57,40 +61,46 @@ public final class AntiStuckChecks {
 			check(v.getNavigation().isDone() && !v.getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET),
 				"abort stops navigation and erases the walking target"); checks++;
 			check(v.position().equals(origin), "abort does not teleport the villager"); checks++;
-			long resumeAt = abortAt + 1200;
-			check(st.cooldownUntil == resumeAt && st.idleUntil[0] == resumeAt && st.idleUntil[1] == resumeAt,
-				"abort sets the task cooldown and both idle cooldowns to 1200 ticks"); checks++;
-			Ctx paused = context(level, ref, v, st, resumeAt - 1);
+			long alternateWorkAt = abortAt + 40;
+			long taskResumeAt = abortAt + 4201;
+			check(st.cooldownUntil == alternateWorkAt && st.idleUntil[0] == taskResumeAt && st.idleUntil[1] == taskResumeAt,
+				"abort yields the global scheduler briefly while holding both failed job slots past role-reassignment time"); checks++;
+			Ctx paused = context(level, ref, v, st, alternateWorkAt - 1);
 			check(paused.now() < st.cooldownUntil && paused.idle(0) && paused.idle(1),
-				"the scheduler cooldown predicate and both job slots remain blocked before timeout"); checks++;
-			Ctx resumed = context(level, ref, v, st, resumeAt);
+				"the short scheduler cooldown and both failed job slots remain blocked before retry"); checks++;
+			Ctx alternateWork = context(level, ref, v, st, alternateWorkAt);
+			check(alternateWork.now() >= st.cooldownUntil && alternateWork.idle(0) && alternateWork.idle(1),
+				"shared village work can run while the abandoned primary and secondary tasks stay idle"); checks++;
+			Ctx resumed = context(level, ref, v, st, taskResumeAt);
 			check(resumed.now() >= st.cooldownUntil && !resumed.idle(0) && !resumed.idle(1),
-				"the scheduler cooldown predicate and both job slots reopen exactly at timeout"); checks++;
+				"both job slots reopen exactly when their target cooldown expires"); checks++;
+			check(taskResumeAt - (alternateWorkAt + 160) > 4000,
+				"the abandoned target stays unavailable long enough for JobManager to choose an alternate role if no shared work appears"); checks++;
 
 			Vec3 reachable = origin.add(2.0, 0.0, 0.0);
 			st.target = BlockPos.containing(reachable);
-			check(!JobUtil.approach(resumed, reachable, 0.5) && st.walkStart == resumeAt
+			check(!JobUtil.approach(resumed, reachable, 0.5) && st.walkStart == taskResumeAt
 				&& st.stuckCount == 0 && v.getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET),
 				"a new nearby task can start a fresh approach after cooldown"); checks++;
 			// Simulate ordinary arrival without ticking AI; the check asserts completion/reset semantics only.
 			v.setPos(reachable.x, reachable.y, reachable.z);
 			st.stuckCount = 2;
-			check(JobUtil.approach(context(level, ref, v, st, resumeAt + 1), reachable, 0.5)
+			check(JobUtil.approach(context(level, ref, v, st, taskResumeAt + 1), reachable, 0.5)
 				&& st.walkStart == 0 && st.bestDist == 0.0 && st.stuckCount == 0,
 				"arrival completes approach and resets previous failures"); checks++;
 
 			JobState timed = new JobState();
 			Vec3 timedTarget = v.position().add(20.0, 0.0, 0.0);
-			long timedStart = resumeAt + 100;
+			long timedStart = taskResumeAt + 100;
 			check(!JobUtil.approach(context(level, ref, v, timed, timedStart), timedTarget, 1.0)
 				&& v.getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET),
 				"general approach timeout fixture starts with an active walk target"); checks++;
 			long timeoutAt = timedStart + 1501;
 			check(!JobUtil.approach(context(level, ref, v, timed, timeoutAt), timedTarget, 1.0)
-				&& timed.target == null && timed.targetEntity == null && timed.cooldownUntil == timeoutAt + 400
-				&& timed.idleUntil[0] == timeoutAt + 400 && timed.idleUntil[1] == timeoutAt + 400
+			&& timed.target == null && timed.targetEntity == null && timed.cooldownUntil == timeoutAt + 40
+			&& timed.idleUntil[0] == timeoutAt + 4201 && timed.idleUntil[1] == timeoutAt + 4201
 				&& v.getNavigation().isDone() && !v.getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET),
-				"general 1500-tick timeout clears navigation and blocks both job slots for its cooldown"); checks++;
+				"general 1500-tick timeout clears navigation but yields to alternative work while the target cools down"); checks++;
 			return checks;
 		} finally {
 			v.getNavigation().stop();

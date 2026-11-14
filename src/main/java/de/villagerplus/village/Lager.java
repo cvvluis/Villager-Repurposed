@@ -37,6 +37,7 @@ public final class Lager {
 			// Uebernahme alter Welten (0.7.0): Kisten der bekannten Lagerhaeuser einmalig suchen und merken.
 			for (BlockPos center : centers(d)) {
 				for (BlockPos p : BlockPos.betweenClosed(center.offset(-5, -1, -5), center.offset(5, 4, 5))) {
+					if (!level.hasChunkAt(p)) continue;
 					var s = level.getBlockState(p);
 					if (s.getBlock() instanceof ChestBlock && s.getValue(ChestBlock.TYPE) != net.minecraft.world.level.block.state.properties.ChestType.RIGHT) {
 						d.extra.lagerChests.add(p.immutable());
@@ -60,7 +61,7 @@ public final class Lager {
 	/** Eine Lagerkiste mit freiem Platz (null = keine/alle voll). */
 	public static BlockPos chestWithRoom(ServerLevel level, VillageData d) {
 		for (BlockPos p : chests(level, d)) {
-			Container box = HopperBlockEntity.getContainerAt(level, p);
+			Container box = publicContainerAt(level, p);
 			if (box != null && JobUtil.hasEmptySlot(box)) {
 				return p;
 			}
@@ -71,7 +72,7 @@ public final class Lager {
 	/** Materiallager-Ziel fuer einen konkreten Stapel; verhindert, dass ein voller/inkompatibler Kisteninhalt blockiert. */
 	public static BlockPos chestWithRoom(ServerLevel level, VillageData d, ItemStack sample) {
 		for (BlockPos p : chests(level, d)) {
-			Container box = HopperBlockEntity.getContainerAt(level, p);
+			Container box = publicContainerAt(level, p);
 			if (box == null) continue;
 			for (int i = 0; i < box.getContainerSize(); i++) {
 				ItemStack current = box.getItem(i);
@@ -88,20 +89,47 @@ public final class Lager {
 		BlockPos primary = ref.chestPos(level);
 		if (primary != null) out.add(primary);
 		out.addAll(chests(level, ref.data()));
-		return out.stream().filter(p -> level.hasChunkAt(p) && level.getBlockEntity(p) != null
-			&& level.getBlockEntity(p).getAttached(de.villagerplus.VillagerPlus.OWNER) == null).toList();
+		return out.stream().filter(p -> publicContainerAt(level, p) != null).toList();
 	}
 
 	/** Alle Lagerkisten als Behaelter (eine Doppelkiste = ein Behaelter). */
 	public static List<Container> containers(ServerLevel level, VillageData d) {
 		List<Container> out = new ArrayList<>();
 		for (BlockPos p : chests(level, d)) {
-			Container box = HopperBlockEntity.getContainerAt(level, p);
+			Container box = publicContainerAt(level, p);
 			if (box != null) {
 				out.add(box);
 			}
 		}
 		return out;
+	}
+
+	public static Container publicContainerAt(ServerLevel level, BlockPos pos) {
+		if (!level.hasChunkAt(pos)) return null;
+		var blockEntity = level.getBlockEntity(pos);
+		if (blockEntity == null || Ownership.ownerAt(level, pos) != null) return null;
+		var state = level.getBlockState(pos);
+		if (state.getBlock() instanceof ChestBlock && state.getValue(ChestBlock.TYPE) != net.minecraft.world.level.block.state.properties.ChestType.SINGLE) {
+			BlockPos other = pos.relative(ChestBlock.getConnectedDirection(state));
+			if (!level.hasChunkAt(other)) return null;
+			var otherState = level.getBlockState(other);
+			var type = state.getValue(ChestBlock.TYPE);
+			if (!(otherState.getBlock() instanceof ChestBlock) || otherState.getValue(ChestBlock.FACING) != state.getValue(ChestBlock.FACING)
+				|| otherState.getValue(ChestBlock.TYPE) == net.minecraft.world.level.block.state.properties.ChestType.SINGLE
+				|| otherState.getValue(ChestBlock.TYPE) == type) return null;
+			if (level.getBlockEntity(other) == null || Ownership.ownerAt(level, other) != null) return null;
+		}
+		return HopperBlockEntity.getContainerAt(level, pos);
+	}
+
+	/** Public storage accepted by village carriers; private chests and either privately owned double-chest half fail closed. */
+	public static boolean publicStorageAt(ServerLevel level, BlockPos pos) {
+		if (!level.hasChunkAt(pos)) return false;
+		var state = level.getBlockState(pos);
+		boolean chest = state.getBlock() instanceof ChestBlock
+			&& state.getValue(ChestBlock.TYPE) != net.minecraft.world.level.block.state.properties.ChestType.RIGHT;
+		boolean storage = chest || state.getBlock() instanceof net.minecraft.world.level.block.BarrelBlock;
+		return storage && publicContainerAt(level, pos) != null;
 	}
 
 	/** Belegte Plaetze / alle Plaetze in den Lagerkisten (fuer die Dorftafel). */

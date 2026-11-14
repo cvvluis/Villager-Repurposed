@@ -3,14 +3,15 @@ package de.villagerplus.village;
 import de.villagerplus.job.JobUtil;
 import de.villagerplus.job.Meals;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.Container;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.ChestBlock;
-import net.minecraft.world.level.block.entity.HopperBlockEntity;
 
 /**
  * Ausgewogene Vorraete: Es gibt keine festen Mengenlimits (die Kisten duerfen so voll werden, wie sie wollen). Stattdessen
@@ -25,17 +26,31 @@ public final class Balance {
 
 	/** Dorfkiste und alle Truhen des Lagerschuppens. */
 	public static List<Container> storage(ServerLevel level, VillageRef ref) {
-		List<Container> out = new ArrayList<>();
-		Container home = ref.chest(level);
-		if (home != null) {
-			out.add(home);
-		}
-		out.addAll(Lager.containers(level, ref.data()));
+		Map<BlockPos, Container> byPosition = new LinkedHashMap<>();
+		for (BlockPos pos : Lager.materialChests(level, ref)) addStorage(level, byPosition, pos);
 		// Kornspeicher, Werkzeugkammer und Bahnhof gehoeren zum Dorfvorrat (Nahrung liegt dort, nicht in der Dorfkiste).
 		for (String type : new String[] {de.villagerplus.build.Blueprints.GRANARY, de.villagerplus.build.Blueprints.TOOLSHED, de.villagerplus.build.Blueprints.STATION}) {
-			out.addAll(Specials.containers(level, ref, type));
+			BlockPos origin = Specials.get(ref, type);
+			if (origin == null || !level.hasChunkAt(origin)) continue;
+			for (BlockPos pos : BlockPos.betweenClosed(origin.offset(-9, -2, -9), origin.offset(9, 8, 9))) {
+				if (Lager.publicStorageAt(level, pos)) addStorage(level, byPosition, pos);
+			}
 		}
-		return out;
+		return new ArrayList<>(byPosition.values());
+	}
+
+	private static void addStorage(ServerLevel level, Map<BlockPos, Container> stores, BlockPos pos) {
+		Container container = Lager.publicContainerAt(level, pos);
+		if (container == null) return;
+		BlockPos key = pos.immutable();
+		var state = level.getBlockState(pos);
+		// A primary chest reference may point at the right half while specialist scans return
+		// the left half. Both positions expose the same 54-slot inventory and count only once.
+		if (state.getBlock() instanceof ChestBlock
+			&& state.getValue(ChestBlock.TYPE) == net.minecraft.world.level.block.state.properties.ChestType.RIGHT) {
+			key = pos.relative(ChestBlock.getConnectedDirection(state)).immutable();
+		}
+		stores.putIfAbsent(key, container);
 	}
 
 	/** Vorrat einer Gruppe in vergleichbaren Einheiten (Metall zaehlt mehr als Bruchstein). */
@@ -70,7 +85,7 @@ public final class Balance {
 				}
 				double average = sum / (double) stocks.length;
 				for (Kind k : Kind.values()) {
-					if (stocks[k.ordinal()] <= average * 1.25 + 16) {
+					if (stocks[k.ordinal()] <= average * (VillageAdmin.focusKind(ref) == k ? 2.5 : 1.25) + 16) {
 						mask |= 1L << k.ordinal();
 					}
 				}

@@ -12,7 +12,9 @@ import java.util.Map;
 import java.util.TreeMap;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.tags.ItemTags;
 import net.fabricmc.fabric.api.tag.convention.v2.ConventionalItemTags;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
@@ -21,6 +23,9 @@ import net.minecraft.world.Container;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.ChestType;
 
 /** Persistent per-item targets for items delivered into a village's communal storage. */
 public final class StockPolicy {
@@ -29,6 +34,22 @@ public final class StockPolicy {
 	public static final int MAX_ROWS = 256;
 	public static final int UNLIMITED = -1;
 	private static final int MAX_ID_LENGTH = 255;
+	private static final int EQUIPMENT_REPLACEMENT_DAMAGE_LIMIT_PERCENT = 75;
+	private static final List<String> RAW_SMELTING_SUPPLIES = List.of("raw_iron", "raw_copper", "raw_gold");
+	private static final List<String> FARMERS_DELIGHT_WOOD_CABINETS = List.of(
+		"acacia_cabinet", "bamboo_cabinet", "birch_cabinet", "cherry_cabinet", "crimson_cabinet",
+		"dark_oak_cabinet", "jungle_cabinet", "mangrove_cabinet", "oak_cabinet", "pale_oak_cabinet",
+		"spruce_cabinet", "warped_cabinet");
+	private static final List<String> OPTIONAL_MATERIAL_TARGET_IDS = FARMERS_DELIGHT_WOOD_CABINETS.stream()
+		.map(path -> "farmersdelight:" + path).toList();
+	private static final List<Item> TARGETABLE_ITEMS = List.of(
+		Items.BREAD, Items.CARROT, Items.POTATO, Items.WHEAT, Items.WHEAT_SEEDS, Items.BEETROOT,
+		Items.APPLE, Items.BAKED_POTATO, Items.HAY_BLOCK, Items.EGG,
+		Items.OAK_LOG, Items.SPRUCE_LOG, Items.OAK_PLANKS, Items.COBBLESTONE, Items.STONE, Items.GLASS,
+		Items.BRICKS, Items.IRON_INGOT, Items.COPPER_INGOT, Items.COAL, Items.STICK, Items.RAIL,
+		Items.WOODEN_PICKAXE, Items.STONE_PICKAXE, Items.IRON_PICKAXE, Items.IRON_AXE, Items.IRON_SHOVEL,
+		Items.IRON_HOE, Items.SHEARS, Items.SHIELD, Items.BOW, Items.CROSSBOW,
+		Items.GOLDEN_HOE, Items.DIAMOND_HOE, Items.NETHERITE_HOE);
 	private StockPolicy() { }
 
 	public enum Category {
@@ -78,21 +99,58 @@ public final class StockPolicy {
 
 	public static Category category(Item item) {
 		ItemStack sample = new ItemStack(item);
+		// These are reusable worksite parts or paid road-building stock and belong in shared material storage.
+		// Finished brick blocks are paid construction stock even though the builder
+		// does not use them as its generic local palette fallback.
+		// Wheat seeds are a paid input for the starter farm, so keep them in the Builder-accessible public stock.
+		if (item == Items.WHEAT_SEEDS || item == Items.BRICKS || item == Items.SCAFFOLDING || item == Items.CRAFTING_TABLE || item == Items.LANTERN
+			|| vanillaWorkstationOutput(item)) {
+			return Category.MATERIAL;
+		}
 		if (sample.isDamageableItem() || sample.is(ConventionalItemTags.TOOLS) || sample.is(ConventionalItemTags.ARMORS)
 			|| sample.is(ConventionalItemTags.MELEE_WEAPON_TOOLS) || sample.is(ConventionalItemTags.RANGED_WEAPON_TOOLS)) return Category.TOOLS;
 		if (de.villagerplus.job.Meals.isFood(sample) || conventionalFood(sample) || foodIngredient(item)) return Category.FOOD;
-		if (item instanceof net.minecraft.world.item.BlockItem blockItem
-			&& de.villagerplus.build.Supply.obtainable(blockItem.getBlock())) return Category.MATERIAL;
+		if (isRawSmeltingSupply(item)) return Category.OTHER;
+		if (sample.is(ItemTags.SIGNS)) return Category.MATERIAL;
+		if (item instanceof net.minecraft.world.item.BlockItem blockItem) {
+			if (isOreBlock(item)) return Category.OTHER;
+			if (item == Items.CHEST || de.villagerplus.build.Supply.obtainable(blockItem.getBlock()) || supportedModdedBuildingBlock(item)) return Category.MATERIAL;
+		}
 		if (conventionalMaterial(sample)) return Category.MATERIAL;
 		String path = BuiltInRegistries.ITEM.getKey(item).getPath();
 		return switch (path) {
-			// Non-block ingredients used by the village's ordinary construction recipes.
-			case "stick", "flint", "brick", "nether_brick", "iron_ingot", "iron_nugget", "raw_iron",
-				"copper_ingot", "copper_nugget", "raw_copper", "gold_ingot", "gold_nugget", "coal", "charcoal",
-				"redstone", "quartz", "string", "leather", "rail", "powered_rail", "activator_rail", "detector_rail",
+			// Non-block ingredients used by village construction and vanilla equipment recipes.
+			case "stick", "flint", "brick", "nether_brick", "book", "iron_ingot", "iron_nugget",
+				"copper_ingot", "copper_nugget", "gold_ingot", "gold_nugget", "coal", "charcoal",
+				"redstone", "quartz", "string", "leather", "feather", "tripwire_hook", "rail", "powered_rail", "activator_rail", "detector_rail",
 				"minecart", "chest_minecart", "hopper_minecart", "furnace_minecart", "redstone_block" -> Category.MATERIAL;
 			default -> Category.OTHER;
 		};
+	}
+
+	/** Exact vanilla station results that village jobs craft and then withdraw from the public materials depot. */
+	private static boolean vanillaWorkstationOutput(Item item) {
+		return item == Items.FURNACE || item == Items.ANVIL || item == Items.BLAST_FURNACE || item == Items.BREWING_STAND;
+	}
+
+	/** Raw metal drops stay public for recipe-driven SmithSmelting, but are not building stock. */
+	private static boolean isRawSmeltingSupply(Item item) {
+		if (item instanceof net.minecraft.world.item.BlockItem) return false;
+		Identifier id = BuiltInRegistries.ITEM.getKey(item);
+		return id.getNamespace().equals("minecraft") && RAW_SMELTING_SUPPLIES.contains(id.getPath());
+	}
+
+	/** Ore blocks and raw-metal storage blocks are not buildable depot stock. */
+	private static boolean isOreBlock(Item item) {
+		Identifier id = BuiltInRegistries.ITEM.getKey(item);
+		String path = id.getPath();
+		return path.endsWith("_ore") || path.startsWith("raw_") && path.endsWith("_block");
+	}
+
+	/** Exact, recipe-backed mod furniture used as a durable wood building component in the installed pack. */
+	private static boolean supportedModdedBuildingBlock(Item item) {
+		Identifier id = BuiltInRegistries.ITEM.getKey(item);
+		return id.getNamespace().equals("farmersdelight") && FARMERS_DELIGHT_WOOD_CABINETS.contains(id.getPath());
 	}
 
 	private static boolean conventionalFood(ItemStack stack) {
@@ -123,7 +181,7 @@ public final class StockPolicy {
 		return switch (path) {
 			case "wheat", "wheat_seeds", "beetroot_seeds", "melon_seeds", "pumpkin_seeds", "cocoa_beans", "sugar",
 				"egg", "milk_bucket", "hay_block", "carrot", "potato", "beetroot", "rice", "rice_panicle", "onion",
-				"cabbage", "tomato", "lettuce", "radish", "corn", "flour", "cheese" -> true;
+				"cabbage", "tomato", "lettuce", "radish", "corn", "flour", "cheese", "ink_sac", "bone" -> true;
 			default -> path.endsWith("_seeds") || path.endsWith("_seed") || path.endsWith("_crop") || path.endsWith("_fruit")
 				|| path.endsWith("_vegetable") || path.endsWith("_berry") || path.endsWith("_berries");
 		};
@@ -139,7 +197,28 @@ public final class StockPolicy {
 	public static int deliveryRoom(ServerLevel level, VillageRef ref, Item item) {
 		int target = target(ref, item);
 		if (target == UNLIMITED) return Integer.MAX_VALUE;
-		return Math.max(0, target - communalCount(level, ref, item));
+		return Math.max(0, target - serviceableCommunalCount(level, ref, item));
+	}
+
+	/** Damaged equipment beyond the replacement threshold does not satisfy a village's usable-stock target. */
+	public static boolean isServiceableEquipment(ItemStack stack) {
+		if (stack == null || stack.isEmpty() || category(stack.getItem()) != Category.TOOLS) return false;
+		return !stack.isDamageableItem()
+			|| (long)stack.getDamageValue() * 100L < (long)stack.getMaxDamage() * EQUIPMENT_REPLACEMENT_DAMAGE_LIMIT_PERCENT;
+	}
+
+	private static int serviceableCommunalCount(ServerLevel level, VillageRef ref, Item item) {
+		long count = 0;
+		for (Container box : Balance.storage(level, ref)) {
+			if (box == null) continue;
+			for (int slot = 0; slot < box.getContainerSize(); slot++) {
+				ItemStack stack = box.getItem(slot);
+				if (stack.isEmpty() || !stack.is(item)) continue;
+				if (category(item) == Category.TOOLS && stack.isDamageableItem() && !isServiceableEquipment(stack)) continue;
+				count += stack.getCount();
+			}
+		}
+		return (int)Math.min(Integer.MAX_VALUE, count);
 	}
 
 	/** Inserts into a recognized communal store while respecting its remaining per-item allowance. */
@@ -150,7 +229,10 @@ public final class StockPolicy {
 
 	/** Inserts into a known village depot without relying on container wrapper identity (double chests create fresh wrappers). */
 	public static ItemStack insertInto(ServerLevel level, VillageRef ref, String depot, Container destination, ItemStack offered) {
-		if (depot == null || offered.isEmpty()) return net.minecraft.world.level.block.entity.HopperBlockEntity.addItem(null, destination, offered, null);
+		if (offered.isEmpty()) return offered;
+		// Unknown containers are not village depots. Fail closed so a private or foreign target cannot
+		// accept goods through the generic hopper path without being counted against the village quota.
+		if (depot == null) return offered.copy();
 		if (!accepts(depot, offered.getItem())) return offered.copy();
 		int allowed = Math.min(offered.getCount(), deliveryRoom(level, ref, offered.getItem()));
 		if (allowed <= 0) return offered.copy();
@@ -163,7 +245,7 @@ public final class StockPolicy {
 	/** Routes a village delivery to its category depot and returns every item that could not be stored. */
 	public static ItemStack insertVillage(ServerLevel level, VillageRef ref, ItemStack offered) {
 		if (offered.isEmpty()) return offered;
-		if (category(offered.getItem()) == Category.OTHER) return offered.copy();
+		if (category(offered.getItem()) == Category.OTHER && !isRawSmeltingSupply(offered.getItem())) return offered.copy();
 		String special = de.villagerplus.village.Specials.depotType(offered);
 		if (special != null) {
 			ItemStack rest = offered.copy();
@@ -197,9 +279,73 @@ public final class StockPolicy {
 		return switch (depot) {
 			case de.villagerplus.build.Blueprints.GRANARY -> category == Category.FOOD;
 			case de.villagerplus.build.Blueprints.TOOLSHED -> category == Category.TOOLS;
-			case de.villagerplus.build.Blueprints.STORAGE, de.villagerplus.build.Blueprints.STATION -> category == Category.MATERIAL;
+			case de.villagerplus.build.Blueprints.STORAGE, de.villagerplus.build.Blueprints.STATION ->
+				category == Category.MATERIAL || isRawSmeltingSupply(item);
 			default -> true;
 		};
+	}
+
+	/** Whether the public material store's existing delivery filter permits this item type. */
+	public static boolean acceptsMaterialStoreItem(Item item) {
+		return item != null && accepts(de.villagerplus.build.Blueprints.STORAGE, item);
+	}
+
+	/**
+	 * Returns whether a direct vanilla inventory insertion must be refused at this position.
+	 * Only registered public material chests are filtered; private and unrelated containers keep
+	 * their own insertion behavior. Recipe-backed raw smelting inputs remain accepted like they are
+	 * through the village delivery router.
+	 */
+	public static boolean rejectsDirectMaterialStoreInsert(ServerLevel level, BlockPos pos, ItemStack offered) {
+		if (level == null || pos == null || offered == null || offered.isEmpty()
+			|| acceptsMaterialStoreItem(offered.getItem()) || !level.hasChunkAt(pos)) return false;
+
+		BlockState state = level.getBlockState(pos);
+		if (!(state.getBlock() instanceof ChestBlock) || level.getBlockEntity(pos) == null) return false;
+		BlockPos connectedHalf = null;
+		boolean connectedHalfLoaded = false;
+		if (state.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
+			connectedHalf = pos.relative(ChestBlock.getConnectedDirection(state)).immutable();
+			if (level.hasChunkAt(connectedHalf)) {
+				BlockState otherState = level.getBlockState(connectedHalf);
+				ChestType type = state.getValue(ChestBlock.TYPE);
+				if (!(otherState.getBlock() instanceof ChestBlock)
+					|| otherState.getValue(ChestBlock.FACING) != state.getValue(ChestBlock.FACING)
+					|| otherState.getValue(ChestBlock.TYPE) == ChestType.SINGLE
+					|| otherState.getValue(ChestBlock.TYPE) == type
+					|| level.getBlockEntity(connectedHalf) == null) return false;
+				connectedHalfLoaded = true;
+			}
+		}
+
+		// A split-ownership pair is private if either real half that is currently loaded has an owner.
+		if (Ownership.ownerAt(level, pos) != null
+			|| connectedHalfLoaded && Ownership.ownerAt(level, connectedHalf) != null) return false;
+
+		VillageRef ref = Villages.villageNear(level, pos, 256);
+		if (ref == null) return false;
+		List<BlockPos> registered = new ArrayList<>(ref.data().extra.lagerChests.size() + 1);
+		ref.data().chest.ifPresent(registered::add);
+		registered.addAll(ref.data().extra.lagerChests);
+		return matchesRegisteredMaterialStorePosition(pos, state, registered);
+	}
+
+	/** Matches a loaded chest half against persistent registrations without inspecting or loading its partner chunk. */
+	public static boolean matchesRegisteredMaterialStorePosition(BlockPos pos, BlockState state, List<BlockPos> registered) {
+		if (pos == null || state == null || registered == null || !(state.getBlock() instanceof ChestBlock)) return false;
+
+		BlockPos canonical = pos;
+		BlockPos connected = null;
+		ChestType type = state.getValue(ChestBlock.TYPE);
+		if (type != ChestType.SINGLE) {
+			connected = pos.relative(ChestBlock.getConnectedDirection(state)).immutable();
+			if (type == ChestType.RIGHT) canonical = connected;
+		}
+		for (BlockPos registeredPos : registered) {
+			if (registeredPos != null && (registeredPos.equals(canonical) || registeredPos.equals(pos)
+				|| connected != null && registeredPos.equals(connected))) return true;
+		}
+		return false;
 	}
 
 	/** Counts only village-owned shared stores; private shop chests and villager inventory are excluded. */
@@ -234,6 +380,7 @@ public final class StockPolicy {
 				ItemStack stack = box.getItem(slot);
 				if (stack.isEmpty() || !targets.containsKey(stack.getItem())) continue;
 				Item item = stack.getItem();
+				if (category(item) == Category.TOOLS && stack.isDamageableItem() && !isServiceableEquipment(stack)) continue;
 				counts.merge(item, stack.getCount(), (a, b) -> (int)Math.min(Integer.MAX_VALUE, (long)a + b));
 			}
 		}
@@ -278,7 +425,22 @@ public final class StockPolicy {
 		}
 		List<String> ids = new ArrayList<>(saved.keySet());
 		counts.keySet().stream().filter(id -> !saved.containsKey(id)).forEach(ids::add);
-		ids.sort(Comparator.comparing((String id) -> !saved.containsKey(id)).thenComparing(id -> id));
+		List<String> catalogIds = new ArrayList<>(TARGETABLE_ITEMS.stream()
+			.filter(item -> category(item) != Category.OTHER)
+			.map(item -> BuiltInRegistries.ITEM.getKey(item).toString())
+			.filter(id -> !ids.contains(id))
+			.toList());
+		for (String optionalId : OPTIONAL_MATERIAL_TARGET_IDS) {
+			Identifier id = Identifier.parse(optionalId);
+			Item item = BuiltInRegistries.ITEM.getOptional(id).orElse(null);
+			if (item != null && category(item) == Category.MATERIAL && !ids.contains(optionalId)) catalogIds.add(optionalId);
+		}
+		catalogIds.sort(String::compareTo);
+		ids.addAll(catalogIds);
+		// Keep saved targets and actual stock visible first. The compact catalogue only fills
+		// otherwise-empty space, so a village can set its first target before it owns the item.
+		ids.sort(Comparator.comparing((String id) -> !saved.containsKey(id))
+			.thenComparing(id -> !counts.containsKey(id)).thenComparing(id -> id));
 		List<String> rows = new ArrayList<>();
 		for (String raw : ids) {
 			if (rows.size() >= MAX_ROWS) break;

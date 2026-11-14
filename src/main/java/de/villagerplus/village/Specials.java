@@ -1,13 +1,25 @@
 package de.villagerplus.village;
 
 import de.villagerplus.VillagerPlus;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.Container;
 
 /** Pflicht-Meilensteine eines Dorfes (Kornspeicher, Werkzeugkammer, Dorfkueche): Typ -> Ursprung des Gebaeudes. */
 public final class Specials {
 	private Specials() {
+	}
+
+	/** A public storage inventory and its position inside a loaded milestone building. */
+	public record LocatedContainer(BlockPos pos, Container container) {
+		public LocatedContainer {
+			pos = pos.immutable();
+			java.util.Objects.requireNonNull(container);
+		}
 	}
 
 	public static Map<String, BlockPos> all(VillageRef ref) {
@@ -59,27 +71,26 @@ public final class Specials {
 		if (origin == null || !level.hasChunkAt(origin)) {
 			return null;
 		}
+		BlockPos best = null;
+		double bestDistance = Double.MAX_VALUE;
 		for (BlockPos pos : BlockPos.betweenClosed(origin.offset(-9, -2, -9), origin.offset(9, 8, 9))) {
-			var state = level.getBlockState(pos);
-			var blockEntity = level.getBlockEntity(pos);
-			if (blockEntity != null && blockEntity.getAttached(VillagerPlus.OWNER) != null) continue;
-			boolean chest = state.getBlock() instanceof net.minecraft.world.level.block.ChestBlock
-				&& state.getValue(net.minecraft.world.level.block.ChestBlock.TYPE) != net.minecraft.world.level.block.state.properties.ChestType.RIGHT;
-			if (!chest && !(state.getBlock() instanceof net.minecraft.world.level.block.BarrelBlock)) {
-				continue;
-			}
-			var box = net.minecraft.world.level.block.entity.HopperBlockEntity.getContainerAt(level, pos);
+			var box = Lager.publicStorageAt(level, pos) ? Lager.publicContainerAt(level, pos) : null;
 			if (box == null) {
 				continue;
 			}
 			for (int i = 0; i < box.getContainerSize(); i++) {
 				var in = box.getItem(i);
 				if (in.isEmpty() || (net.minecraft.world.item.ItemStack.isSameItemSameComponents(in, sample) && in.getCount() < in.getMaxStackSize())) {
-					return pos.immutable();
+					double distance = origin.distSqr(pos);
+					if (distance < bestDistance) {
+						best = pos.immutable();
+						bestDistance = distance;
+					}
+					break;
 				}
 			}
 		}
-		return null;
+		return best;
 	}
 
 	/** Alle Kisten und Faesser eines Meilenstein-Gebaeudes (leer, wenn es nicht steht oder nicht geladen ist). */
@@ -90,16 +101,27 @@ public final class Specials {
 			return out;
 		}
 		for (BlockPos pos : BlockPos.betweenClosed(origin.offset(-9, -2, -9), origin.offset(9, 8, 9))) {
-			var state = level.getBlockState(pos);
-			var blockEntity = level.getBlockEntity(pos);
-			if (blockEntity != null && blockEntity.getAttached(VillagerPlus.OWNER) != null) continue;
-			boolean chest = state.getBlock() instanceof net.minecraft.world.level.block.ChestBlock
-				&& state.getValue(net.minecraft.world.level.block.ChestBlock.TYPE) != net.minecraft.world.level.block.state.properties.ChestType.RIGHT;
-			if (chest || state.getBlock() instanceof net.minecraft.world.level.block.BarrelBlock) {
-				var box = net.minecraft.world.level.block.entity.HopperBlockEntity.getContainerAt(level, pos);
-				if (box != null) {
-					out.add(box);
-				}
+			if (!Lager.publicStorageAt(level, pos)) continue;
+			var box = Lager.publicContainerAt(level, pos);
+			if (box != null) {
+				out.add(box);
+			}
+		}
+		return out;
+	}
+
+	/** Loaded public storage in a milestone building, paired with its block position. */
+	public static List<LocatedContainer> locatedContainers(ServerLevel level, VillageRef ref, String type) {
+		List<LocatedContainer> out = new ArrayList<>();
+		BlockPos origin = get(ref, type);
+		if (origin == null || !level.hasChunkAt(origin)) {
+			return out;
+		}
+		for (BlockPos pos : BlockPos.betweenClosed(origin.offset(-9, -2, -9), origin.offset(9, 8, 9))) {
+			if (!level.hasChunkAt(pos) || !Lager.publicStorageAt(level, pos)) continue;
+			Container box = Lager.publicContainerAt(level, pos);
+			if (box != null) {
+				out.add(new LocatedContainer(pos, box));
 			}
 		}
 		return out;

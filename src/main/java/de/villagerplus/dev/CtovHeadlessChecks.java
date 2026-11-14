@@ -36,7 +36,8 @@ public final class CtovHeadlessChecks {
 		}
 		for (int i = 0; i < 40; i++) level.tick(() -> false);
 		BellBlockEntity bell = findVillageBell(level, located, 8);
-		if (bell == null) throw new IllegalStateException("CTOV headless: no bell near structure at " + located.toShortString());
+		if (bell == null) throw new IllegalStateException("CTOV headless: no bell with eligible residents near village structure at "
+			+ located.toShortString() + "; inspect nearby chunks/meeting points before calling this a builder failure");
 		BlockPos bellPos = bell.getBlockPos();
 		Villages.noteChunk(level.getChunkAt(bellPos));
 		if (bell.getAttached(VillagerPlus.NETWORK) == null) bell.setAttached(VillagerPlus.NETWORK, TradeNetwork.create(bellPos));
@@ -62,10 +63,20 @@ public final class CtovHeadlessChecks {
 		try {
 			Path marker = marker(level.getServer());
 			if (marker.getParent() != null) Files.createDirectories(marker.getParent());
-			BlockPos granary = de.villagerplus.village.Specials.get(ref, de.villagerplus.build.Blueprints.GRANARY);
-			String body = ref.bell().getX() + "," + ref.bell().getY() + "," + ref.bell().getZ() + "\n";
-			if (granary != null) body += granary.getX() + "," + granary.getY() + "," + granary.getZ() + "\n";
-			Files.writeString(marker, body);
+			BlockPos bell = ref.bell();
+			StringBuilder body = new StringBuilder();
+			body.append(bell.getX()).append(',').append(bell.getY()).append(',').append(bell.getZ()).append('\n');
+			for (String type : new String[] {
+				de.villagerplus.build.Blueprints.GRANARY,
+				de.villagerplus.build.Blueprints.TOOLSHED,
+				de.villagerplus.build.Blueprints.SCHOOL,
+				de.villagerplus.build.Blueprints.KITCHEN
+			}) {
+				BlockPos at = CtovMilestoneChecks.milestonePos(ref, type);
+				if (at == null) throw new IllegalStateException("CTOV headless: missing " + type + " before save");
+				body.append(type).append(',').append(at.getX()).append(',').append(at.getY()).append(',').append(at.getZ()).append('\n');
+			}
+			Files.writeString(marker, body.toString());
 		} catch (java.io.IOException io) {
 			throw new IllegalStateException("CTOV headless: could not write marker", io);
 		}
@@ -90,20 +101,26 @@ public final class CtovHeadlessChecks {
 			if (!(level.getBlockEntity(bell) instanceof BellBlockEntity be)) throw new IllegalStateException("CTOV verify: bell missing after restart");
 			check(be.getAttached(VillagerPlus.VILLAGE) instanceof de.villagerplus.village.VillageData saved
 				&& "ctov-headless".equals(saved.planType), "village attachment survived restart");
-			if (lines.length < 2) throw new IllegalStateException("CTOV verify: granary marker missing");
-			String[] built = lines[1].split(",");
-			BlockPos granary = new BlockPos(Integer.parseInt(built[0]), Integer.parseInt(built[1]), Integer.parseInt(built[2]));
-			level.getChunkAt(granary);
+			if (lines.length < 5) throw new IllegalStateException("CTOV verify: milestone marker incomplete");
 			var ref = new VillageRef(bell, be.getAttachedOrCreate(VillagerPlus.VILLAGE), be);
-			BlockPos registered = de.villagerplus.village.Specials.get(ref, de.villagerplus.build.Blueprints.GRANARY);
-			check(granary.equals(registered), "granary registration survived restart");
-			int placed = 0;
-			for (BlockPos pos : BlockPos.betweenClosed(granary.offset(-8, -2, -8), granary.offset(8, 8, 8))) {
-				if (!level.getBlockState(pos).isAir()) placed++;
+			int persisted = 1;
+			for (int i = 1; i < lines.length; i++) {
+				String[] built = lines[i].split(",");
+				if (built.length < 4) throw new IllegalStateException("CTOV verify: bad milestone line " + lines[i]);
+				String type = built[0];
+				BlockPos at = new BlockPos(Integer.parseInt(built[1]), Integer.parseInt(built[2]), Integer.parseInt(built[3]));
+				level.getChunkAt(at);
+				BlockPos registered = CtovMilestoneChecks.milestonePos(ref, type);
+				check(at.equals(registered), type + " registration survived restart");
+				int placed = 0;
+				for (BlockPos pos : BlockPos.betweenClosed(at.offset(-8, -2, -8), at.offset(8, 8, 8))) {
+					if (!level.getBlockState(pos).isAir()) placed++;
+				}
+				check(placed >= 40, type + " blocks survived restart (" + placed + ")");
+				persisted += 2;
 			}
-			check(placed >= 40, "granary blocks survived restart (" + placed + ")");
-			System.out.println("CTOV HEADLESS PASS persistence after restart at " + bell.toShortString() + " granary " + granary.toShortString());
-			return 3;
+			System.out.println("CTOV HEADLESS PASS persistence after restart at " + bell.toShortString());
+			return persisted;
 		} catch (java.io.IOException | NumberFormatException parse) {
 			throw new IllegalStateException("CTOV verify: unreadable marker", parse);
 		}
@@ -113,7 +130,7 @@ public final class CtovHeadlessChecks {
 		var lookup = level.registryAccess().lookupOrThrow(Registries.STRUCTURE);
 		java.util.List<net.minecraft.core.Holder<net.minecraft.world.level.levelgen.structure.Structure>> ctov = new java.util.ArrayList<>();
 		lookup.listElements().forEach(holder -> {
-			if (holder.key().identifier().getNamespace().equals("ctov")) ctov.add(holder);
+			if (holder.key().identifier().getNamespace().equals("ctov") && holder.is(StructureTags.VILLAGE)) ctov.add(holder);
 		});
 		if (ctov.isEmpty()) return null;
 		var found = level.getChunkSource().getGenerator().findNearestMapStructure(level,
@@ -123,20 +140,33 @@ public final class CtovHeadlessChecks {
 
 	private static BellBlockEntity findVillageBell(ServerLevel level, BlockPos center, int radiusChunks) {
 		BellBlockEntity best = null;
-		int bestVillagers = -1;
+		int bestVillagers = 0;
+		int bellsSeen = 0;
+		java.util.List<String> nearest = new java.util.ArrayList<>();
 		int cx = center.getX() >> 4;
 		int cz = center.getZ() >> 4;
-		for (int dx = -radiusChunks; dx <= radiusChunks; dx++) for (int dz = -radiusChunks; dz <= radiusChunks; dz++) {
+		for (int dx = -16; dx <= 16; dx++) for (int dz = -16; dz <= 16; dz++) {
 			var chunk = level.getChunk(cx + dx, cz + dz);
 			for (var blockEntity : chunk.getBlockEntities().values()) {
 				if (!(blockEntity instanceof BellBlockEntity bell)) continue;
-				int count = level.getEntitiesOfClass(Villager.class, new AABB(bell.getBlockPos()).inflate(32), Villager::isAlive).size();
+				bellsSeen++;
+				// Nearby residents may belong to another CTOV bell. Observe the same
+				// settlement identity the real job loop uses instead of borrowing them.
+				int count = level.getEntitiesOfClass(Villager.class, new AABB(bell.getBlockPos()).inflate(48), v -> {
+					if (!v.isAlive()) return false;
+					var meeting = v.getBrain().getMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.MEETING_POINT);
+					return meeting.isEmpty() || (meeting.get().dimension() == level.dimension()
+						&& meeting.get().pos().equals(bell.getBlockPos()));
+				}).size();
+				if (nearest.size() < 6) nearest.add(bell.getBlockPos().toShortString() + " residents=" + count);
 				if (count > bestVillagers) {
 					bestVillagers = count;
 					best = bell;
 				}
 			}
 		}
+		System.out.println("CTOV HEADLESS bell census center=" + center.toShortString() + " chunks=" + radiusChunks
+			+ " bells=" + bellsSeen + " candidates=" + nearest);
 		return best;
 	}
 

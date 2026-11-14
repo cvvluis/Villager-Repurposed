@@ -21,9 +21,10 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.HopperBlockEntity;
 
-/** Crafts rails, powered rails, redstone blocks and freight carts when a village feeds its rail network. */
+/** Crafts rail materials and passenger/freight carts when a village feeds its rail network. */
 final class SmithRailCraft {
-	private static final List<Item> TARGETS = List.of(Items.RAIL, Items.POWERED_RAIL, Items.REDSTONE_BLOCK, Items.CHEST_MINECART);
+	private static final List<Item> TARGETS = List.of(
+		Items.RAIL, Items.POWERED_RAIL, Items.REDSTONE_BLOCK, Items.MINECART, Items.CHEST_MINECART);
 
 	private SmithRailCraft() { }
 
@@ -35,12 +36,17 @@ final class SmithRailCraft {
 		if (!railWorkshopActive(c)) {
 			return false;
 		}
-		Item target = firstShortage(c.level(), village);
+		Container inv = c.v().getInventory();
+		boolean chestCartInFlight = hasChestMinecartIngredients(inv);
+		ItemStack carried = chestCartInFlight ? ItemStack.EMPTY : firstCarriedTarget(inv);
+		// A minecart temporarily leaves public stock while carried as a chest-cart ingredient.
+		// Keep that in-flight recipe selected or it is mistaken for finished passenger stock and returned.
+		// Once a recipe commits, deliver its completed output before recomputing shortages that include its ingredients.
+		Item target = chestCartInFlight ? Items.CHEST_MINECART
+			: !carried.isEmpty() ? carried.getItem() : firstShortage(c.level(), village);
 		if (target == null) {
 			return false;
 		}
-		Container inv = c.v().getInventory();
-		ItemStack carried = firstOf(inv, target);
 		if (!carried.isEmpty()) {
 			Anim.hold(c, carried.getItem());
 			BlockPos drop = JobUtil.communalDeliveryChest(c);
@@ -87,16 +93,25 @@ final class SmithRailCraft {
 			if (!(holder.value() instanceof net.minecraft.world.item.crafting.CraftingRecipe recipe)) {
 				continue;
 			}
-			ItemStack preview = RecipeCrafting.preview(recipe);
-			if (preview == null || preview.isEmpty() || !preview.is(target)) {
+			if (target == Items.CHEST_MINECART
+				&& !holder.id().identifier().toString().equals("minecraft:chest_minecart")) {
 				continue;
 			}
-			net.minecraft.world.item.crafting.CraftingInput input = RecipeCrafting.inputFor(recipe, available, c.level());
+			ItemStack preview = RecipeCrafting.preview(recipe);
+			// Some vanilla recipes (including chest minecarts) have no fixed empty-input preview.
+			// Let their real placement/input and assembled output decide whether they produce our target.
+			if (target != Items.CHEST_MINECART && preview != null && !preview.isEmpty() && !preview.is(target)) {
+				continue;
+			}
+			net.minecraft.world.item.crafting.CraftingInput input = target == Items.CHEST_MINECART
+				? chestMinecartInput(recipe, available, c.level())
+				: RecipeCrafting.inputFor(recipe, available, c.level());
 			if (input == null) {
 				continue;
 			}
 			ItemStack output = recipe.assemble(input);
-			if (output.isEmpty() || !output.is(target) || stock(c.level(), village, target) >= reserve(target)) {
+			if (output.isEmpty() || !output.is(target)
+				|| (stock(c.level(), village, target) >= reserve(target) && !chestCartInFlight)) {
 				continue;
 			}
 			for (ItemStack ingredient : input.items()) {
@@ -149,9 +164,47 @@ final class SmithRailCraft {
 			if (!JobUtil.approachLong(c, bench, 2.8)) {
 				return true;
 			}
-			return RecipeCrafting.craft(c, inv, bench, stack -> stack.is(target), reserve(target));
+			List<ItemStack> remainder = recipe.getRemainingItems(input);
+			if (!RecipeCrafting.commit(inv, input, output, remainder)) {
+				return false;
+			}
+			Anim.hold(c, output.getItem());
+			c.st().cooldownUntil = c.now() + 100;
+			c.mem().jobsDone++;
+			return true;
 		}
 		return false;
+	}
+
+	/** Explicitly tries the two real chest + minecart inputs for vanilla's special chest-minecart recipe. */
+	private static net.minecraft.world.item.crafting.CraftingInput chestMinecartInput(
+			net.minecraft.world.item.crafting.CraftingRecipe recipe, Container available,
+			net.minecraft.world.level.Level level) {
+		ItemStack chest = oneAvailable(available, Items.CHEST);
+		ItemStack minecart = oneAvailable(available, Items.MINECART);
+		if (chest.isEmpty() || minecart.isEmpty()) return null;
+		List<net.minecraft.world.item.crafting.CraftingInput> candidates = List.of(
+			net.minecraft.world.item.crafting.CraftingInput.of(2, 1, List.of(chest, minecart)),
+			net.minecraft.world.item.crafting.CraftingInput.of(2, 1, List.of(minecart, chest)),
+			net.minecraft.world.item.crafting.CraftingInput.of(1, 2, List.of(chest, minecart)),
+			net.minecraft.world.item.crafting.CraftingInput.of(1, 2, List.of(minecart, chest)));
+		for (var input : candidates) {
+			if (recipe.matches(input, level) && recipe.assemble(input).is(Items.CHEST_MINECART)) return input;
+		}
+		return null;
+	}
+
+	private static ItemStack oneAvailable(Container available, Item item) {
+		for (int slot = 0; slot < available.getContainerSize(); slot++) {
+			ItemStack stack = available.getItem(slot);
+			if (!stack.isEmpty() && stack.is(item)) return stack.copyWithCount(1);
+		}
+		return ItemStack.EMPTY;
+	}
+
+	private static boolean hasChestMinecartIngredients(Container inventory) {
+		return JobUtil.count(inventory, stack -> stack.is(Items.CHEST)) >= 1
+			&& JobUtil.count(inventory, stack -> stack.is(Items.MINECART)) >= 1;
 	}
 
 	private static boolean railWorkshopActive(Ctx c) {
@@ -173,7 +226,7 @@ final class SmithRailCraft {
 			&& stock(level, village, Items.REDSTONE) >= 16;
 	}
 
-	private static Item firstShortage(net.minecraft.server.level.ServerLevel level, VillageRef village) {
+	static Item firstShortage(net.minecraft.server.level.ServerLevel level, VillageRef village) {
 		for (Item item : TARGETS) {
 			if (stock(level, village, item) < reserve(item)) {
 				return item;
@@ -192,13 +245,17 @@ final class SmithRailCraft {
 		if (item == Items.REDSTONE_BLOCK) {
 			return 4;
 		}
+		// Keep four actual carts in public stock: two can become chest carts while two remain for passengers.
+		if (item == Items.MINECART) {
+			return 4;
+		}
 		if (item == Items.CHEST_MINECART) {
 			return 2;
 		}
 		return 0;
 	}
 
-	private static int stock(net.minecraft.server.level.ServerLevel level, VillageRef village, Item item) {
+	static int stock(net.minecraft.server.level.ServerLevel level, VillageRef village, Item item) {
 		int count = 0;
 		for (Container box : stores(level, village)) {
 			for (int slot = 0; slot < box.getContainerSize(); slot++) {
@@ -228,6 +285,14 @@ final class SmithRailCraft {
 			if (!stack.isEmpty() && stack.is(item)) {
 				return stack;
 			}
+		}
+		return ItemStack.EMPTY;
+	}
+
+	private static ItemStack firstCarriedTarget(Container inventory) {
+		for (Item item : TARGETS) {
+			ItemStack stack = firstOf(inventory, item);
+			if (!stack.isEmpty()) return stack;
 		}
 		return ItemStack.EMPTY;
 	}

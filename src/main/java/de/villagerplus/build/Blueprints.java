@@ -12,6 +12,7 @@ import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
@@ -31,12 +32,24 @@ public final class Blueprints {
 	/** Kornspeicher (Lebensmittel), Werkzeug- und Ruestungskammer, Dorfkueche/Baeckerei: Pflicht-Meilensteine jedes Dorfes. */
 	public static final String GRANARY = "granary";
 	public static final String TOOLSHED = "toolshed";
+	/** Optionale Funktionsblöcke der Dorfküche; ohne Mod werden sie nicht als Vanilla-Block getarnt. */
+	public static final String FARMERS_DELIGHT_COOKING_POT = "farmersdelight:cooking_pot";
+	public static final String FARMERS_DELIGHT_CUTTING_BOARD = "farmersdelight:cutting_board";
 	public static final String KITCHEN = "kitchen";
 	/** Bahnhof (Spaetphase): Frachthalle mit Lagerkisten fuer den Schienenverkehr. */
 	public static final String STATION = "station";
 
 	public static boolean special(String type) {
 		return type.equals(GRANARY) || type.equals(TOOLSHED) || type.equals(KITCHEN) || type.equals(STATION);
+	}
+
+	/** Stable compact → standard → multi-storey rotation, kept separate for homes and civic buildings by the planner. */
+	public static Architect.SizeTier sizeTierForOrdinal(int completedInGroup) {
+		return switch (Math.floorMod(completedInGroup, 3)) {
+			case 0 -> Architect.SizeTier.COMPACT;
+			case 1 -> Architect.SizeTier.STANDARD;
+			default -> Architect.SizeTier.MULTI_STOREY;
+		};
 	}
 
 	private static final Item[] SEEDS = {Items.WHEAT_SEEDS, Items.CARROT, Items.POTATO, Items.BEETROOT_SEEDS};
@@ -56,7 +69,7 @@ public final class Blueprints {
 	public static List<Step> create(String type, VillageStyle style, BlockPos c, Direction dir, int variant) {
 		return switch (type) {
 			case HOUSE -> house(style, c, dir);
-			case FARM -> farm(c, variant);
+			case FARM -> farm(style, c, dir, variant);
 			case WELL -> well(style, c);
 			case TOWNHALL -> hall(style, c, dir);
 			case PEN -> pen(style, c, dir);
@@ -245,16 +258,28 @@ public final class Blueprints {
 		return Step.block(pos, style.stairs(), b -> b.defaultBlockState().setValue(StairBlock.FACING, facing));
 	}
 
-	// --- Feld (7x7, Wasser in der Mitte) -----------------------------------------------------------
+	// --- Feld (3x3 starter plot or larger irrigated field) ------------------------------------------
 
 	/**
-	 * Feld mit Wasserstellen. {@code variant} = Saatgut-Art + 10 * halbe Kantenlaenge (0 = Standard 3 -> 7x7). Groessere Felder
-	 * (9x9, 11x11) bekommen vier Wasserstellen, damit alles bewaessert ist.
+	 * Feld mit Wasserstellen. {@code variant} = Saatgut-Art + 10 * halbe Kantenlaenge. A half-size of 1 gives a
+	 * compact 3x3 starter plot (8 crop blocks); size 3 is 7x7. Larger fields (9x9, 11x11) use four water blocks.
 	 */
 	public static List<Step> farm(BlockPos c, int variant) {
+		return farm(null, c, Direction.NORTH, variant);
+	}
+
+	/** Farm layout oriented toward {@code dir}; the paid fence ring uses the village palette and a matching gate. */
+	public static List<Step> farm(VillageStyle style, BlockPos c, Direction dir, int variant) {
 		List<Step> steps = new ArrayList<>();
 		int seedKind = variant % 10;
 		int half = variant / 10 == 0 ? 3 : variant / 10;
+		Direction facing = dir == null || dir.getAxis() == Direction.Axis.Y ? Direction.NORTH : dir;
+		Block fence = style == null || style.fence() == null ? Blocks.OAK_FENCE : style.fence();
+		Block gate = gateFor(fence);
+		if (!(gate instanceof FenceGateBlock)) {
+			fence = Blocks.OAK_FENCE;
+			gate = Blocks.OAK_FENCE_GATE;
+		}
 		Item seed = SEEDS[seedKind];
 		Block crop = CROPS[seedKind];
 		java.util.Set<BlockPos> water = new java.util.HashSet<>();
@@ -277,6 +302,22 @@ public final class Blueprints {
 		for (BlockPos w : water) {
 			steps.add(Step.free(w.below(), Blocks.WATER.defaultBlockState()));
 		}
+		// Enclose the complete crop bed. The field decorations on the three corners reuse these paid perimeter blocks.
+		int fenceRadius = half + 1;
+		BlockPos gatePos = farmOffset(c, facing, 0, fenceRadius);
+		for (int dx = -fenceRadius; dx <= fenceRadius; dx++) {
+			for (int dz = -fenceRadius; dz <= fenceRadius; dz++) {
+				if (Math.abs(dx) != fenceRadius && Math.abs(dz) != fenceRadius) continue;
+				BlockPos p = farmOffset(c, facing, dx, dz);
+				if (p.equals(gatePos)) {
+					steps.add(Step.block(p, gate,
+						b -> b.defaultBlockState().setValue(FenceGateBlock.FACING, facing)
+							.setValue(FenceGateBlock.OPEN, true)));
+				} else {
+					steps.add(Step.block(p, fence));
+				}
+			}
+		}
 		for (int dx = -half; dx <= half; dx++) {
 			for (int dz = -half; dz <= half; dz++) {
 				BlockPos p = c.offset(dx, 0, dz);
@@ -285,21 +326,23 @@ public final class Blueprints {
 				}
 			}
 		}
-		// Schmuck ausserhalb der Beete (nichts, was Bauern im Weg steht): Laternenpfosten an zwei Ecken, Vogelscheuche, Blumen.
-		int e = half + 1;
+		// Corner lanterns and scarecrow stay on the paid fence ring; flowers remain outside the walkable entrance area.
+		int e = fenceRadius;
 		for (int sx = -1; sx <= 1; sx += 2) {
-			BlockPos post = c.offset(sx * e, 0, -e);
-			steps.add(Step.free(post, Blocks.OAK_FENCE.defaultBlockState()));
-			steps.add(Step.free(post.above(), Blocks.OAK_FENCE.defaultBlockState()));
+			BlockPos post = farmOffset(c, facing, sx * e, e);
+			steps.add(Step.free(post.above(), fence.defaultBlockState()));
 			steps.add(Step.free(post.above(2), Blocks.LANTERN.defaultBlockState()));
 		}
-		BlockPos scare = c.offset(e, 0, e);
-		steps.add(Step.free(scare, Blocks.OAK_FENCE.defaultBlockState()));
+		BlockPos scare = farmOffset(c, facing, e, -e);
 		steps.add(Step.free(scare.above(), Blocks.HAY_BLOCK.defaultBlockState()));
 		steps.add(Step.free(scare.above(2), Blocks.CARVED_PUMPKIN.defaultBlockState()));
-		steps.add(Step.free(c.offset(-e, 0, e), Blocks.POPPY.defaultBlockState()));
-		steps.add(Step.free(c.offset(-e, 0, e - 1), Blocks.CORNFLOWER.defaultBlockState()));
+		steps.add(Step.free(farmOffset(c, facing, -e - 1, -e), Blocks.POPPY.defaultBlockState()));
+		steps.add(Step.free(farmOffset(c, facing, -e - 1, -e + 1), Blocks.CORNFLOWER.defaultBlockState()));
 		return steps;
+	}
+
+	private static BlockPos farmOffset(BlockPos center, Direction facing, int across, int forward) {
+		return center.relative(facing.getClockWise(), across).relative(facing, forward);
 	}
 
 	// --- Brunnen (3x3) -----------------------------------------------------------------------------
@@ -368,7 +411,7 @@ public final class Blueprints {
 		return steps;
 	}
 
-	// --- Tiergehege (9x9 Zaun mit Tor) ---------------------------------------------------------------
+	// --- Tiergehege (9x9 Zaun mit Tor, offenem Wetterschutz und Trog) ---------------------------------
 
 	public static List<Step> pen(VillageStyle style, BlockPos c, Direction dir) {
 		List<Step> steps = new ArrayList<>();
@@ -388,7 +431,43 @@ public final class Blueprints {
 				}
 			}
 		}
+		// A paid wool silhouette sits on the two fence posts beside the entrance. The outline stays
+		// within the 9-by-9 pen, leaves the gate and animal passage clear, and marks this as a
+		// livestock yard rather than the crop field's hay-and-pumpkin scarecrow.
+		BlockPos woolBody = penOffset(c, dir, -1, 4).above();
+		BlockPos woolHead = penOffset(c, dir, -2, 4).above();
+		steps.add(Step.block(woolBody, Blocks.WOOL.white()));
+		steps.add(Step.block(woolHead, Blocks.WOOL.black()));
+
+		// Open-sided shelter at the back of the pen: pay the supports before the roof so the work appears stable as built.
+		for (int across : new int[] {-2, 0}) {
+			for (int forward : new int[] {-3, -1}) {
+				BlockPos post = penOffset(c, dir, across, forward);
+				steps.add(Step.block(post, style.wall()));
+				steps.add(Step.block(post.above(), style.wall()));
+			}
+		}
+		for (int across = -2; across <= 0; across++) {
+			for (int forward = -3; forward <= -1; forward++) {
+				steps.add(Step.block(penOffset(c, dir, across, forward).above(2), style.roof()));
+			}
+		}
+		steps.add(Step.block(penOffset(c, dir, -2, -2), Blocks.HAY_BLOCK));
+
+		// A shallow, two-block water trough sits opposite the shelter; its rim is paid village wall material.
+		for (int forward = 1; forward <= 2; forward++) {
+			steps.add(Step.block(penOffset(c, dir, 0, forward).below(), style.wall()));
+			steps.add(Step.block(penOffset(c, dir, 2, forward).below(), style.wall()));
+		}
+		steps.add(Step.block(penOffset(c, dir, 1, 0).below(), style.wall()));
+		steps.add(Step.block(penOffset(c, dir, 1, 3).below(), style.wall()));
+		steps.add(Step.free(penOffset(c, dir, 1, 1).below(), Blocks.WATER.defaultBlockState()));
+		steps.add(Step.free(penOffset(c, dir, 1, 2).below(), Blocks.WATER.defaultBlockState()));
 		return steps;
+	}
+
+	private static BlockPos penOffset(BlockPos center, Direction facing, int across, int forward) {
+		return center.relative(facing.getClockWise(), across).relative(facing, forward);
 	}
 
 	/** Passendes Tor zum Zaun ("oak_fence" -> "oak_fence_gate"), sonst ein normaler Zaun. */

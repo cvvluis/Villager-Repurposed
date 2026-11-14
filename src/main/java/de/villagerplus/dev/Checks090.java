@@ -56,9 +56,13 @@ public final class Checks090 {
    new net.minecraft.world.entity.ai.memory.WalkTarget(ref.bell().east(20),0.5F,1));
   ref.data().wanted.clear();ref.data().wanted.add("minecraft:oak_door#1");ref.dirty();
   List<String> lines=VillagerInfo.lines(level,villager,player);
-  check(lines.stream().anyMatch(x->x.startsWith("Tätigkeit|")&&x.contains(ref.bell().east(20).toShortString())),"villager info includes the current walk target coordinates");
+  check(lines.stream().anyMatch(x->x.startsWith("Ziel|")&&x.contains(ref.bell().east(20).toShortString())),"villager info shows current walk target coordinates separately");
+  check(lines.stream().anyMatch(x->x.startsWith("Tätigkeit|")),"villager info keeps the current activity in its own row");
   check(lines.stream().anyMatch(x->x.startsWith("Privattruhe|")&&x.contains("2×")),"villager info lists private chest contents");
   check(lines.stream().anyMatch(x->x.startsWith("Fehlendes Baumaterial|")&&x.contains("minecraft:oak_door#1")),"villager info lists the village construction shortage");
+  villager.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
+  lines=VillagerInfo.lines(level,villager,player);
+  check(lines.stream().anyMatch(x->x.equals("Ziel|kein aktives Wegziel|-1")),"villager info labels a resident without an active walk target");
   ref.data().wanted.clear();ref.dirty();villager.discard();level.setBlock(chestPos,Blocks.AIR.defaultBlockState(),3);level.setBlock(chestPos.below(),Blocks.GRASS_BLOCK.defaultBlockState(),3);
  }
 
@@ -83,7 +87,8 @@ public final class Checks090 {
   Palette palette=new Palette(Blocks.OAK_PLANKS,Blocks.BIRCH_PLANKS,Blocks.OAK_LOG,Blocks.COBBLESTONE,Blocks.OAK_PLANKS,Blocks.OAK_STAIRS,Blocks.OAK_SLAB,Blocks.GLASS_PANE,Blocks.OAK_PLANKS,Blocks.OAK_DOOR,Blocks.OAK_FENCE);
   List<Step> legacy=Architect.build(design,palette,origin,Direction.SOUTH);
   List<Step> ordered=ConstructionSite.order(legacy,origin,design,palette);
-  int last=-1;boolean monotonic=true;for(Step step:ordered){int phase=ConstructionSite.phaseOf(step,origin,design,palette);if(phase<last)monotonic=false;last=phase;}
+  java.util.Map<BlockPos,Step> stepsByPosition=new java.util.LinkedHashMap<>();for(Step step:ordered)stepsByPosition.put(step.pos(),step);
+  int last=-1;boolean monotonic=true;for(Step step:ordered){int phase=ConstructionSite.phaseOf(step,origin,design,palette,stepsByPosition);if(phase<last)monotonic=false;last=phase;}
   check(monotonic,"construction phase ordering monotonic");
   check(!legacy.equals(ordered),"new construction order differs from legacy cursor order");
   check(ref.bellEntity().getAttachedOrElse(VillagerPlus.CONSTRUCTION,null)==null,"legacy plan has no phase metadata");
@@ -280,22 +285,220 @@ public final class Checks090 {
    "placing powered rail consumes one rail plus one new support block and preserves unrelated stock");
   box.clearContent();
  }
+ /**
+  * Serene Seasons would make every farm fixture depend on the season of the test world, so all groups except the season group run with
+  * "seasons off"; the season group simulates each season itself (see SeasonFarmChecks).
+  */
  public static int run(CommandSourceStack source,String mode)throws Exception {
-  if(!java.util.Set.of("ctov","vp-ctov-headless","vp-master-test-2026-10-29","vp-master-test-2026-10-30","vp-k04-fresh-2026-10-30","vp-k04-fresh2-2026-10-30","vp-k04-fresh3-2026-10-30","vp-k04-fresh4-2026-10-30","vp-k04-fresh5-2026-10-30","vp-k04-fresh6-2026-10-30","vp-k04-fresh7-2026-10-30","vp-k04-fresh8-2026-10-30","vp-k04-fresh9-2026-10-30","vp-k04-fresh10-2026-10-30","vp-k04-fresh11-2026-10-30","vp-k04-fresh12-2026-10-30","vp-k04-fresh13-2026-10-30","vp-k04-fresh14-2026-10-30","vp-k04-fresh15-2026-10-30","vp-k04-fresh16-2026-10-30","vp-k04-fresh17-2026-10-30","vp-k04-fresh18-2026-10-30","vp-k04-fresh19-2026-10-30","vp-k04-fresh20-2026-10-30","vp-role-test").contains(source.getLevel().getServer().getWorldData().getLevelName()))throw new IllegalStateException("Checks only allowed in explicitly named development worlds");
+  boolean hadOverride=de.villagerplus.compat.SeasonCompat.hasDevOverride();
+  if(!hadOverride&&!mode.startsWith("season")&&!mode.equals("compat"))de.villagerplus.compat.SeasonCompat.setDevOverrideOff();
+  try { return runMode(source,mode); }
+  finally { if(!hadOverride)de.villagerplus.compat.SeasonCompat.clearDevOverride(); }
+ }
+ private static int runMode(CommandSourceStack source,String mode)throws Exception {
+  if(!java.util.Set.of("ctov","vp-ctov-headless","vp-master-test-2026-10-29","vp-master-test-2026-10-30","vp-k04-fresh-2026-10-30","vp-k04-fresh2-2026-10-30","vp-k04-fresh3-2026-10-30","vp-k04-fresh4-2026-10-30","vp-k04-fresh5-2026-10-30","vp-k04-fresh6-2026-10-30","vp-k04-fresh7-2026-10-30","vp-k04-fresh8-2026-10-30","vp-k04-fresh9-2026-10-30","vp-k04-fresh10-2026-10-30","vp-k04-fresh11-2026-10-30","vp-k04-fresh12-2026-10-30","vp-k04-fresh13-2026-10-30","vp-k04-fresh14-2026-10-30","vp-k04-fresh15-2026-10-30","vp-k04-fresh16-2026-10-30","vp-k04-fresh17-2026-10-30","vp-k04-fresh18-2026-10-30","vp-k04-fresh19-2026-10-30","vp-k04-fresh20-2026-10-30","vp-role-test","vp-g02-live-2026-10-31","vp-wave18-2026-11-01","vp-b05-debug-2026-11-01","vp-smithsmelting-serialization-2026-11-01","vp-path-cut-2026-11-01","vp-u07-quota-2026-11-01","vp-master-wave3-2026-11-01","vp-wave27-parallel-2026-11-01","vp-wave28-featurebatch-2026-11-01","vp-wave31-featurebatch-2026-11-01","vp-wave32-featurebatch-2026-11-01","vp-wave32-featurebatch-retry-2026-11-01","vp-wave33-featurebatch-2026-11-01","vp-wave34-featurebatch-2026-11-01","vp-g03-direct-set-2026-11-01","vp-continuation-batch-2026-11-02","vp-continuation-retry-2026-11-02","vp-continuation-final-2026-11-02","vp-continuation-settled-2026-11-02","vp-nextfeaturebatch-2026-11-02","vp-nextfeaturebatch-retry-2026-11-02","vp-nextfeaturebatch-final-2026-11-02","vp-lamp-spacing-2026-11-02","vp-featurebatch-2026-11-02","vp-master-progress-2026-11-02","vp-nextfeature-clean-2026-11-02","vp-nextfeature-final-2026-11-02","vp-nextfeature-verify-2026-11-02","vp-nextfeature-verify2-2026-11-02","vp-nextfeature-verify3-2026-11-02","vp-nextfeature-verify4-2026-11-02","vp-nextfeature-verify5-2026-11-02","vp-nextfeature-verify6-2026-11-02","vp-nextfeature-verify7-2026-11-02","vp-nextfeature-verify8-2026-11-02","vp-nextfeature-verify9-2026-11-02","vp-featurecontinuation-2026-11-02","vp-feature-wave-2026-11-02","vp-feature-wave-final-2026-11-02","vp-woodland-storage-checks-2026-11-02","vp-farmstart-test-2026-11-02","vp-farmstart-diagnostic-2026-11-02","vp-farmstart-verify-2026-11-02","vp-farmstart-final-2026-11-02","vp-farmstart-final2-2026-11-02","vp-farmstart-verify3-2026-11-02","vp-featurebatch37-verified-2026-11-02","vp-featurebatch37-2026-11-02","vp-featurebatch37-final-2026-11-02","vp-featurebatch37-final2-2026-11-02","vp-featurebatch39-2026-11-03","vp-featurebatch40-2026-11-03","vp-featurebatch40-retry-2026-11-03","vp-featurebatch41-2026-11-03","vp-featurebatch41-retry-2026-11-03","vp-featurebatch41-fixes-2026-11-03","vp-featurebatch41-fixes2-2026-11-03","vp-featurebatch41-fixes3-2026-11-03","vp-featurebatch41-fixes4-2026-11-03","vp-featurebatch42-recovery-2026-11-03","vp-featurebatch42-fixes-2026-11-03","vp-eqrepair03-2026-11-03","vp-housing-grade-2026-11-03","vp-farm-storage-parallel-2026-11-03","vp-caravan-visit-follow-2026-11-03","vp-featurebundle-2026-11-04","vp-featurebundle43-retry-2026-11-04","vp-featurebundle44-home-road-projects-2026-11-04","vp-featurebundle45-farms-market-crew-2026-11-04","vp-featurebundle46-2026-11-04","vp-featurebundle46-retry-2026-11-04","vp-featurebundle47-live","vp-featurebundle48-live","vp-featurebundle49-live","vp-featurebundle50-live","vp-featurebundle51-live","vp-featurebundle52-socialcrowd","vp-featurebundle53-design-live","vp-featurebundle54-live","vp-featurebundle55-live","vp-featurebundle56-live","vp-featurebundle56-retry-live","vp-featurebundle56-final-live","vp-featurebundle56-verify-live","vp-featurebundle58-live","vp-featurebundle59-live","vp-featurebundle59-retry-live","vp-featurebundle59-final-live","vp-featurebundle59-final2-live","vp-featurebundle59-final3-live","vp-featurebundle59-final4-live","vp-featurebundle58-retry-live","vp-featurebundle58-retry2-live").contains(source.getLevel().getServer().getWorldData().getLevelName())&&!java.util.Set.of("vp-village-expansion-ui-2026-11-02","vp-cityscape-2026-11-02","vp-cityscape-final-2026-11-02","vp-cityscape-retry-2026-11-02","vp-settlement-next-2026-11-02").contains(source.getLevel().getServer().getWorldData().getLevelName()))throw new IllegalStateException("Checks only allowed in explicitly named development worlds; received: " + source.getLevel().getServer().getWorldData().getLevelName());
   ServerLevel level=source.getLevel();ServerPlayer player=level.getServer().getPlayerList().getPlayers().stream().findFirst().orElse(null);
+  if(mode.equals("g02status")) {
+   G02SupplyTrace.report(source,level);return 1;
+  }
+  if(mode.equals("g02fairness")) {
+   int count=JobManagerFairnessChecks.run();
+   source.sendSuccess(()->Component.literal("VP090 g02fairness PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("socialcrowd")) {
+   int count=RoutineGatherChecks.run()+SocialChecks.run();
+   source.sendSuccess(()->Component.literal("VP090 socialcrowd PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("railfuel")) {
+   VillageRef ref=fixtureForEquipment(level,new BlockPos(29000,201,29000));
+   int count=de.villagerplus.village.RailTransportFuelChecks.run(level,ref);
+   source.sendSuccess(()->Component.literal("VP090 railfuel PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("gravelcycle")) {
+   int count=de.villagerplus.job.GravelQuarryChecks.run(level,new BlockPos(15500,280,15500));
+   source.sendSuccess(()->Component.literal("VP090 gravelcycle PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("miningcycle")) {
+   int count=de.villagerplus.job.MiningCycleChecks.run(level,new BlockPos(15700,280,15700));
+   source.sendSuccess(()->Component.literal("VP090 miningcycle PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("naturalprep")) {
+   int count=de.villagerplus.build.NaturalSitePreparationChecks.run(level,new BlockPos(16800,280,16800));
+   source.sendSuccess(()->Component.literal("VP090 naturalprep PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("stand")) {
+   VillageRef standVillage=fixture(level,new BlockPos(12000,201,12000));
+   int count=de.villagerplus.build.BuilderStandChecks.run(level,standVillage);
+   source.sendSuccess(()->Component.literal("VP090 stand PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("palette")) {
+   int count=de.villagerplus.build.PaletteChecks.run(level,new BlockPos(30000,201,30000));
+   source.sendSuccess(()->Component.literal("VP090 palette PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("palettefallback")) {
+   int count=de.villagerplus.build.PaletteFallbackChecks.run(level,new BlockPos(31600,201,31600));
+   source.sendSuccess(()->Component.literal("VP090 palettefallback PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("buildhaul")) {
+   int count=de.villagerplus.job.BuildHaulChecks.run(level,fixtureForEquipment(level,new BlockPos(30200,201,30200)));
+   source.sendSuccess(()->Component.literal("VP090 buildhaul PASS "+count+" checks"),false);return count;
+  }
+   if(mode.equals("builderprojects")) {
+    int count=de.villagerplus.build.BuilderProjectChecks.run(level,fixtureForEquipment(level,new BlockPos(30400,201,30400)));
+    if(count<0) { source.sendSuccess(()->Component.literal("VP090 builderprojects PREPARING: entity-ticking fixture; retry after server ticks"),false);return -1; }
+    source.sendSuccess(()->Component.literal("VP090 builderprojects PASS "+count+" checks"),false);return count;
+   }
   if(mode.equals("equipment")) {
    int count=EquipmentProductionChecks.run(level,new BlockPos(14000,280,14000));
    source.sendSuccess(()->Component.literal("VP090 equipment PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("developmentwall")) {
+   int count=DevelopmentChecks.wallStructureDiscoveryChecks();
+   source.sendSuccess(()->Component.literal("VP090 developmentwall PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("recipecrafting")) {
+   int count=de.villagerplus.job.RecipeCraftingChecks.run(level);
+   count+=de.villagerplus.job.WorkshopSupplyChecks.run(level,fixtureForEquipment(level,new BlockPos(31200,201,31200)));
+   int total=count;
+   source.sendSuccess(()->Component.literal("VP090 recipecrafting PASS "+total+" checks"),false);return total;
+  }
+  if(mode.equals("projectvisibility")) {
+   int count=DevelopmentChecks.constructionProjectVisibilityChecks(level,fixture(level,new BlockPos(30600,201,30600)));
+   source.sendSuccess(()->Component.literal("VP090 projectvisibility PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("school")) {
+   int count=de.villagerplus.job.SchoolChecks.run(level,fixture(level,new BlockPos(13200,201,13200)));
+   source.sendSuccess(()->Component.literal("VP090 school PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("charcoal")) {
+   var ref=fixture(level,new BlockPos(13400,201,13400));
+   int count=de.villagerplus.job.CharcoalChecks.run(level,ref);
+   count+=de.villagerplus.job.LightingSpacingChecks.charcoalTorchChecks(level,ref,ref.bell());
+   int total=count;
+   source.sendSuccess(()->Component.literal("VP090 charcoal PASS "+total+" checks"),false);return total;
+  }
   if(mode.equals("mining")) {
    int count=MiningSafetyChecks.run(level,new BlockPos(13000,310,13000));
    source.sendSuccess(()->Component.literal("VP090 mining PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("g01spacing")) {
+   int count=de.villagerplus.village.G01VillageSpacingChecks.run();
+   source.sendSuccess(()->Component.literal("VP090 g01spacing PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("a01behavior")) {
+   int count=de.villagerplus.job.AntiStuckChecks.run(level,fixture(level,new BlockPos(30400,201,30400)));
+   source.sendSuccess(()->Component.literal("VP090 a01behavior PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("minetickets")) {
+   int count=de.villagerplus.village.AnchorMineTicketChecks.check();
+   source.sendSuccess(()->Component.literal("VP090 minetickets PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("stationshed")) {
+   int count=de.villagerplus.build.StationShedChecks.run(level,new BlockPos(28200,201,28200));
+   source.sendSuccess(()->Component.literal("VP090 stationshed PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("craftrecipes")) {
+   int count=de.villagerplus.job.CraftRecipeChecks.run(level,new BlockPos(29000,201,29000));
+   source.sendSuccess(()->Component.literal("VP090 craftrecipes PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("wellbeing")) {
+   int count=de.villagerplus.village.WellbeingChecks.run(level,new BlockPos(29400,201,29400));
+   source.sendSuccess(()->Component.literal("VP090 wellbeing PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("roads")) {
    int count=de.villagerplus.village.RoadTerrainChecks.run(level,A.offset(420,0,420));
    count+=de.villagerplus.build.BuilderPathChecks.run(level,A.offset(460,0,460));
    int checks=count;
    source.sendSuccess(()->Component.literal("VP090 roads PASS "+checks+" checks"),false);return checks;
+  }
+  if(mode.equals("builderpaths")) {
+   int count=de.villagerplus.build.BuilderPathChecks.run(level,A.offset(460,0,460));
+   source.sendSuccess(()->Component.literal("VP090 builderpaths PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("roadterrain")) {
+   int count=de.villagerplus.village.RoadTerrainChecks.run(level,A.offset(420,0,420));
+   source.sendSuccess(()->Component.literal("VP090 roadterrain PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("roadgrading")) {
+   int count=de.villagerplus.village.RoadGradingChecks.run(level,new BlockPos(28700,201,28700));
+   source.sendSuccess(()->Component.literal("VP090 roadgrading PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("roadwidth")) {
+   int count=de.villagerplus.village.RoadWidthChecks.run();
+   source.sendSuccess(()->Component.literal("VP090 roadwidth PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("houseplot")) {
+   BlockPos origin=new BlockPos(19000,201,19000);
+   int count=de.villagerplus.village.HousePlotChecks.run(level,origin);
+   Villager worker=EntityTypes.VILLAGER.spawn(level,origin.east(2),EntitySpawnReason.COMMAND);
+   if(worker==null)throw new IllegalStateException("House lot fixture: could not spawn a builder");
+   worker.addTag("vp090_fixture");worker.setNoAi(true);worker.setInvulnerable(true);
+   try {count+=de.villagerplus.build.HouseLotPreparationChecks.run(level,origin,worker);}
+   finally {worker.discard();}
+   int checks=count;
+   source.sendSuccess(()->Component.literal("VP090 houseplot PASS "+checks+" checks"),false);return checks;
+  }
+  if(mode.equals("housesitesearch")) {
+   int count=de.villagerplus.build.HouseSiteSearchChecks.run(level,new BlockPos(36000,201,36000));
+   source.sendSuccess(()->Component.literal("VP090 housesitesearch PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("houseconnection")) {
+   int count=de.villagerplus.build.HouseConnectionChecks.run(level,new BlockPos(24200,201,24200));
+   source.sendSuccess(()->Component.literal("VP090 houseconnection PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("lightspacing")) {
+   int count=de.villagerplus.job.LightingSpacingChecks.run(level,new BlockPos(15500,201,15500));
+   source.sendSuccess(()->Component.literal("VP090 lightspacing PASS "+count+" checks"),false);return count;
+  }
+   if(mode.equals("wallconstruction")) {
+    VillageRef ref=fixture(level,new BlockPos(32000,201,32000));
+    int count=de.villagerplus.build.WallConstructionChecks.run(level,ref);
+    source.sendSuccess(()->Component.literal("VP090 wallconstruction PASS "+count+" checks"),false);return count;
+   }
+  if(mode.equals("u07quota")) {
+   var ref=fixture(level,new BlockPos(21800,201,21800));
+   int count=de.villagerplus.village.U07QuotaChecks.run(level,ref);
+   if(count<0) { source.sendSuccess(()->Component.literal("VP090 u07quota PREPARING entity fixture chunk; no checks executed yet"),false);return -1; }
+   source.sendSuccess(()->Component.literal("VP090 u07quota PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("privatechest")) {
+   var ref=fixtureForEquipment(level,new BlockPos(19600,201,19600));
+   Villager tester=EntityTypes.VILLAGER.spawn(level,ref.bell().east(6),EntitySpawnReason.COMMAND);tester.addTag("vp090_fixture");tester.setNoAi(true);
+   int count;
+   try {
+    count=de.villagerplus.village.PrivateChestProvisioningChecks.run(level,ref,tester);
+    count+=de.villagerplus.job.FletcherChestChecks.run(level);
+   } finally {tester.discard();}
+   int totalCount=count;
+   source.sendSuccess(()->Component.literal("VP090 privatechest PASS "+totalCount+" checks"),false);return totalCount;
+  }
+  if(mode.equals("zonepolicy")) {
+   int count=ZonePolicyChecks.run(fixture(level,new BlockPos(19800,201,19800)));
+   source.sendSuccess(()->Component.literal("VP090 zonepolicy PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("zoneexpansion")) {
+   int count=de.villagerplus.build.ConstructionZoneChecks.run(level,fixture(level,new BlockPos(19800,201,19800)));
+   source.sendSuccess(()->Component.literal("VP090 zoneexpansion PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("stockpolicy")) {
+   var ref=fixtureForEquipment(level,new BlockPos(19600,201,19600));
+   Villager tester=EntityTypes.VILLAGER.spawn(level,ref.bell().east(6),EntitySpawnReason.COMMAND);tester.addTag("vp090_fixture");tester.setNoAi(true);
+   int count;
+    try {
+     count=StockPolicyChecks.run(level,ref,tester);
+     count+=de.villagerplus.dev.StockPolicyDirectWriteChecks.run(level,ref);
+     if(net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("farmersdelight"))
+      count+=de.villagerplus.village.StockPolicyFoodChecks.run(level);
+    } finally {tester.discard();}
+    int totalCount=count+de.villagerplus.village.LagerOwnershipChecks.run(level,ref,ref.bell().north(14));
+    source.sendSuccess(()->Component.literal("VP090 stockpolicy PASS "+totalCount+" checks"),false);return totalCount;
+  }
+  if(mode.equals("tavernservice")) {
+   var ref=fixtureForEquipment(level,new BlockPos(19800,201,19800));
+   Villager tester=EntityTypes.VILLAGER.spawn(level,ref.bell().east(6),EntitySpawnReason.COMMAND);tester.addTag("vp090_fixture");tester.setNoAi(true);
+   int count;
+   try {count=de.villagerplus.village.TavernChecks.run(level,ref,tester);} finally {tester.discard();}
+   source.sendSuccess(()->Component.literal("VP090 tavernservice PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("roadroute")) {
    int count=de.villagerplus.village.RoadRouteChecks.run(level,new BlockPos(23000,280,23000));
@@ -304,6 +507,10 @@ public final class Checks090 {
   if(mode.equals("roadwork")) {
    int count=de.villagerplus.job.RoadMaintenanceChecks.run(level,new BlockPos(15000,201,15000));
    source.sendSuccess(()->Component.literal("VP090 roadwork PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("railwork")) {
+   int count=de.villagerplus.village.RailMaintenanceChecks.run(level,new BlockPos(16000,201,16000));
+   source.sendSuccess(()->Component.literal("VP090 railwork PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("roadclear")) {
    int count=de.villagerplus.job.RoadClearingChecks.run(level,new BlockPos(16500,201,16500));
@@ -318,10 +525,110 @@ public final class Checks090 {
    int count=de.villagerplus.build.MilestoneWaitingChecks.run(level,ref);
    source.sendSuccess(()->Component.literal("VP090 milestones PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("minewalk")) {
+   int count=de.villagerplus.job.MineWalkChecks.run(level,new BlockPos(43000,201,43000));
+   source.sendSuccess(()->Component.literal("VP090 minewalk PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("minekit")) {
+   BlockPos at=new BlockPos(47000,201,47000);
+   BlockPos at2=new BlockPos(47300,201,47000);
+   int count=de.villagerplus.job.MineKitChecks.run(level,fixtureForEquipment(level,at),at)
+    +de.villagerplus.job.MineKitChecks.runDelivery(level,fixtureForEquipment(level,at2),at2);
+   source.sendSuccess(()->Component.literal("VP090 minekit PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("stoneeconomy")) {
+   BlockPos at=new BlockPos(47600,201,47000);
+   int count=de.villagerplus.job.StoneEconomyChecks.run(level,fixtureForEquipment(level,at),at);
+   source.sendSuccess(()->Component.literal("VP090 stoneeconomy PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("woodsupply")) {
+   int count=de.villagerplus.job.WoodSupplyChecks.run(level,new BlockPos(48500,201,48500));
+   source.sendSuccess(()->Component.literal("VP090 woodsupply PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("treewalkback")) {
+   int count=de.villagerplus.job.TreeWalkbackChecks.run(level,new BlockPos(46000,201,46000));
+   source.sendSuccess(()->Component.literal("VP090 treewalkback PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("housesign")) {
+   int count=de.villagerplus.village.HousingSignChecks.run(level,new BlockPos(47000,201,47000));
+   source.sendSuccess(()->Component.literal("VP090 housesign PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("strandrescue")) {
+   int count=de.villagerplus.job.StrandRescueChecks.run(level,new BlockPos(41000,201,41000));
+   source.sendSuccess(()->Component.literal("VP090 strandrescue PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("freightload")) {
+   int count=de.villagerplus.job.FreightLoadingChecks.run(level,new BlockPos(49000,201,49000));
+   source.sendSuccess(()->Component.literal("VP090 freightload PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("lamplighter")) {
+   int count=de.villagerplus.job.LamplighterJobChecks.run(level,new BlockPos(51008,201,51008));
+   source.sendSuccess(()->Component.literal("VP090 lamplighter PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("butcherslaughter")) {
+   int count=de.villagerplus.job.ButcherSlaughterChecks.run(level,new BlockPos(50400,201,50400));
+   if(count<0) { source.sendSuccess(()->Component.literal("VP090 butcherslaughter PREPARING entity-ticking fixture; retry after server ticks"),false);return -1; }
+   source.sendSuccess(()->Component.literal("VP090 butcherslaughter PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("butchercooking")) {
+   int count=de.villagerplus.job.ButcherCookingChecks.run(level,new BlockPos(50608,201,50608));
+   source.sendSuccess(()->Component.literal("VP090 butchercooking PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("expedition")) {
+   int count=de.villagerplus.village.ExpeditionChecks.run(level,new BlockPos(49408,201,49408));
+   if(count<0) { source.sendSuccess(()->Component.literal("VP090 expedition PREPARING multi-tick fixture; retry after server ticks"),false);return -1; }
+   source.sendSuccess(()->Component.literal("VP090 expedition PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("a04idle")) {
+   long oldClock=level.getOverworldClockTime();
+   int count;
+   try {
+    level.getServer().getCommands().performPrefixedCommand(source,"time set 4000");
+    count=de.villagerplus.job.A04IdleChecks.run(level,new BlockPos(51408,201,51408));
+   } finally {
+    level.getServer().getCommands().performPrefixedCommand(source,"time set "+oldClock);
+   }
+   source.sendSuccess(()->Component.literal("VP090 a04idle PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("a04lease")) {
+   int count=de.villagerplus.village.A04LeaseChecks.run(level,new BlockPos(52000,201,52000));
+   if(count<0) { source.sendSuccess(()->Component.literal("VP090 a04lease PREPARING; retry after server ticks"),false);return -1; }
+   source.sendSuccess(()->Component.literal("VP090 a04lease PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("deepstrand")) {
+   int count=de.villagerplus.job.DeepStrandChecks.run(level,new BlockPos(47500,201,47500));
+   source.sendSuccess(()->Component.literal("VP090 deepstrand PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("farmexpand")) {
    var ref=fixtureForEquipment(level,A);
    int count=de.villagerplus.job.FarmerExpansionChecks.run(level,ref);
-   source.sendSuccess(()->Component.literal("VP090 farmexpand PASS "+count+" checks"),false);return count;
+   count+=de.villagerplus.job.FarmerSeedGrassChecks.run(level,ref);
+   count+=de.villagerplus.build.FarmPlanSizingChecks.run();
+   int total=count;
+   source.sendSuccess(()->Component.literal("VP090 farmexpand PASS "+total+" checks"),false);return total;
+  }
+  if(mode.equals("stonehands")) {
+   BlockPos at=new BlockPos(49200,201,49200);
+   long oldClock=level.getOverworldClockTime();
+   int count;
+   try {
+    level.getServer().getCommands().performPrefixedCommand(source,"time set 4000");
+    count=de.villagerplus.job.StoneHandsChecks.run(level,fixtureForEquipment(level,at),at);
+   } finally {
+    level.getServer().getCommands().performPrefixedCommand(source,"time set "+oldClock);
+   }
+   source.sendSuccess(()->Component.literal("VP090 stonehands PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("firstbuilding")) {
+   var ref=fixtureForEquipment(level,A);
+   int count=de.villagerplus.job.FirstBuildingChecks.run(level,ref);
+   source.sendSuccess(()->Component.literal("VP090 firstbuilding PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("livestockherding")) {
+   var ref=fixtureForEquipment(level,new BlockPos(27000,201,27000));
+   int count=de.villagerplus.job.LivestockHerdingChecks.run(level,ref);
+   if(count<0) { source.sendSuccess(()->Component.literal("VP090 livestockherding PREPARING entity-ticking fixture; retry after server ticks"),false);return -1; }
+   source.sendSuccess(()->Component.literal("VP090 livestockherding PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("railtransport")) {
    int count=de.villagerplus.village.RailTransportChecks.run();
@@ -329,31 +636,226 @@ public final class Checks090 {
   }
   if(mode.equals("ctov")) {
    var natural=CtovHeadlessChecks.bootstrap(level);
-   int count=CtovMilestoneChecks.runHarness(level,natural);
-   count+=CtovMilestoneChecks.runWalk(level,natural);
+   int count=CtovMilestoneChecks.runWalk(level,natural);
+   count+=CtovMilestoneChecks.runHarness(level,natural);
+   count+=CtovLifeChecks.run(level,natural);
    count+=CtovHeadlessChecks.run(level,natural);
    count+=CompatChecks.runStrict(level);
    count+=de.villagerplus.job.CookDelightChecks.run(level,natural.bell().offset(200,0,200));
-   count+=de.villagerplus.village.CaravanPorterDeliveryChecks.run(level,new BlockPos(14000,201,14000));
+   int caravanChecks=de.villagerplus.village.CaravanPorterDeliveryChecks.run(level,new BlockPos(14000,201,14000));
+   if(caravanChecks<0) {
+    source.sendSuccess(()->Component.literal("VP090 ctov PREPARING: Caravan entity-ticking fixture; retry after a few server ticks"),false);return 0;
+   }
+   count+=caravanChecks;
    count+=de.villagerplus.village.RailEndToEndChecks.run(level,new BlockPos(13000,201,13000));
    int total=count;
    source.sendSuccess(()->Component.literal("VP090 ctov PASS "+total+" checks"),false);return count;
+  }
+  if(mode.equals("ctov-life")) {
+   var natural=CtovHeadlessChecks.bootstrap(level);
+   int count=CtovLifeChecks.run(level,natural);
+   source.sendSuccess(()->Component.literal("VP090 ctov-life PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("ctov-verify")) {
    int count=CtovHeadlessChecks.verify(level);
    source.sendSuccess(()->Component.literal("VP090 ctov-verify PASS "+count),false);return count;
   }
   if(mode.equals("railmetro")) {
-   int count=de.villagerplus.village.RailEndToEndChecks.run(level,new BlockPos(13000,201,13000));
-   source.sendSuccess(()->Component.literal("VP090 railmetro PASS "+count+" checks"),false);return count;
+   int count=de.villagerplus.village.RoadMetropolisChecks.run(level,new BlockPos(17000,201,17000));
+   count+=de.villagerplus.village.RailEndToEndChecks.run(level,new BlockPos(13000,201,13000));
+   int total=count;
+   source.sendSuccess(()->Component.literal("VP090 railmetro PASS "+total+" checks"),false);return total;
   }
   if(mode.equals("caravandelivery")) {
    int count=de.villagerplus.village.CaravanPorterDeliveryChecks.run(level,new BlockPos(14000,201,14000));
+   if(count<0) {
+   source.sendSuccess(()->Component.literal("VP090 caravandelivery PREPARING: entity-ticking fixture; retry after a few server ticks"),false);return -1;
+   }
    source.sendSuccess(()->Component.literal("VP090 caravandelivery PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("marketplan")) {
+   BlockPos at=new BlockPos(19400,201,19400);
+   var ref=fixtureForEquipment(level,at);
+   int count=de.villagerplus.village.MarketPlanningChecks.run(level,ref,at.east(24));
+   count+=de.villagerplus.village.MarketSiteRecoveryChecks.run(level,ref,at.east(48));
+   int total=count;
+   source.sendSuccess(()->Component.literal("VP090 marketplan PASS "+total+" checks"),false);return total;
+  }
+  if(mode.equals("marketprep")) {
+   BlockPos at=new BlockPos(25400,201,25000);
+   fixtureForEquipment(level,at);
+   int count=de.villagerplus.village.MarketSitePreparationChecks.run(level,at.east(24));
+   source.sendSuccess(()->Component.literal("VP090 marketprep PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("statusformat")) {
+   int count=de.villagerplus.village.VillageStatusFormatChecks.run();
+   source.sendSuccess(()->Component.literal("VP090 statusformat PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("marketlifecycle")) {
+   BlockPos at=new BlockPos(19200,201,19200);
+   var ref=fixtureForEquipment(level,at);
+   long oldOverworldClock=level.getOverworldClockTime();
+   int count;
+   try {
+    level.getServer().getCommands().performPrefixedCommand(source,"time set 5000");
+    count=de.villagerplus.village.MarketLifecycleChecks.run(level,ref,at.east(5));
+   } finally {
+    level.getServer().getCommands().performPrefixedCommand(source,"time set "+oldOverworldClock);
+   }
+   if(count<0)return -1;
+   source.sendSuccess(()->Component.literal("VP090 marketlifecycle PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("a04survival")) {
+   int count=de.villagerplus.village.A04SurvivalChecks.run();
+   source.sendSuccess(()->Component.literal("VP090 a04survival PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("featurebundle54")) {
+   int count=de.villagerplus.village.NetworkDiscoveryChecks.run();
+   count+=de.villagerplus.village.NetworkNeighborChecks.run();
+   count+=de.villagerplus.job.SocialChecks.run();
+   count+=de.villagerplus.build.SupplyChecks.run();
+   count+=de.villagerplus.build.BuilderChecks.run();
+
+   BlockPos privateAt=new BlockPos(19600,201,19600);
+   VillageRef privateRef=fixtureForEquipment(level,privateAt);
+   Villager privateTester=EntityTypes.VILLAGER.spawn(level,privateRef.bell().east(6),EntitySpawnReason.COMMAND);
+   privateTester.addTag("vp090_fixture"); privateTester.setNoAi(true);
+   try { count+=de.villagerplus.village.PrivateChestProvisioningChecks.run(level,privateRef,privateTester); }
+   finally { privateTester.discard(); }
+
+   BlockPos marketAt=new BlockPos(25400,201,25000);
+   fixtureForEquipment(level,marketAt);
+   count+=de.villagerplus.village.MarketSitePreparationChecks.run(level,marketAt.east(24));
+
+   BlockPos expansionAt=new BlockPos(19000,201,19000);
+   count+=de.villagerplus.village.HousePlotChecks.run(level,expansionAt);
+   Villager expansionWorker=EntityTypes.VILLAGER.spawn(level,expansionAt.east(2),EntitySpawnReason.COMMAND);
+   if(expansionWorker==null) throw new IllegalStateException("Feature bundle 54: could not spawn a house-lot worker");
+   expansionWorker.addTag("vp090_fixture"); expansionWorker.setNoAi(true); expansionWorker.setInvulnerable(true);
+   try { count+=de.villagerplus.build.HouseLotPreparationChecks.run(level,expansionAt,expansionWorker); }
+   finally { expansionWorker.discard(); }
+
+   count+=de.villagerplus.job.MineLifecycleChecks.run(level,new BlockPos(24000,280,24000));
+   int total=count;
+   source.sendSuccess(()->Component.literal("VP090 featurebundle54 PASS "+total+" checks"),false);return total;
+  }
+  if(mode.equals("featurebundle55")) {
+   int freight=de.villagerplus.village.RailTransportDispatchChecks.run(level,new BlockPos(25200,280,25200));
+   if(freight<0)return -1;
+   int count=freight;
+   count+=run(source,"plazageometry");
+   count+=run(source,"caravandeparture");
+   int total=count;
+   source.sendSuccess(()->Component.literal("VP090 featurebundle55 PASS "+total+" checks"),false);return total;
+  }
+  if(mode.equals("networkdiscovery")) {
+   int count=de.villagerplus.village.NetworkDiscoveryChecks.run();
+   source.sendSuccess(()->Component.literal("VP090 networkdiscovery PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("renamevillage")) {
+   var ref=fixtureForEquipment(level,new BlockPos(18400,201,18400));
+   int count=de.villagerplus.net.RenameVillageChecks.run(level,ref);
+   source.sendSuccess(()->Component.literal("VP090 renamevillage PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("kitchenfurnisher")) {
+   int count=de.villagerplus.build.KitchenFurnisherChecks.run(level,new BlockPos(18600,201,18600));
+   source.sendSuccess(()->Component.literal("VP090 kitchenfurnisher PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("constructionsite")) {
+   BlockPos at=new BlockPos(27000,201,27000);
+   var ref=fixtureForEquipment(level,at);
+   int count=de.villagerplus.build.ConstructionSiteChecks.run(level,ref);
+   source.sendSuccess(()->Component.literal("VP090 constructionsite PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("cookdelight")) {
    int count=de.villagerplus.job.CookDelightChecks.run(level,new BlockPos(13500,201,13500));
-   source.sendSuccess(()->Component.literal("VP090 cookdelight PASS "+count+" checks"),false);return count;
+   count+=de.villagerplus.job.DelightKitchenCraftingChecks.run(level,new BlockPos(13700,201,13700));
+   int resultCount=count;
+   source.sendSuccess(()->Component.literal("VP090 cookdelight PASS "+resultCount+" checks"),false);return count;
+  }
+  if(mode.equals("mealcycle")) {
+   int count=de.villagerplus.job.HouseholdMealChecks.run(level,new BlockPos(28200,201,28200));
+   source.sendSuccess(()->Component.literal("VP090 mealcycle PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("tavernmeals")) {
+   int count=de.villagerplus.village.TavernMealFlowChecks.run(level,new BlockPos(28400,201,28400));
+   source.sendSuccess(()->Component.literal("VP090 tavernmeals PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("planstonesupply")) {
+   int count=de.villagerplus.job.PlanStoneSupplyChecks.run(level);
+   source.sendSuccess(()->Component.literal("VP090 planstonesupply PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("surfacestone")) {
+   BlockPos at=new BlockPos(33000,201,33000);
+   BlockPos metalAt=new BlockPos(33300,201,33000);
+   int count=de.villagerplus.job.SurfaceStoneChecks.run(level,fixtureForEquipment(level,at),at)
+    +de.villagerplus.job.SurfaceStoneChecks.runMetalPickaxe(level,fixtureForEquipment(level,metalAt),metalAt);
+   source.sendSuccess(()->Component.literal("VP090 surfacestone PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("planmaterialwait")) {
+   int count=de.villagerplus.build.PlanMaterialWaitChecks.run();
+   source.sendSuccess(()->Component.literal("VP090 planmaterialwait PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("a03weather")) {
+   int count=de.villagerplus.job.A03WeatherChecks.run(level,new BlockPos(17600,201,17600));
+   source.sendSuccess(()->Component.literal("VP090 a03weather PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("villagerinfo")) {
+   int count=de.villagerplus.village.VillagerInfoChecks.run(level,player,new BlockPos(29200,201,29200));
+   source.sendSuccess(()->Component.literal("VP090 villagerinfo PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("villagerename")) {
+   int count=de.villagerplus.village.VillageRenameChecks.run();
+   source.sendSuccess(()->Component.literal("VP090 villagerename PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("butcher")) {
+   var ref=fixtureForEquipment(level,new BlockPos(17800,201,17800));
+   int count=de.villagerplus.job.ButcherChecks.run(level,ref);
+   if(count<0) { source.sendSuccess(()->Component.literal("VP090 butcher PREPARING entity-ticking fixture; retry after server ticks"),false);return -1; }
+   source.sendSuccess(()->Component.literal("VP090 butcher PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("healer")) {
+   var ref=fixtureForEquipment(level,new BlockPos(18000,201,18000));
+   int count=de.villagerplus.job.HealerCareChecks.run(level,ref);
+   source.sendSuccess(()->Component.literal("VP090 healer PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("roadlighting")) {
+   int count=de.villagerplus.job.RoadLightingChecks.run(level,new BlockPos(18200,201,18200));
+   source.sendSuccess(()->Component.literal("VP090 roadlighting PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("smithanvil")) {
+   int count=de.villagerplus.job.SmithAnvilChecks.run(level,new BlockPos(18800,201,18800))
+     +de.villagerplus.job.EquipmentMaintenanceChecks.run(level,new BlockPos(12400,201,12000));
+   source.sendSuccess(()->Component.literal("VP090 smithanvil PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("thermalrecipes")) {
+   VillageRef ref=fixtureForEquipment(level,new BlockPos(18400,201,18400));
+   int count=de.villagerplus.job.ThermalRecipeChecks.run(level,ref);
+   source.sendSuccess(()->Component.literal("VP090 thermalrecipes PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("smithsmelting")) {
+   VillageRef ref=fixtureForEquipment(level,new BlockPos(18600,201,18600));
+   int count=de.villagerplus.job.SmithSmeltingChecks.run(level,ref);
+   source.sendSuccess(()->Component.literal("VP090 smithsmelting PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("supply")) {
+   int count=de.villagerplus.build.SupplyChecks.run();
+   source.sendSuccess(()->Component.literal("VP090 supply PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("demolition")) {
+   VillageRef ref=fixtureForEquipment(level,new BlockPos(12000,201,12000));
+   int count=de.villagerplus.village.DemolitionWorldChecks.run(level,ref);
+   if(count<0) { source.sendSuccess(()->Component.literal("VP090 demolition PREPARING: entity-ticking fixture; retry after server ticks"),false);return -1; }
+   source.sendSuccess(()->Component.literal("VP090 demolition PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("buildingrelocation")) {
+   VillageRef ref=fixtureForEquipment(level,new BlockPos(27800,201,27800));
+   int count=de.villagerplus.village.BuildingRelocationWorldChecks.run(level,ref);
+   source.sendSuccess(()->Component.literal("VP090 buildingrelocation PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("seasonfarm")) {
+   int count=de.villagerplus.job.SeasonFarmChecks.run(level,new BlockPos(52000,201,52000));
+   source.sendSuccess(()->Component.literal("VP090 seasonfarm PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("compat")) {
    int count=CompatChecks.runStrict(level);
@@ -362,6 +864,11 @@ public final class Checks090 {
   if(mode.equals("woodcutting")) {
    int count=de.villagerplus.job.WoodcuttingCycleChecks.run();
    source.sendSuccess(()->Component.literal("VP090 woodcutting PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("woodcuttinggroup")) {
+   int count=de.villagerplus.job.WoodcuttingGroupChecks.run(level,new BlockPos(25000,201,25000))
+    +de.villagerplus.job.WoodcuttingCycleChecks.run();
+   source.sendSuccess(()->Component.literal("VP090 woodcuttinggroup PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("woodcutprepare")||mode.equals("woodcutverify")) {
    int count=mode.equals("woodcutprepare")?de.villagerplus.job.WoodcuttingRestartChecks.prepare(level,new BlockPos(21000,280,21000))
@@ -380,6 +887,14 @@ public final class Checks090 {
    int checks=count;
    source.sendSuccess(()->Component.literal("VP090 caravansites PASS "+checks+" checks"),false);return checks;
   }
+  if(mode.equals("caravanr02")) {
+   int count=de.villagerplus.village.CaravanR02Checks.runWorld(level,new BlockPos(0,201,0));
+   source.sendSuccess(()->Component.literal("VP090 caravanr02 PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("caravandeparture")) {
+   int count=de.villagerplus.village.CaravanDepartureChecks.run(level,new BlockPos(27200,201,27200));
+   source.sendSuccess(()->Component.literal("VP090 caravandeparture PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("minelifecycle")) {
    int count=de.villagerplus.job.MineLifecycleChecks.run(level,new BlockPos(24000,280,24000));
    source.sendSuccess(()->Component.literal("VP090 minelifecycle PASS "+count+" checks"),false);return count;
@@ -391,8 +906,10 @@ public final class Checks090 {
    source.sendSuccess(()->Component.literal("VP090 caravanroad PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("roadbuild")) {
-   int count=de.villagerplus.job.RoadConstructionChecks.run(level,new BlockPos(16000,280,16000));
-   source.sendSuccess(()->Component.literal("VP090 roadbuild PASS "+count+" checks"),false);return count;
+   int count=de.villagerplus.village.RoadPathGapChecks.run(level,new BlockPos(16000,280,16000).offset(128,0,128));
+   count+=de.villagerplus.job.RoadConstructionChecks.run(level,new BlockPos(16000,280,16000));
+   int checks=count;
+   source.sendSuccess(()->Component.literal("VP090 roadbuild PASS "+checks+" checks"),false);return checks;
   }
   if(mode.equals("roadbridge")||mode.equals("roadbridgeverify")) {
    int count=mode.equals("roadbridge")?de.villagerplus.job.RoadBridgeChecks.run(level,new BlockPos(17000,280,17000))
@@ -400,17 +917,54 @@ public final class Checks090 {
    source.sendSuccess(()->Component.literal("VP090 "+mode+" PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("houses")) {
-   int count=de.villagerplus.build.HouseTemplateChecks.run(level,A.offset(440,0,440));
-   source.sendSuccess(()->Component.literal("VP090 houses PASS "+count+" checks"),false);return count;
+   int count=de.villagerplus.build.HouseDesignCatalogChecks.run();
+   count+=de.villagerplus.build.JobHutAppearanceChecks.run();
+   count+=de.villagerplus.build.TemplateLibraryChecks.run();
+   count+=de.villagerplus.build.HouseTemplateChecks.run(level,A.offset(440,0,440));
+   int reportedCount=count;
+   source.sendSuccess(()->Component.literal("VP090 houses PASS "+reportedCount+" checks"),false);return count;
+  }
+  if(mode.equals("tafelgross")) {
+   VillageRef ref=fixture(level,A);
+   int count=de.villagerplus.village.DorftafelGrossChecks.run(level,A.offset(60,0,60),ref);
+   source.sendSuccess(()->Component.literal("VP090 tafelgross PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("templatebuild")) {
+   VillageRef ref=fixture(level,A);
+   int count=de.villagerplus.build.TemplateLibraryChecks.runBuild(level,ref);
+   source.sendSuccess(()->Component.literal("VP090 templatebuild PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("civic")) {
    VillageRef ref=fixture(level,A);
    int count=de.villagerplus.village.CivicCenterChecks.run(level,ref);
    source.sendSuccess(()->Component.literal("VP090 civic PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("plazageometry")) {
+   int count=de.villagerplus.village.PlazaChecks.run();
+   count+=de.villagerplus.village.PlazaGeometryChecks.run();
+   count+=de.villagerplus.village.PlazaFountainChecks.run(level,new BlockPos(28000,300,28000));
+   int reportedCount=count;
+   source.sendSuccess(()->Component.literal("VP090 plazageometry PASS "+reportedCount+" checks"),false);return count;
+  }
   if(mode.equals("roles")) {
-   int count=RoleCycleChecks.run(level,new BlockPos(26000,300,26000));
-   source.sendSuccess(()->Component.literal("VP090 roles PASS "+count+" checks"),false);return count;
+   int roleCycleCount=RoleCycleChecks.run(level,new BlockPos(26000,300,26000));
+   if(roleCycleCount<0) { source.sendSuccess(()->Component.literal("VP090 roles PREPARING entity-ticking fixture; retry after server ticks"),false);return -1; }
+   int count=roleCycleCount;
+   count+=de.villagerplus.job.AnimChecks.run(level,fixtureForEquipment(level,new BlockPos(27600,201,27600)));
+   int resultCount=count;
+   source.sendSuccess(()->Component.literal("VP090 roles PASS "+resultCount+" checks"),false);return count;
+  }
+  if(mode.equals("rolevisual")) {
+   int count=de.villagerplus.job.AnimChecks.run(level,fixtureForEquipment(level,new BlockPos(27600,201,27600)));
+   source.sendSuccess(()->Component.literal("VP090 rolevisual PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("neighbors")) {
+   int count=de.villagerplus.village.NetworkNeighborChecks.run();
+   source.sendSuccess(()->Component.literal("VP090 neighbors PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("villagelookup")) {
+   int count=de.villagerplus.village.VillageLookupChecks.run(level,new BlockPos(0,201,0));
+   source.sendSuccess(()->Component.literal("VP090 villagelookup PASS "+count+" checks"),false);return count;
   }
   if(player==null){source.sendFailure(Component.literal("Connect the development client first."));return 0;}
   if(mode.equals("plaza")) {
@@ -431,7 +985,7 @@ public final class Checks090 {
    de.villagerplus.block.DorftafelBlock.open(level,player,ref.data().extra.board.orElse(ref.bell()));return 1;
   }
   if(mode.equals("trader")) {
-   var traders=level.getEntitiesOfClass(net.minecraft.world.entity.npc.wanderingtrader.WanderingTrader.class,new AABB(player.blockPosition()).inflate(120));if(traders.isEmpty())return 0;
+   var traders=level.getEntitiesOfClass(de.villagerplus.entity.CaravanTraderEntity.class,new AABB(player.blockPosition()).inflate(120));if(traders.isEmpty())return 0;
    var trader=traders.get(0);player.teleportTo(trader.getX()+2,trader.getY(),trader.getZ());trader.interact(player,InteractionHand.MAIN_HAND,net.minecraft.world.phys.Vec3.ZERO);return 1;
   }
   if(mode.equals("verify")){
@@ -502,6 +1056,8 @@ public final class Checks090 {
   passed+=StaffingChecks.run(level,a);
   passed+=de.villagerplus.job.CharcoalChecks.run(level,a);
   passed+=de.villagerplus.job.SmithSmeltingChecks.run(level,a);
+  passed+=de.villagerplus.job.DelightKitchenCraftingChecks.run(level,A.offset(500,0,500));
+  passed+=de.villagerplus.job.HouseholdMealChecks.run(level,A.offset(560,0,560));
   passed+=de.villagerplus.job.AnimChecks.run(level,a);
   passed+=de.villagerplus.job.WoodcuttingCycleChecks.run();
   passed+=de.villagerplus.job.EquipmentMaintenanceChecks.run(level,A.offset(400,0,0));
@@ -549,6 +1105,7 @@ public final class Checks090 {
   check((Boolean)call(School.class,"isSchoolActivity",new Class[]{String.class},"lernt beim Lehrer Ada")&&(Boolean)call(School.class,"isSchoolActivity",new Class[]{String.class},"lernt in der Schule (Lehrer fehlt)"),"school activity keeps teacher and independent lessons active");
   ItemStack link=card(level,player,a);redeem(level,player,B,link);
   check(Network.of(a.bellEntity()).links().size()==1&&Network.of(b.bellEntity()).links().size()==1,"reciprocal map link");
+  passed+=de.villagerplus.village.NetworkNeighborChecks.inviteAction(level,player,b,a);
   ItemStack dup=card(level,player,a);int old=dup.getCount();redeem(level,player,B,dup);check(dup.getCount()==old&&Network.of(a.bellEntity()).links().size()==1,"duplicate map preserved");
   ItemStack self=card(level,player,a);old=self.getCount();redeem(level,player,A,self);check(self.getCount()==old,"self-link rejected");
   ItemStack cross=card(level,player,a);var tag=cross.get(DataComponents.CUSTOM_DATA).copyTag();tag.putString("dim","minecraft:the_nether");cross.set(DataComponents.CUSTOM_DATA,net.minecraft.world.item.component.CustomData.of(tag));old=cross.getCount();redeem(level,player,B,cross);check(cross.getCount()==old,"cross-dimension map rejected");
@@ -613,12 +1170,35 @@ public final class Checks090 {
   }
   // Force a visible caravan on the remote plateau; it is left running for the navigation check.
   a.data().extra.nextCaravan=0;check(Caravan.spawn(level,a),"caravan spawned");
-  var traders=level.getEntitiesOfClass(net.minecraft.world.entity.npc.wanderingtrader.WanderingTrader.class,new AABB(A).inflate(130),v->v.entityTags().contains("vp_caravan"));
-  check(traders.size()==1&&traders.get(0).getType()==de.villagerplus.entity.ModEntities.CARAVAN_TRADER,"one caravan-specific trader entity with its isolated renderer id");var trader=traders.get(0);
+  var traders=level.getEntitiesOfClass(de.villagerplus.entity.CaravanTraderEntity.class,new AABB(A).inflate(130),v->v.entityTags().contains("vp_caravan"));
+  check(traders.size()==1&&traders.get(0).getType()==de.villagerplus.entity.ModEntities.CARAVAN_TRADER
+   &&traders.get(0).getClass()==de.villagerplus.entity.CaravanTraderEntity.class,"one independent caravan trader entity with its isolated renderer id");var trader=traders.get(0);
   double distance=Math.hypot(trader.getX()-A.getX(),trader.getZ()-A.getZ());check(distance>=69&&distance<=101,"caravan starts 70-100 blocks away");
-  check(!trader.getOffers().isEmpty()&&trader.hasCustomName(),"partner offers and name");
+  check(trader.getOffers().isEmpty()&&trader.hasCustomName()&&trader.tradeSpecialty()>=0&&trader.visitData()!=null,
+   "new trader does not publish offers before physical caravan stock is loaded");
   check(level.getEntitiesOfClass(Entity.class,new AABB(trader.blockPosition()).inflate(8),e->e.getType()==EntityTypes.DONKEY).size()==2,"two chested donkeys");
   var activeField=Caravan.class.getDeclaredField("ACTIVE");activeField.setAccessible(true);var active=(Map<UUID,Object>)activeField.get(null);Object caravanState=active.get(trader.getUUID());
+  trader.setTradeProfile(0,0,trader.partnerName());
+  ItemStack backedIron=new ItemStack(Items.IRON_INGOT,16);
+  int backedPacked=(Integer)call(Caravan.class,"packCargo",new Class[]{ServerLevel.class,caravanState.getClass(),ItemStack.class},level,caravanState,backedIron);
+   ItemStack shortCoal=new ItemStack(Items.COAL,7);
+   int shortCoalPacked=(Integer)call(Caravan.class,"packCargo",new Class[]{ServerLevel.class,caravanState.getClass(),ItemStack.class},level,caravanState,shortCoal);
+   int shortCoalDebit=(Integer)call(Caravan.class,"takeMerchantCargo",new Class[]{ServerLevel.class,caravanState.getClass(),Item.class,int.class},level,caravanState,Items.COAL,8);
+   int shortCoalLeft=(Integer)call(Caravan.class,"availableMerchantCargo",new Class[]{ServerLevel.class,caravanState.getClass(),Item.class},level,caravanState,Items.COAL);
+   check(shortCoalPacked==7&&shortCoalDebit==0&&shortCoalLeft==7,
+    "an incomplete cargo reservation is rejected without debiting its available coal");
+  call(Caravan.class,"prepareBackedMerchantOffers",new Class[]{ServerLevel.class,caravanState.getClass(),de.villagerplus.entity.CaravanTraderEntity.class},level,caravanState,trader);
+  var ironOffer=trader.getOffers().stream().filter(offer->offer.getResult().is(Items.IRON_INGOT)).findFirst().orElse(null);
+  int backedIronCount=trader.backedTradeStockSnapshot().stream().filter(stack->stack.is(Items.IRON_INGOT)).mapToInt(ItemStack::getCount).sum();
+  check(backedPacked==16&&ironOffer!=null&&ironOffer.getResult().getCount()==8&&ironOffer.getMaxUses()==2
+   &&backedIronCount==16&&trader.backedOffersCovered(),"merchant offer budget is backed by exact reserved physical cargo");
+  ironOffer.increaseUses();trader.notifyTrade(ironOffer);
+  backedIronCount=trader.backedTradeStockSnapshot().stream().filter(stack->stack.is(Items.IRON_INGOT)).mapToInt(ItemStack::getCount).sum();
+  int paidEmeralds=trader.backedTradeStockSnapshot().stream().filter(stack->stack.is(Items.EMERALD)).mapToInt(ItemStack::getCount).sum();
+  check(backedIronCount==8&&paidEmeralds==4&&trader.backedOffersCovered(),"completed trade atomically removes its exact goods and retains the real emerald payment");
+  check(!trader.consumeBackedTradeStock(new ItemStack(Items.IRON_INGOT,9))
+   &&trader.backedTradeStockSnapshot().stream().filter(stack->stack.is(Items.IRON_INGOT)).mapToInt(ItemStack::getCount).sum()==8,
+   "an overdrawn offer-stock debit is rejected without a partial deduction");
   a.bellEntity().removeAttached(VillagerPlus.STOCK_POLICIES);
   ItemStack testCargo=new ItemStack(Items.SPRUCE_PLANKS,3);int packed=(Integer)call(Caravan.class,"packCargo",new Class[]{ServerLevel.class,caravanState.getClass(),ItemStack.class},level,caravanState,testCargo);
   check(packed==3&&testCargo.isEmpty()&&(Boolean)call(Caravan.class,"hasCargo",new Class[]{ServerLevel.class,caravanState.getClass()},level,caravanState),"real goods pack into donkey cargo slots");
@@ -673,7 +1253,7 @@ public final class Checks090 {
   Container tradeBox=a.chest(level);for(Container depot:Balance.storage(level,a))depot.clearContent();
   lot(tradeBox,Items.OAK_LOG,192);tradeBox.setItem(3,new ItemStack(Items.EMERALD,3));a.data().wanted.clear();a.data().wanted.add("minecraft:iron_ingot#64");
   check(total(tradeBox,Items.OAK_LOG)==192&&total(tradeBox,Items.EMERALD)==3,"merchant trade fixture uses the village's current registered depot");
-  call(Caravan.class,"exchange",new Class[]{ServerLevel.class,VillageRef.class,net.minecraft.world.entity.npc.wanderingtrader.WanderingTrader.class},level,a,trader);
+  call(Caravan.class,"exchange",new Class[]{ServerLevel.class,VillageRef.class,net.minecraft.world.entity.npc.villager.AbstractVillager.class},level,a,trader);
   var cargoDonkeysField=caravanState.getClass().getDeclaredField("llamas");cargoDonkeysField.setAccessible(true);
   int cargoEmeralds=0,cargoIron=0,paymentSlot=-1;net.minecraft.world.entity.animal.equine.Donkey paymentDonkey=null;for(UUID donkeyId:(List<UUID>)cargoDonkeysField.get(caravanState))
    if(level.getEntity(donkeyId) instanceof net.minecraft.world.entity.animal.equine.Donkey tradeDonkey)for(int tradeSlot=2;tradeSlot<17;tradeSlot++){
@@ -703,7 +1283,7 @@ public final class Checks090 {
   tradeBox.clearContent();tradeBox.setItem(0,new ItemStack(Items.WHEAT_SEEDS,32));tradeBox.setItem(1,new ItemStack(Items.TORCH,16));
   tradeBox.setItem(2,new ItemStack(Items.OAK_SAPLING,4));a.data().wanted.clear();a.data().wanted.add("minecraft:gravel#32");
   Optional<BlockPos> savedPen=a.data().extra.pen;a.data().extra.pen=Optional.empty();
-  call(Caravan.class,"exchange",new Class[]{ServerLevel.class,VillageRef.class,net.minecraft.world.entity.npc.wanderingtrader.WanderingTrader.class},level,a,trader);
+  call(Caravan.class,"exchange",new Class[]{ServerLevel.class,VillageRef.class,net.minecraft.world.entity.npc.villager.AbstractVillager.class},level,a,trader);
   int remainingTreasury=(int)Network.treasuryEmeralds(a);
   a.data().extra.pen=savedPen;
   boolean gravelCargo=false;for(UUID donkeyId:(List<UUID>)cargoDonkeysField.get(caravanState))
@@ -731,14 +1311,54 @@ public final class Checks090 {
   check(level.setChunkForced((A.getX()+30)>>4,(A.getZ()+30)>>4,true),"cargo persistence fixture keeps its entity chunk loaded until restart verification");
   orphan.getSlot(499).set(new ItemStack(Items.CHEST));orphan.getSlot(502).set(new ItemStack(Items.IRON_INGOT,7));
   check(level.addFreshEntity(orphan),"cargo donkey reload fixture is admitted to the test world");
-  check(!orphan.isRemoved()&&!orphan.entityTags().contains("vp_caravan")&&orphan.isPersistenceRequired()
+  check(!orphan.isRemoved()&&orphan.entityTags().contains("vp_caravan")&&orphan.isPersistenceRequired()
    &&orphan.getCustomName()!=null&&orphan.getCustomName().getString().equals("Karawanen-Frachtesel")
    &&orphan.getSlot(502).get().getCount()==7,"orphaned caravan donkey keeps real cargo and becomes persistent after entity load");
   var recoveredDisplayId=visuals.get(orphan.getUUID());Entity recoveredDisplay=recoveredDisplayId==null?null:level.getEntity(recoveredDisplayId);
   check(recoveredDisplay instanceof net.minecraft.world.entity.Display.ItemDisplay&&recoveredDisplay.getVehicle()==orphan,
    "recovered cargo donkey restores its ride-along display");
   var emptyOrphan=EntityTypes.DONKEY.create(level,EntitySpawnReason.COMMAND);emptyOrphan.setPos(A.getX()+32.5,A.getY(),A.getZ()+30.5);emptyOrphan.addTag("vp_caravan");emptyOrphan.addTag("vp090_fixture");
-  check(level.addFreshEntity(emptyOrphan)&&emptyOrphan.isRemoved(),"empty orphaned caravan donkey is discarded on entity load");
+  check(level.addFreshEntity(emptyOrphan)&&!emptyOrphan.isRemoved()&&emptyOrphan.isPersistenceRequired(),
+   "empty tagged member waits persistently for its trader snapshot instead of being discarded");
+
+   // A marker-only legacy trader has real caravan members but no visit snapshot. Adopt it
+   // without replaying the village exchange, and keep old offers unavailable without erasing them.
+   BlockPos legacyBell=A.offset(400,0,400);level.getChunk(legacyBell);
+   for(Entity stale:level.getEntitiesOfClass(Entity.class,new AABB(legacyBell).inflate(40),e->e.entityTags().contains("vp090_legacy_recovery_fixture"))) {
+    active.remove(stale.getUUID());stale.discard();
+   }
+   VillageRef legacyVillage=fixture(level,legacyBell);
+   check(legacyVillage.chestPos(level)!=null,"legacy recovery fixture has a public village destination");
+   String legacyVillageTag="vp_caravan_bell:"+legacyBell.asLong();
+   var legacyDonkey=EntityTypes.DONKEY.create(level,EntitySpawnReason.COMMAND);
+   check(legacyDonkey!=null,"legacy caravan cargo donkey can be created");
+   legacyDonkey.setPos(legacyBell.getX()+12.5,legacyBell.getY(),legacyBell.getZ()+0.5);
+   legacyDonkey.addTag("vp_caravan");legacyDonkey.addTag(legacyVillageTag);legacyDonkey.addTag("vp090_legacy_recovery_fixture");
+   var legacyChest=legacyDonkey.getSlot(499);var legacyCargo=legacyDonkey.getSlot(502);
+   check(legacyChest!=null&&legacyCargo!=null&&legacyChest.set(new ItemStack(Items.CHEST))
+    &&legacyCargo.set(new ItemStack(Items.IRON_INGOT,7)),"legacy caravan fixture stores genuine iron in its donkey chest");
+   check(level.addFreshEntity(legacyDonkey),"legacy tagged cargo donkey loads before its trader");
+   var legacyTrader=EntityTypes.WANDERING_TRADER.create(level,EntitySpawnReason.COMMAND);
+   check(legacyTrader!=null,"legacy wandering trader can be created for migration");
+   legacyTrader.setPos(legacyBell.getX()+10.5,legacyBell.getY(),legacyBell.getZ()+0.5);
+   legacyTrader.addTag("vp_caravan");legacyTrader.addTag(legacyVillageTag);legacyTrader.addTag("vp090_legacy_recovery_fixture");
+   int legacyOfferCount=legacyTrader.getOffers().size();
+   check(level.addFreshEntity(legacyTrader),"marker-only legacy trader loads beside its tagged caravan");
+   Object legacyState=active.get(legacyTrader.getUUID());
+   var legacyTraded=legacyState==null?null:legacyState.getClass().getDeclaredField("traded");
+   var legacyLeave=legacyState==null?null:legacyState.getClass().getDeclaredField("leaveAt");
+   var legacyMembers=legacyState==null?null:legacyState.getClass().getDeclaredField("llamas");
+   if(legacyState!=null){legacyTraded.setAccessible(true);legacyLeave.setAccessible(true);legacyMembers.setAccessible(true);}
+   check(legacyState!=null&&legacyTraded.getBoolean(legacyState)&&legacyLeave.getLong(legacyState)==Long.MAX_VALUE
+    &&legacyTrader.entityTags().contains("vp_caravan_recovery_v1"),
+    "snapshot-less legacy caravan is adopted as already exchanged and gets persistent recovery markers");
+   check(legacyTrader.getOffers().size()==legacyOfferCount&&!legacyTrader.getOffers().isEmpty()
+    &&legacyTrader.getOffers().stream().allMatch(offer->offer.isOutOfStock()),
+    "legacy merchant records are preserved but offers without a physical stock ledger stay disabled");
+   check(((List<UUID>)legacyMembers.get(legacyState)).contains(legacyDonkey.getUUID())
+    &&legacyDonkey.getSlot(502).get().is(Items.IRON_INGOT)&&legacyDonkey.getSlot(502).get().getCount()==7,
+    "legacy trader reattaches its real cargo donkey without changing its iron inventory");
+   active.remove(legacyTrader.getUUID());legacyTrader.discard();legacyDonkey.discard();
   var bd=de.villagerplus.net.BoardData.build(level,a,a.data().extra.board.orElse(A));check(bd.neighbors().size()==1&&bd.partners().size()==3,"neighbor menu payload");
 
   Journal.add(level,a,"Handel","Audit partner","retained trade",64);

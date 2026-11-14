@@ -25,7 +25,7 @@ public final class CtovMilestoneChecks {
 	/** Harness: no villager AI, the mason is moved onto the chosen stand, and the chest is topped up every tick. */
 	public static int runHarness(ServerLevel level, VillageRef ref) {
 		Villages.adoptUnassigned(level, ref);
-		var residents = level.getEntitiesOfClass(Villager.class, new AABB(ref.bell()).inflate(48), Villager::isAlive);
+		var residents = Villages.residents(level, ref, de.villagerplus.Config.VILLAGE_RADIUS, Villager::isAlive);
 		if (residents.isEmpty()) throw new IllegalStateException("CTOV harness: no resident to build");
 		Villager mason = residents.get(0);
 		mason.setInvulnerable(true);
@@ -84,53 +84,138 @@ public final class CtovMilestoneChecks {
 	 * The mason keeps AI and is never moved by the test.
 	 */
 	public static int runWalk(ServerLevel level, VillageRef ref) {
-		level.getServer().getCommands().performPrefixedCommand(level.getServer().createCommandSourceStack(), "time set 1000");
+		var overworldClock = level.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.WORLD_CLOCK)
+			.getOrThrow(net.minecraft.world.clock.WorldClocks.OVERWORLD);
+		((net.minecraft.world.clock.ServerClockManager) level.getServer().overworld().clockManager()).setTotalTicks(overworldClock, 1000L);
 		Villages.adoptUnassigned(level, ref);
-		var residents = level.getEntitiesOfClass(Villager.class, new AABB(ref.bell()).inflate(48), Villager::isAlive);
+		var residents = Villages.residents(level, ref, de.villagerplus.Config.VILLAGE_RADIUS, Villager::isAlive);
 		if (residents.isEmpty()) throw new IllegalStateException("CTOV walk: no resident to build");
-		Villager mason = residents.stream().min(java.util.Comparator.comparing(Villager::getUUID)).orElseThrow();
+		Villager mason = Builder.milestoneWorker(level, ref);
+		if (mason == null) throw new IllegalStateException("CTOV walk: no eligible resident to build");
 		mason.setInvulnerable(true);
 		mason.setNoAi(false);
+		System.out.println("CTOV WALK worker " + mason.getUUID() + " " + mason.getVillagerData().profession()
+			+ " at " + mason.blockPosition().toShortString());
+		BlockPos streetTarget = Builder.villageReturn(level, ref.bell());
+		String candidatePositions = residents.stream().filter(v -> !v.isBaby()
+			&& !de.villagerplus.village.Guests.isGuest(v)
+			&& !de.villagerplus.village.Expedition.isAway(v)
+			&& de.villagerplus.village.Market.shop(ref, v.getUUID()) == null)
+			.sorted(java.util.Comparator.comparingDouble(v -> streetTarget == null ? v.getUUID().hashCode()
+				: v.position().distanceToSqr(net.minecraft.world.phys.Vec3.atBottomCenterOf(streetTarget))))
+			.limit(8).map(v -> v.getUUID() + "@" + v.blockPosition().toShortString() + "/"
+				+ de.villagerplus.Compat.jobKey(v.getVillagerData().profession()) + "/"
+				+ v.getVillagerData().profession().unwrapKey().map(key -> key.identifier().toString()).orElse("unknown"))
+			.collect(java.util.stream.Collectors.joining(","));
+		System.out.println("CTOV WALK clock game=" + level.getGameTime()
+			+ " overworld=" + level.getOverworldClockTime() + " phase=" + de.villagerplus.job.Phase.of(level.getOverworldClockTime())
+			+ " sleeping=" + mason.isSleeping() + " trading=" + mason.isTrading()
+			+ " panic=" + mason.getBrain().isActive(net.minecraft.world.entity.schedule.Activity.PANIC)
+			+ " village=" + Villages.find(level, mason)
+			+ " street=" + streetTarget
+			+ " candidates=" + candidatePositions
+			+ " streetDistance=" + (streetTarget == null ? "none"
+				: mason.position().distanceToSqr(net.minecraft.world.phys.Vec3.atBottomCenterOf(streetTarget))));
 		Villages.ensureCenter(level, ref, mason, level.getGameTime() + 10_000);
 		Container chest = ensureChest(level, ref);
 		BlockPos harnessGranary = Specials.get(ref, Blueprints.GRANARY);
-		if (harnessGranary != null) {
+		if (harnessGranary != null && solidBlocks(level, harnessGranary) < 40) {
 			Specials.remove(ref, Blueprints.GRANARY);
 			if (ref.data().hasPlan() && Blueprints.GRANARY.equals(ref.data().planType)) ref.data().clearPlan();
 		}
 		ref.data().nextBuild = 0;
 		if ("ctov-headless".equals(ref.data().planType) && ref.data().planOrigin.isEmpty()) ref.data().clearPlan();
+		int checks = 0;
+		Container stock = de.villagerplus.village.Lager.combined(level, ref);
+		checks += walkMilestone(level, ref, stock, mason, Blueprints.GRANARY);
+		checks += walkMilestone(level, ref, stock, mason, Blueprints.TOOLSHED);
+		checks += walkMilestone(level, ref, stock, mason, Blueprints.SCHOOL);
+		checks += walkMilestone(level, ref, stock, mason, Blueprints.KITCHEN);
+		return checks;
+	}
+
+	private static int walkMilestone(ServerLevel level, VillageRef ref, Container chest, Villager mason, String type) {
+		if (milestoneDone(ref, type)) {
+			BlockPos at = milestonePos(ref, type);
+			check(at != null && solidBlocks(level, at) >= 40, "walk: existing " + type + " still stands");
+			System.out.println("CTOV WALK KEEP " + type + " " + at.toShortString());
+			return 2;
+		}
 		String supplied = "";
 		BlockPos planStart = null;
-		BlockPos startPos = mason.blockPosition();
-		int checks = 0;
-		for (int tick = 0; tick < 12000 && Specials.get(ref, Blueprints.GRANARY) == null; tick++) {
+		int stagnant = 0;
+		int lastStep = -1;
+		String lastPlanType = ref.data().planType;
+		boolean beganAtWorkStand = false;
+		var lastPosition = mason.position();
+		int relocations = JobManager.state(mason).builderRelocations;
+		for (int tick = 0; tick < 20000 && !milestoneDone(ref, type); tick++) {
 			level.tick(() -> false);
-			if (planStart == null && ref.data().planOrigin.isPresent() && Blueprints.GRANARY.equals(ref.data().planType)) {
-				planStart = mason.blockPosition();
+			if (tick % de.villagerplus.Config.JOB_INTERVAL == 0) {
+				JobManager.tickForDevelopment(level, mason);
+			}
+			check(JobManager.state(mason).builderRelocations == relocations,
+				"walk: builder was relocated instead of walking during " + type);
+			if (ref.data().planOrigin.isPresent()) {
+				BlockPos origin = ref.data().planOrigin.get();
+				level.setChunkForced(origin.getX() >> 4, origin.getZ() >> 4, true);
+				if (planStart == null && type.equals(ref.data().planType)) {
+					planStart = mason.blockPosition();
+					var preview = new Ctx(level, mason, JobManager.state(mason), mason.getAttachedOrCreate(de.villagerplus.VillagerPlus.MEMORY), ref, level.getGameTime());
+					BlockPos stand = Builder.constructionStand(preview);
+					beganAtWorkStand = stand != null
+						&& mason.position().distanceToSqr(net.minecraft.world.phys.Vec3.atBottomCenterOf(stand)) <= 4.0;
+				}
 			}
 			String wishlist = String.join("|", ref.data().wanted);
-			if (!wishlist.isEmpty() && !wishlist.equals(supplied)) {
+			// A shipment can be consumed by other villagers before the builder uses it.
+			// Refill remaining requests periodically; supply() adds only the actual shortfall.
+			if (!wishlist.isEmpty() && (!wishlist.equals(supplied) || tick % 100 == 0)) {
 				supply(chest, ref.data().wanted);
 				supplied = wishlist;
 			}
-			if (tick % 200 == 0) {
-				System.out.println("CTOV WALK tick " + tick + " step=" + ref.data().planStep + "/" + Builder.planSize(ref.data())
+			int step = ref.data().planStep;
+			String currentPlanType = ref.data().planType;
+			boolean moved = mason.position().distanceToSqr(lastPosition) >= 9.0;
+			boolean targetPlanStarted = type.equals(currentPlanType) && !type.equals(lastPlanType);
+			if (step != lastStep || moved || targetPlanStarted) {
+				lastStep = step;
+				lastPosition = mason.position();
+				stagnant = 0;
+			} else if (++stagnant > 2000) {
+				throw new IllegalStateException("CTOV walk stalled on " + type + " step " + step + "/" + Builder.planSize(ref.data())
 					+ " origin=" + ref.data().planOrigin.map(BlockPos::toShortString).orElse("none")
-					+ " mason=" + mason.blockPosition().toShortString());
+					+ " mason=" + mason.blockPosition().toShortString()
+					+ " wanted=" + ref.data().wanted + " stand=" + Builder.lastStandReport(mason));
+			}
+			lastPlanType = currentPlanType;
+			if (tick % 400 == 0) {
+				System.out.println("CTOV WALK " + type + " tick " + tick + " step=" + step + "/" + Builder.planSize(ref.data())
+					+ " plan=" + ref.data().planType + " mason=" + mason.blockPosition().toShortString()
+					+ " activity=" + JobManager.state(mason).activity + " wanted=" + ref.data().wanted
+					+ " route=" + de.villagerplus.job.JobUtil.lastLongRouteDiagnostic(mason));
 				System.out.flush();
 			}
 		}
-		BlockPos granary = Specials.get(ref, Blueprints.GRANARY);
-		check(granary != null, "walk: the village finished a granary during normal ticks"); checks++;
+		check(milestoneDone(ref, type), "walk: village finished " + type + " during normal ticks");
+		BlockPos built = milestonePos(ref, type);
 		double walked = planStart == null ? 0 : Math.sqrt(mason.blockPosition().distSqr(planStart));
-		double fromStart = Math.sqrt(mason.blockPosition().distSqr(startPos));
-		check(walked >= 3.0 || fromStart >= 3.0, "walk: mason moved under navigation (plan-start delta " + walked + ", bell delta " + fromStart + ")"); checks++;
-		check(solidBlocks(level, granary) >= 40, "walk: granary footprint contains placed blocks"); checks++;
-		ref.bellEntity().setChanged();
-		level.getChunkAt(granary).markUnsaved();
-		System.out.println("CTOV WALK PASS granary " + granary.toShortString() + " moved " + walked + " blocks after the plan started");
-		return checks;
+		check(walked >= 3.0 || beganAtWorkStand,
+			"walk: mason moved to " + type + " (" + walked + " blocks) or began at its real work stand (" + beganAtWorkStand + ")");
+		check(built != null && solidBlocks(level, built) >= 40, "walk: " + type + " footprint contains placed blocks");
+		level.getChunkAt(built).markUnsaved();
+		System.out.println("CTOV WALK PASS " + type + " " + built.toShortString() + (walked >= 3.0 ? " moved " + walked : " started at work stand"));
+		return 3;
+	}
+
+	static boolean milestoneDone(VillageRef ref, String type) {
+		if (Blueprints.SCHOOL.equals(type)) return ref.data().extra.school.isPresent();
+		return Specials.has(ref, type);
+	}
+
+	static BlockPos milestonePos(VillageRef ref, String type) {
+		if (Blueprints.SCHOOL.equals(type)) return ref.data().extra.school.orElse(null);
+		return Specials.get(ref, type);
 	}
 
 	private static Container ensureChest(ServerLevel level, VillageRef ref) {
@@ -173,6 +258,8 @@ public final class CtovMilestoneChecks {
 				else stack.grow(add);
 				left -= add;
 			}
+			System.out.println("CTOV WALK SUPPLY " + entry + " stock=" + JobUtil.count(chest, stack -> stack.is(item.get())) + " unfilled=" + Math.max(0,left));
+			check(left <= 0, "requested materials do not fit in the communal chest: " + entry);
 		}
 	}
 

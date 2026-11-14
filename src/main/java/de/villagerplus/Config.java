@@ -54,7 +54,7 @@ public final class Config {
 	public static final int FARM_RADIUS = 9;
 	public static final int FARM_DEPOSIT_THRESHOLD = 24;
 	public static final int FARM_KEEP = 12;
-	public static final int FARM_MIN_SEEDS = 16;
+	public static final int FARM_MIN_SEEDS = 8;
 	public static final int MAX_FARMS = 6;
 
 	/** Schaefer. */
@@ -86,13 +86,19 @@ public final class Config {
 	/** Dorfausbau. */
 	public static final int VILLAGE_RADIUS = 96;
 	public static final int MAX_VILLAGERS = 128;
-	public static final int BUILD_BLOCKS_PER_STEP = 2;
-	public static final long BUILD_COOLDOWN = 6000L;
+	/** Paid blocks per scheduled builder visit; raises progress without extra workers or pathfinding calls. */
+	/**
+	 * Dorf-Tempo: ein einziger Regler fuer die Entwicklungsgeschwindigkeit der Doerfer (1 = urspruenglich).
+	 * Er skaliert nur Baufortschritt pro Besuch und die Pause zwischen zwei Projekten, nie die globale Tickrate.
+	 */
+	public static final int VILLAGE_TEMPO = 3;
+	public static final int BUILD_BLOCKS_PER_STEP = 12 * VILLAGE_TEMPO;
+	public static final long BUILD_COOLDOWN = 6000L / VILLAGE_TEMPO;
 	public static final int CHEST_SEARCH_RADIUS = 12;
 	public static final int TORCH_COOLDOWN = 400;
 
 	/** Stadtentwicklung: ab dieser Einwohnerzahl entstehen Tiergehege, Rathaus und Stadtmauer. */
-	public static final int PEN_POP = 6;
+	public static final int PEN_POP = 4;
 	public static final int TOWNHALL_POP = 12;
 	/** Doerfer (und ihre aktive Mine) dauerhaft laden, damit sie auch ohne Spieler in der Naehe weiterarbeiten. */
 	public static final boolean KEEP_VILLAGES_LOADED = true;

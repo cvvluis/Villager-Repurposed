@@ -3,6 +3,7 @@
 	"id": "villagerplus",
 	"version": "${version}",
 	"name": "Villagers: Repurposed",
+	"icon": "assets/villagerplus/icon.png",
 	"description": "Dorfbewohner arbeiten wirklich, bauen das Dorf aus, reparieren Eisengolems und haben ein langes Gedächtnis.",
 	"authors": ["Luis"],
 	"license": "MIT",
@@ -24,6 +25,12 @@
 		"cloth-config": "*",
 		"easy_villagers": "*",
 		"villagernames": "*",
-		"guardvillagers": "*"
+		"guardvillagers": "*",
+		"farmersdelight": "*",
+		"chefsdelight": "*",
+		"morevillagers": "*",
+		"sereneseasons": "*",
+		"t_and_t": "*",
+		"village_taverns": "*"
 	}
 }

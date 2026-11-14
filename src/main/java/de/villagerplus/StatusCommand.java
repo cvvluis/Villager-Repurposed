@@ -16,6 +16,7 @@ import de.villagerplus.village.VillageData;
 
 import de.villagerplus.village.VillageRef;
 import de.villagerplus.village.Villages;
+import de.villagerplus.village.VillageStats;
 
 import de.villagerplus.village.Wellbeing;
 
@@ -213,7 +214,8 @@ public final class StatusCommand {
 
 			} else {
 
-				de.villagerplus.build.Furnisher.furnishSchool(level, bb, palette.roofStair());
+				// Previewing a generated school is free of world-stock mutations; only a registered village school
+				// is furnished through the paid production path when its construction completes.
 
 			}
 
@@ -433,12 +435,14 @@ public final class StatusCommand {
 					if (level.getBlockEntity(p) instanceof BellBlockEntity bell && bell.getAttached(VillagerPlus.VILLAGE) != null) {
 
 						VillageData d = bell.getAttached(VillagerPlus.VILLAGE);
+						VillageRef ref = new VillageRef(p.immutable(), d, bell);
 
-						String info = "Dorf an Glocke " + p.toShortString() + ": Kiste " + d.chest.map(BlockPos::toShortString).orElse("-")
+						String info = "Dorf an Glocke " + p.toShortString() + " [" + de.villagerplus.village.VillageAdmin.summary(ref) + "]: Kiste " + d.chest.map(BlockPos::toShortString).orElse("-")
 
 							+ ", Häuser gebaut " + d.houses + ", Felder " + d.farms + ", Brunnen " + (d.wellBuilt ? "ja" : "nein") + ", Rathaus " + (d.townHallBuilt ? "ja" : "nein") + ", Mauer " + (d.wallBuilt ? "ja" : "nein")
 
 							+ ", Gehege " + d.extra.pen.map(BlockPos::toShortString).orElse("-") + ", Schule " + d.extra.school.map(BlockPos::toShortString).orElse("-")
+							+ (d.extra.school.isPresent() ? " [" + de.villagerplus.job.School.furnishingStatus(level, d.extra.school.get()) + "]" : "")
 
 							+ ", Lager " + d.extra.lager.map(BlockPos::toShortString).orElse("-") + "+" + d.extra.lagerMore.size()
 
@@ -446,7 +450,8 @@ public final class StatusCommand {
 
 							+ ", Auftrag " + (d.hasPlan() ? d.planType + " bei " + d.planOrigin.get().toShortString() + " Schritt " + d.planStep : "keiner")
 
-							+ ", Reichtum-Aufbauten " + d.extra.decor + ", Mine " + Mining.describe(d) + ", Wunschliste " + d.wanted;
+							+ ", Reichtum-Aufbauten " + d.extra.decor + ", Mine " + Mining.describe(d)
+							+ ", Baumaterial " + VillageStats.materialSummary(level, ref);
 
 						src.sendSuccess(() -> Component.literal(info), false);
 

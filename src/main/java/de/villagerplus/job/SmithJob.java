@@ -1,10 +1,15 @@
 package de.villagerplus.job;
 
 import de.villagerplus.Config;
+import de.villagerplus.build.Blueprints;
+import de.villagerplus.village.Specials;
 import java.util.Comparator;
 import java.util.List;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -13,6 +18,8 @@ import net.minecraft.world.Container;
 import net.minecraft.world.entity.animal.golem.IronGolem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 
 /**
  * Ruestungs-, Waffen- und Werkzeugschmied: repariert beschaedigte Eisengolems (mit Eisenbarren deutlich besser)
@@ -82,8 +89,8 @@ public class SmithJob implements Job {
 		if (primary(c)) {
 			return true;
 		}
-		if (Workstation.ensure(c, net.minecraft.world.level.block.Blocks.ANVIL)) return true;
-		if (Workstation.ensure(c, net.minecraft.world.level.block.Blocks.BLAST_FURNACE)) return true;
+		if (ensureRoleWorkstations(c)) return true;
+
 		if (EquipmentMaintenance.repairAtToolshed(c)) {
 			return true;
 		}
@@ -111,6 +118,25 @@ public class SmithJob implements Job {
 		return false;
 	}
 
+	/** Builds missing workstations through loaded crafting recipes using only the real communal depot. */
+	static boolean ensureRoleWorkstations(Ctx c) {
+		if (Workstation.ensure(c, Blocks.ANVIL)) return true;
+		if (Workstation.ensure(c, Blocks.BLAST_FURNACE)) return true;
+		if (Workstation.ensure(c, Blocks.BREWING_STAND)) return true;
+
+		// Delight blocks are useful once the village has a marked kitchen. Resolve registry IDs at runtime so
+		// servers without the optional mod neither load its classes nor substitute unrelated vanilla blocks.
+		if (c.village() == null || !FabricLoader.getInstance().isModLoaded("farmersdelight")) return false;
+		BlockPos kitchen = Specials.get(c.village(), Blueprints.KITCHEN);
+		if (kitchen == null || !c.level().hasChunkAt(kitchen)) return false;
+		return ensureKitchenStation(c, Blueprints.FARMERS_DELIGHT_COOKING_POT, kitchen)
+			|| ensureKitchenStation(c, Blueprints.FARMERS_DELIGHT_CUTTING_BOARD, kitchen);
+	}
+
+	private static boolean ensureKitchenStation(Ctx c, String id, BlockPos kitchen) {
+		Block block = BuiltInRegistries.BLOCK.getOptional(Identifier.parse(id)).orElse(null);
+		return block != null && block.asItem() != Items.AIR && Workstation.ensure(c, block, kitchen);
+	}
 	/** Eisenbarren aus eigenem Inventar oder aus der Dorfkiste. */
 	private static boolean takeIngot(Ctx c) {
 		if (JobUtil.take(c.v().getInventory(), s -> s.is(Items.IRON_INGOT), 1) > 0) {

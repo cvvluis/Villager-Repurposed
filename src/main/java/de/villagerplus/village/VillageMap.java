@@ -6,6 +6,7 @@ import de.villagerplus.VillagerPlus;
 import de.villagerplus.build.HouseTemplate;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import net.minecraft.ChatFormatting;
@@ -26,6 +27,7 @@ import net.minecraft.world.phys.AABB;
  */
 public final class VillageMap {
 	public static final int CELLS = 21;
+	public static final int NEIGHBOR_VILLAGE_MARKER = 16;
 	private static final int SIZE = 8;
 
 	private enum Kind { NATURAL, TREE, PATH, WATER, FARM, BUILT }
@@ -37,6 +39,9 @@ public final class VillageMap {
 
 	public static List<Component> render(ServerLevel level, VillageRef ref) {
 		VillageData d = ref.data();
+		// Viewing the map also records valid, loaded neighboring villages through the
+		// same reciprocal-link discovery path used by the relationship panel.
+		List<String> neighborRows = Network.neighborRows(level, ref);
 		List<Villager> people = Villages.residents(level, ref, Config.VILLAGE_RADIUS, v -> true);
 		List<Villager> residents = people.stream().filter(v -> !Guests.isGuest(v) && !Expedition.isAway(v)).toList();
 
@@ -66,8 +71,19 @@ public final class VillageMap {
 		for (VillageData.Mine m : d.extra.oldMines) {
 			put(mark, markColor, originX, originZ, overviewSize, m.entrance, '▽', ChatFormatting.DARK_GRAY, false);
 		}
+		for (BlockPos projectOrigin : constructionProjectOrigins(d)) {
+			put(mark, markColor, originX, originZ, overviewSize, projectOrigin, '▧', ChatFormatting.GOLD, true);
+		}
 		for (Villager v : residents) {
 			put(mark, markColor, originX, originZ, overviewSize, v.blockPosition(), '•', ChatFormatting.GREEN, false);
+		}
+		for (BlockPos neighbor : mapNeighborBells(level, ref)) {
+			int col = Math.floorDiv(neighbor.getX() - originX, overviewSize);
+			int row = Math.floorDiv(neighbor.getZ() - originZ, overviewSize);
+			if (col < 0 || row < 0 || col >= CELLS || row >= CELLS) continue;
+			if (mark[col][row] == 0 || mark[col][row] == '•') {
+				put(mark, markColor, originX, originZ, overviewSize, neighbor, '◆', ChatFormatting.AQUA, true);
+			}
 		}
 
 		List<Component> out = new ArrayList<>();
@@ -132,14 +148,47 @@ public final class VillageMap {
 		for (Balance.Kind k : Balance.Kind.values()) {
 			out.add(bar(labels[k.ordinal()], stock[k.ordinal()] / (double) max, colors[k.ordinal()], stock[k.ordinal()] + " Einheiten"));
 		}
+		out.add(Component.empty());
+		out.add(Component.literal("Karawanenorte").withStyle(ChatFormatting.GOLD));
+		out.addAll(partnerDisplayLines(Network.of(ref.bellEntity()), level.getGameTime() / 24000L));
+		out.add(Component.empty());
+		out.add(Component.literal("Nachbardörfer").withStyle(ChatFormatting.AQUA));
+		List<String> visibleNeighbors = neighborSummaryRows(neighborRows);
+		if (visibleNeighbors.isEmpty()) {
+			out.add(Component.literal("Keine echten Nachbardörfer im bekannten Umfeld.").withStyle(ChatFormatting.GRAY));
+		} else {
+			for (String neighbor : visibleNeighbors) out.add(Component.literal("◆ " + neighbor).withStyle(ChatFormatting.AQUA));
+		}
 		return out;
+	}
+
+	static List<Component> partnerDisplayLines(TradeNetwork network, long day) {
+		return Network.partnerRows(network, day).stream()
+			.map(row -> (Component) Component.literal("• " + row.replace('|', '·')).withStyle(ChatFormatting.WHITE)).toList();
+	}
+
+	/** Readable map rows for persisted real-village links; dimension+bell identity deduplicates rows. */
+	static List<String> neighborSummaryRows(List<String> rows) {
+		if (rows == null || rows.isEmpty()) return List.of();
+		Set<String> seen = new LinkedHashSet<>();
+		List<String> summaries = new ArrayList<>();
+		for (String row : rows) {
+			if (row == null) continue;
+			String[] fields = row.split("\\|", -1);
+			if (fields.length < 13 || fields[0].isBlank() || fields[11].isBlank() || fields[12].isBlank()) continue;
+			if (!seen.add(fields[11] + "|" + fields[12])) continue;
+			String availability = fields[6].equals("1") ? "" : " · nicht geladen";
+			summaries.add(fields[0] + " · " + fields[1] + " · Beziehung " + fields[4] + availability);
+		}
+		return List.copyOf(summaries);
 	}
 
 	private static Component legend() {
 		MutableComponent l = Component.empty();
 		String[][] items = {{"⌂", "Glocke", "WHITE"}, {"▣", "Kiste", "YELLOW"}, {"✉", "Tafel", "AQUA"}, {"✎", "Schule", "BLUE"}, {"▤", "Lager", "GRAY"},
 			{"❖", "Gehege", "RED"}, {"▼", "Mine", "DARK_RED"}, {"▽", "Alte Mine", "DARK_GRAY"}, {"■", "Bebauung", "GOLD"}, {"▒", "Feld", "GREEN"}, {"≈", "Wasser", "AQUA"},
-			{"░", "Weg", "YELLOW"}, {"♣", "Wald", "DARK_GREEN"}, {"•", "Dorfbewohner", "GREEN"}};
+			{"░", "Weg", "YELLOW"}, {"♣", "Wald", "DARK_GREEN"}, {"•", "Dorfbewohner", "GREEN"}, {"▧", "Baustelle", "GOLD"},
+			{"◆", "Nachbardorf", "AQUA"}};
 		for (String[] it : items) {
 			l.append(Component.literal(it[0] + " " + it[1] + "  ").withStyle(ChatFormatting.valueOf(it[2])));
 		}
@@ -203,7 +252,7 @@ public final class VillageMap {
 
 	/**
 	 * Karte fuer die Dorftafel als zwei Gitter (Zeile fuer Zeile): [0] Gelaende (0 Land, 1 Wald, 2 Weg, 3 Wasser, 4 Feld, 5 Bebauung),
-	 * [1] Markierung (0 keine, 1 Glocke, 2 Kiste, 3 Tafel, 4 Schule, 5 Lager, 6 Gehege, 7 Mine, 8 alte Mine, 9 Dorfbewohner, 10 Kornspeicher, 11 Werkzeugkammer, 12 Kueche, 13 Baustelle).
+	 * [1] Markierung (0 keine, 1 Glocke, 2 Kiste, 3 Tafel, 4 Schule, 5 Lager, 6 Gehege, 7 Mine, 8 alte Mine, 9 Dorfbewohner, 10 Kornspeicher, 11 Werkzeugkammer, 12 Kueche, 13 Baustelle, 16 Nachbardorf).
 	 */
 	/** Weltkoordinaten (x, z) der linken oberen Ecke des Tafelrasters. */
 	public static int[] gridOrigin(ServerLevel level, VillageRef ref) {
@@ -289,7 +338,10 @@ public final class VillageMap {
 		}
 		byte[] marks = new byte[GRID * GRID];
 		for (Villager v : Villages.residents(level, ref, Config.VILLAGE_RADIUS, x -> !Guests.isGuest(x) && !Expedition.isAway(x))) {
-					mark(marks, originX, originZ, GSIZE, v.blockPosition(), 9, false);
+			mark(marks, originX, originZ, GSIZE, v.blockPosition(), 9, false);
+		}
+		for (int index : nearbyVillageMarkerIndices(GRID, originX, originZ, GSIZE, bell, mapNeighborBells(level, ref))) {
+			if (marks[index] == 0 || marks[index] == 9) marks[index] = (byte)NEIGHBOR_VILLAGE_MARKER;
 		}
 		for (VillageData.Mine m : d.extra.oldMines) {
 			mark(marks, originX, originZ, GSIZE, m.entrance, 8, true);
@@ -306,8 +358,8 @@ public final class VillageMap {
 				mark(marks, originX, originZ, GSIZE, shop.origin(), 14, true);
 			}
 		}
-		if (d.hasPlan()) {
-			d.planOrigin.ifPresent(p -> mark(marks, originX, originZ, GSIZE, p, 13, true));
+		for (BlockPos projectOrigin : constructionProjectOrigins(d)) {
+			mark(marks, originX, originZ, GSIZE, projectOrigin, 13, true);
 		}
 		d.extra.board.ifPresent(p -> mark(marks, originX, originZ, GSIZE, p, 3, true));
 		BlockPos chestAt = ref.chestPos(level);
@@ -316,6 +368,64 @@ public final class VillageMap {
 		}
 		mark(marks, originX, originZ, GSIZE, bell, 1, true);
 		return new byte[][] {cells, marks};
+	}
+
+	/** Loaded, previously recognized neighboring bells within the current map bounds. */
+	static List<BlockPos> nearbyVillageBells(ServerLevel level, VillageRef ref) {
+		if (level == null || ref == null) return List.of();
+		Geometry map = geometry(level, ref);
+		long halfExtent = (long)GRID * map.gridScale() / 2L;
+		int searchRange = (int)Math.min(Integer.MAX_VALUE, Math.ceil(Math.sqrt(2.0) * halfExtent));
+		return Villages.knownBellsNear(level, map.center(), searchRange);
+	}
+
+	/**
+	 * Neighbor markers combine currently recognized loaded villages with persisted real links.
+	 * This keeps discovered villages on the board after their chunks unload without mixing dimensions.
+	 */
+	static List<BlockPos> mapNeighborBells(ServerLevel level, VillageRef ref) {
+		if (level == null || ref == null) return List.of();
+		String dimension = level.dimension().identifier().toString();
+		LinkedHashSet<BlockPos> bells = new LinkedHashSet<>(nearbyVillageBells(level, ref));
+		bells.addAll(linkedNeighborBells(dimension, Network.of(ref.bellEntity()).links()));
+		bells.removeIf(pos -> sameMapColumn(pos, ref.bell()));
+		return List.copyOf(bells);
+	}
+
+	private static boolean sameMapColumn(BlockPos left, BlockPos right) {
+		return left != null && right != null && left.getX() == right.getX() && left.getZ() == right.getZ();
+	}
+
+	/** Stable positions from saved, real-village links in the displayed dimension only. */
+	static List<BlockPos> linkedNeighborBells(String dimension, List<TradeNetwork.Link> links) {
+		if (dimension == null || dimension.isBlank() || links == null || links.isEmpty()) return List.of();
+		LinkedHashSet<BlockPos> bells = new LinkedHashSet<>();
+		for (TradeNetwork.Link link : links) {
+			if (link != null && dimension.equals(link.dimension()) && link.bell() != null) bells.add(link.bell());
+		}
+		return List.copyOf(bells);
+	}
+
+	/** Raster cells for loaded, previously recognized neighboring bells; duplicate cells remain one stable marker. */
+	public static List<Integer> nearbyVillageMarkerIndices(int gridSize, int originX, int originZ, int cellSize,
+		BlockPos home, List<BlockPos> nearby) {
+		if (gridSize <= 0 || cellSize <= 0 || home == null || nearby == null || nearby.isEmpty()) return List.of();
+		Set<Integer> indices = new LinkedHashSet<>();
+		for (BlockPos village : nearby) {
+			if (village == null || sameMapColumn(village, home)) continue;
+			int col = Math.floorDiv(village.getX() - originX, cellSize);
+			int row = Math.floorDiv(village.getZ() - originZ, cellSize);
+			if (col >= 0 && row >= 0 && col < gridSize && row < gridSize) indices.add(row * gridSize + col);
+		}
+		return List.copyOf(indices);
+	}
+
+	/** Active persisted project origins; pre-project saves retain their legacy singleton marker. */
+	public static List<BlockPos> constructionProjectOrigins(VillageData data) {
+		List<BlockPos> active = data.buildProjects.stream().filter(VillageData.BuildProject::active)
+			.map(VillageData.BuildProject::origin).distinct().toList();
+		if (!active.isEmpty()) return active;
+		return data.hasPlan() ? data.planOrigin.stream().toList() : List.of();
 	}
 
 	/** Gelaendeart eines 4x4-Feldes aus vier Stichproben (Bebauung > Feld > Wasser > Weg > Wald > Oberflaeche). */

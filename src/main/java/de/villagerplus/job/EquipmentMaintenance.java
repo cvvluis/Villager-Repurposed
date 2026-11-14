@@ -46,12 +46,33 @@ public final class EquipmentMaintenance {
 		if (!JobUtil.approach(c, anvil, 2.8)) {
 			return true;
 		}
+		// The cached target can become stale while the smith is walking. Never spend a repair
+		// ingredient unless the worker has reached a still-loaded, still-usable anvil.
+		if (!c.level().hasChunkAt(anvil) || !isAnvil(c.level().getBlockState(anvil))) {
+			c.st().toolRepairAnvil = null;
+			c.st().toolRepairNextWorkAt = c.now() + ANVIL_SCAN_INTERVAL;
+			c.st().clearTarget();
+			c.st().cooldownUntil = c.now() + 40;
+			return true;
+		}
 
-		// Recheck after walking: another villager may have repaired the item or consumed the material meanwhile.
-		ItemStack damaged = target.depot().getItem(target.slot());
-		RepairMaterial material = findRepairMaterial(damaged, Balance.storage(c.level(), c.village()));
+		// Rebuild both inventories after walking. In particular, a formerly public toolshed
+		// container may have become private while this smith was en route; never mutate the
+		// stale Container reference selected before the walk.
+		List<Container> currentToolsheds = Specials.containers(c.level(), c.village(), Blueprints.TOOLSHED);
+		List<Container> currentSupplies = Balance.storage(c.level(), c.village());
+		RepairTarget currentTarget = findTarget(currentToolsheds, currentSupplies);
+		if (currentTarget == null) {
+			c.st().clearTarget();
+			c.st().toolRepairNextWorkAt = c.now() + NO_WORK_INTERVAL;
+			c.st().cooldownUntil = c.now() + 40;
+			return true;
+		}
+		ItemStack damaged = currentTarget.depot().getItem(currentTarget.slot());
+		RepairMaterial material = findRepairMaterial(damaged, currentSupplies);
 		if (damaged.isEmpty() || !damaged.isDamaged() || material == null) {
 			c.st().clearTarget();
+			c.st().toolRepairNextWorkAt = c.now() + NO_WORK_INTERVAL;
 			c.st().cooldownUntil = c.now() + 40;
 			return true;
 		}
@@ -60,7 +81,7 @@ public final class EquipmentMaintenance {
 		int before = damaged.getDamageValue();
 		if (consumeOne(material)) {
 			damaged.setDamageValue(Math.max(0, before - restored));
-			target.depot().setChanged();
+			currentTarget.depot().setChanged();
 			c.level().playSound(null, anvil, SoundEvents.ANVIL_USE, SoundSource.BLOCKS, 0.8F, 1.0F);
 			c.level().sendParticles(ParticleTypes.CRIT, anvil.getX() + 0.5, anvil.getY() + 1.0, anvil.getZ() + 0.5, 5, 0.25, 0.15, 0.25, 0.02);
 			JobUtil.swing(c.v());
@@ -119,7 +140,10 @@ public final class EquipmentMaintenance {
 		for (Container box : supplies) {
 			for (int slot = 0; slot < box.getContainerSize(); slot++) {
 				ItemStack candidate = box.getItem(slot);
-				if (!candidate.isEmpty() && damaged.isValidRepairItem(candidate)) {
+				// An anvil also accepts another item of the same kind, but spending that item here can
+				// destroy valuable equipment stored beside the damaged target. Only consume actual,
+				// non-damageable repair ingredients from the village's loaded item rules.
+				if (!candidate.isEmpty() && !candidate.isDamageableItem() && damaged.isValidRepairItem(candidate)) {
 					return new RepairMaterial(box, slot);
 				}
 			}

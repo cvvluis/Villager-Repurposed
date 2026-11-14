@@ -65,6 +65,9 @@ java {
 	targetCompatibility = JavaVersion.VERSION_25
 }
 
+// Preserve editor/agent conflict snapshots in the workspace without compiling duplicate classes.
+sourceSets.main.java.exclude '**/*(# Edit conflict*', '**/*(# Name clash*'
+
 // Nur fuer lokale Tests: ./gradlew runClient -Pquickplay=localhost:25565 verbindet den Dev-Client automatisch.
 if (project.hasProperty('quickplay')) {
 	loom {

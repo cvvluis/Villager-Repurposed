@@ -62,6 +62,20 @@ public final class CaravanSites {
   return reserved.stream().noneMatch(box::intersects)&&level.noCollision(entity,box);
  }
 
+ /** Keeps the harmless, armed guard beside the golem's exact navigation target. */
+ public static BlockPos armedGuardSpot(BlockPos post) {
+  return post==null?null:post.east();
+ }
+
+ /** Validates the visible guard's own footprint and keeps it outside the camp layout. */
+ public static boolean canStandArmedGuard(ServerLevel level,Entity guard,BlockPos post,Iterable<BlockPos> campCells) {
+  BlockPos spot=armedGuardSpot(post);
+  if(spot==null||!level.hasChunkAt(spot))return false;
+  AABB guardBox=bounds(guard,spot);
+  for(BlockPos campCell:campCells)if(guardBox.intersects(new AABB(campCell)))return false;
+  return canStand(level,guard,spot,List.of());
+ }
+
  public static AABB bounds(Entity entity,BlockPos feet) {
   return entity.getBoundingBox().move(Vec3.atBottomCenterOf(feet).subtract(entity.position()));
  }
