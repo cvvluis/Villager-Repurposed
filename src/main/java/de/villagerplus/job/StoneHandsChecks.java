@@ -67,6 +67,9 @@ public final class StoneHandsChecks {
 				&& !de.villagerplus.build.Builder.shouldHoldForSpecial(false, true, false, false),
 				"a mason without a plan of his own is released once the pending milestone has a running project; owners and waiting builders stay held"); checks++;
 
+			check(Mining.usesKit(false, false) && Mining.usesKit(false, true) && !Mining.usesKit(true, false) && Mining.usesKit(true, true),
+				"a stone hand follows the mine kit rules even without a pickaxe (supports and torches), a lone miner by hand keeps his old rule"); checks++;
+
 			// 2. Demand over all active plans (the legacy view only shows the primary project).
 			BlockPos granary = bell.offset(40, 0, 40);
 			BlockPos storage = bell.offset(40, 0, 60);
@@ -170,6 +173,17 @@ public final class StoneHandsChecks {
 			s3.idleSince = now - 1000L;
 			check(!StoneHands.work(ctx(level, w3, s3, ref, now + 2)) && !StoneHands.claimed(w3.getUUID(), now + 2)
 				&& level.getBlockState(p3).is(Blocks.STONE), "a third resident is not taken on: the shortage asks for two hands"); checks++;
+
+			// A carrier whose claim is not (or no longer) there still delivers a useful load: the cap on hands never strands cobblestone.
+			w3.getInventory().setItem(0, new ItemStack(Items.COBBLESTONE, 14));
+			StoneHands.markCarrierForTest(w3.getUUID());
+			check(StoneHands.carrier(w3.getUUID()) && StoneHands.work(ctx(level, w3, s3, ref, now + 2)) && s3.activity.length() > 0
+				&& level.getBlockState(p3).is(Blocks.STONE),
+				"a former hand with a useful load on board delivers it although the cap of hands is reached (activity '" + s3.activity + "')"); checks++;
+			w3.getInventory().clearContent();
+			StoneHands.markCarrierForTest(w3.getUUID());
+			check(!StoneHands.work(ctx(level, w3, s3, ref, now + 2)) && !StoneHands.carrier(w3.getUUID()),
+				"a carrier with empty pockets is released"); checks++;
 
 			Villager nit = worker(level, workers, SurfaceStone.standFor(level, p3));
 			nit.setVillagerData(nit.getVillagerData().withProfession(level.registryAccess(),

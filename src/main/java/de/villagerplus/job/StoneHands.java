@@ -34,9 +34,20 @@ public final class StoneHands {
 	static final int SURFACE_LOAD = 12;
 
 	private static final Map<UUID, Long> CLAIMS = new HashMap<>();
+	/** Residents who took stone work on and may still carry some: they deliver it whatever the claim state. */
+	private static final java.util.Set<UUID> CARRIERS = new java.util.HashSet<>();
 
 	static void resetForTest() {
 		CLAIMS.clear();
+		CARRIERS.clear();
+	}
+
+	static boolean carrier(UUID id) {
+		return CARRIERS.contains(id);
+	}
+
+	static void markCarrierForTest(UUID id) {
+		CARRIERS.add(id);
 	}
 
 	static int claimCount(long now) {
@@ -83,15 +94,20 @@ public final class StoneHands {
 		UUID id = c.v().getUUID();
 		long now = c.now();
 		boolean claimed = claimed(id, now);
-		if (!Mining.needed(c.level(), ref, ref.data(), box, Mining.Need.STONE)) {
-			// The shortage is gone: bring what is still in the pockets (only residents who were hands carry any), then stop.
-			if (CLAIMS.containsKey(id)) {
-				if (JobUtil.depositSurplus(c, stack -> stack.is(Items.COBBLESTONE), 1, 0)) {
-					CLAIMS.put(id, now);
-					return true;
-				}
-				CLAIMS.remove(id);
+		boolean needed = Mining.needed(c.level(), ref, ref.data(), box, Mining.Need.STONE);
+		// A resident who mined for the plans delivers what he carries, whether or not his claim still stands (the cap on hands
+		// must never leave a load in somebody's pockets): when a useful load is on board, or the shortage is gone.
+		if (CARRIERS.contains(id)) {
+			int carried = JobUtil.count(c.v().getInventory(), stack -> stack.is(Items.COBBLESTONE));
+			if (carried <= 0) {
+				CARRIERS.remove(id);
+			} else if ((!needed || PlanStoneSupply.cobbleDeliveryDue(c.level(), ref.data(), box, carried))
+				&& JobUtil.depositSurplus(c, stack -> stack.is(Items.COBBLESTONE), 1, 0)) {
+				return true;
 			}
+		}
+		if (!needed) {
+			CLAIMS.remove(id);
 			return false;
 		}
 		if (!claimed) {
@@ -101,15 +117,19 @@ public final class StoneHands {
 		}
 		boolean busy = false;
 		// Only as many mine route holders as the mine has stands: a hand never takes a lane from a miner.
-		if (Mining.laneFreeFor(c)) busy = Mining.tick(c, Mining.Need.STONE);
+		if (Mining.laneFreeFor(c)) busy = Mining.tick(c, Mining.Need.STONE, true);
 		if (!busy) busy = surfaceStep(c, box);
 		if (busy && !claimed) {
 			org.slf4j.LoggerFactory.getLogger("villagerplus").info("Steinhelfer {}: {} hilft beim Bruchstein (Tick {}, Fehlbetrag {}, Aktivitaet '{}')", c.mem().name,
 				c.v().getVillagerData().profession().unwrapKey().map(k -> k.identifier().getPath()).orElse("?"), now,
 				PlanStoneSupply.villageCobbleShortage(ref.data(), box), c.st().activity);
 		}
-		if (busy) CLAIMS.put(id, now);
-		else if (!claimed) CLAIMS.remove(id);
+		if (busy) {
+			CLAIMS.put(id, now);
+			CARRIERS.add(id);
+		} else if (!claimed) {
+			CLAIMS.remove(id);
+		}
 		return busy;
 	}
 

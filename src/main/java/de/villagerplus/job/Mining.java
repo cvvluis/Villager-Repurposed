@@ -213,7 +213,20 @@ public final class Mining {
 		org.slf4j.LoggerFactory.getLogger("villagerplus").info("Mine {}: {} bei {}", c.mem().name, reason, c.v().blockPosition().toShortString());
 	}
 
+	/** A miner with a pickaxe follows the kit rules; by hand the kit is skipped unless the resident is a stone hand. */
+	static boolean usesKit(boolean byHand, boolean kitForHands) {
+		return !byHand || kitForHands;
+	}
+
 	public static boolean tick(Ctx c, Need need) {
+		return tick(c, need, false);
+	}
+
+	/**
+	 * {@code kitForHands}: a resident without a pickaxe normally chips stone by hand and skips the supports-and-torches kit; stone
+	 * hands (residents who help out of their own idle time) never do: they follow the kit rules of a miner with a pickaxe.
+	 */
+	public static boolean tick(Ctx c, Need need, boolean kitForHands) {
 		VillageRef ref = c.village();
 		if (ref == null) {
 			return false;
@@ -393,7 +406,7 @@ public final class Mining {
 			return true;
 		}
 		// Hand mining happens where no wood exists for supports and torches: it works the stone face without a kit.
-		SupplyStatus supplies = byHand ? SupplyStatus.READY : kitStatus(c, ref, m);
+		SupplyStatus supplies = usesKit(byHand, kitForHands) ? kitStatus(c, ref, m) : SupplyStatus.READY;
 		if (supplies == SupplyStatus.WAITING) {
 			st.mineCheckAt = c.now() + 200;
 			return false;
