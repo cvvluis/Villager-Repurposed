@@ -1259,6 +1259,14 @@ public final class Builder {
 					}
 				}
 			}
+			// The field owner turns public planks and sticks into the fence and gate the open step asks for (loaded recipes,
+			// real chest inventory); without this the compact starter plan waited for a craftsman nobody sends.
+			if (!helper && d.planType.equals(Blueprints.FARM) && !d.wanted.isEmpty()
+				&& de.villagerplus.job.Workshop.tick(c)) {
+				d.planProgress = c.now();
+				ref.dirty();
+				return true;
+			}
 			boolean result = d.planType.equals(Blueprints.WALL) ? continueWall(c, ref, box)
 				: continuePlan(c, ref, box, siteStock, cargoManifest, preparedSteps, standSlot, helper);
 			if (!helper && d.hasPlan() && preparedSteps != null && !d.planType.equals(Blueprints.FARM)) {
