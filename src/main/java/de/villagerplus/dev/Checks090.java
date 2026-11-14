@@ -607,6 +607,18 @@ public final class Checks090 {
    int total=count;
    source.sendSuccess(()->Component.literal("VP090 farmexpand PASS "+total+" checks"),false);return total;
   }
+  if(mode.equals("stonehands")) {
+   BlockPos at=new BlockPos(49200,201,49200);
+   long oldClock=level.getOverworldClockTime();
+   int count;
+   try {
+    level.getServer().getCommands().performPrefixedCommand(source,"time set 4000");
+    count=de.villagerplus.job.StoneHandsChecks.run(level,fixtureForEquipment(level,at),at);
+   } finally {
+    level.getServer().getCommands().performPrefixedCommand(source,"time set "+oldClock);
+   }
+   source.sendSuccess(()->Component.literal("VP090 stonehands PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("firstbuilding")) {
    var ref=fixtureForEquipment(level,A);
    int count=de.villagerplus.job.FirstBuildingChecks.run(level,ref);

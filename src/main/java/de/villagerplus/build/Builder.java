@@ -1855,8 +1855,21 @@ public final class Builder {
 		return mason && specialMissing;
 	}
 
+	/**
+	 * A mason who owns no plan is not held while the pending milestone already has a running project of its own (owned by
+	 * somebody else): he is not needed to start it and stands free to mine for it. Plan owners and masons waiting for a
+	 * milestone that nobody has started yet stay held.
+	 */
+	public static boolean shouldHoldForSpecial(boolean mason, boolean specialMissing, boolean ownsActiveProject, boolean specialUnderway) {
+		return shouldHoldForSpecial(mason, specialMissing) && (ownsActiveProject || !specialUnderway);
+	}
+
 	private static boolean holdForSpecial(Ctx c, VillageRef ref, boolean mason) {
-		if (!shouldHoldForSpecial(mason, nextSpecial(ref, villagers(c.level(), ref).size()) != null)) return false;
+		String pending = nextSpecial(ref, villagers(c.level(), ref).size());
+		java.util.UUID self = c.v().getUUID();
+		VillageData held = ref.data();
+		boolean owns = held.buildProjects.stream().anyMatch(p -> p.active() && p.owner().filter(self::equals).isPresent());
+		if (!shouldHoldForSpecial(mason, pending != null, owns, pending != null && held.hasBuildProjectType(pending))) return false;
 		if (!ref.data().hasPlan()) {
 			BlockPos street = villageReturn(c.level(), ref.bell());
 			if (street != null) JobUtil.approachLong(c, street, 2.0);

@@ -53,13 +53,30 @@ public final class PlanStoneSupply {
 	}
 
 	/**
+	 * Cobblestone ALL active building projects ask for together (rows hold required stock totals; stairs and slabs count as the
+	 * cobblestone they are crafted from) beyond what the public chest holds. The legacy single-plan view only shows the primary
+	 * project, so a second plan that waits on stone was invisible to everybody who is not its owner.
+	 */
+	public static int villageCobbleShortage(VillageData data, Container stock) {
+		if (data == null || stock == null) return 0;
+		long demand = 0;
+		for (VillageData.BuildProject project : data.buildProjects) {
+			if (!project.active() || project.cleanupOnly()) continue;
+			demand += wantedIn(project.wanted(), "minecraft:cobblestone");
+			demand += (wantedIn(project.wanted(), "minecraft:cobblestone_stairs") * 3L + 1) / 2;
+			demand += (wantedIn(project.wanted(), "minecraft:cobblestone_slab") + 1L) / 2;
+		}
+		return (int) Math.max(0, Math.min(Integer.MAX_VALUE, demand - count(stock, Items.COBBLESTONE)));
+	}
+
+	/**
 	 * True when a resident who carries {@code carried} cobblestones should bring them to the public chest now: the plan (or its
 	 * stone chain) is short of cobblestone and the load is either a full delivery or covers the whole shortage.
 	 */
 	public static boolean cobbleDeliveryDue(ServerLevel level, VillageData data, Container stock, int carried) {
 		int spare = carried - COBBLE_RESERVE;
-		if (spare <= 0 || data == null || stock == null || !data.hasPlan()) return false;
-		int shortage = cobbleShortage(data, stock);
+		if (spare <= 0 || data == null || stock == null || !(data.hasPlan() || data.activeBuildProjectCount() > 0)) return false;
+		int shortage = Math.max(cobbleShortage(data, stock), villageCobbleShortage(data, stock));
 		if (shortage <= 0 && !needsCobble(level, data, stock)) return false;
 		return carried >= DELIVERY_LOAD || (shortage > 0 && spare >= shortage);
 	}
@@ -317,8 +334,13 @@ public final class PlanStoneSupply {
 	}
 
 	static int wanted(VillageData data, String id) {
+		return wantedIn(data.wanted, id);
+	}
+
+	static int wantedIn(Iterable<String> rows, String id) {
 		int total = 0;
-		for (String entry : data.wanted) {
+		for (String entry : rows) {
+			if (entry == null) continue;
 			String[] parts = entry.split("#", 2);
 			if (!parts[0].equals(id)) continue;
 			try { total = Math.max(total, Math.max(0, parts.length == 2 ? Integer.parseInt(parts[1]) : 1)); }

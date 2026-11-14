@@ -213,6 +213,7 @@ public final class Staffing {
 		int pop = residents.size();
 		Map<String, Integer> have = new HashMap<>();
 		for (Villager v : residents) {
+			if (onTemporaryAssignment(v)) continue; // a temporary helper neither fills nor empties a quota
 			have.merge(keyOf(v), 1, Integer::sum);
 		}
 		String over = null, under = null, underLabel = "";
@@ -242,6 +243,7 @@ public final class Staffing {
 		final String overKey = over;
 		Villager candidate = residents.stream()
 			.filter(v -> !v.isBaby() && !v.isSleeping() && !v.isTrading() && !Expedition.isAway(v) && v.getOffers().isEmpty() && keyOf(v).equals(overKey)
+				&& !onTemporaryAssignment(v)
 				&& v.getVillagerData().profession().unwrapKey().map(k -> k.identifier().getNamespace().equals("minecraft")).orElse(false))
 			.findFirst().orElse(null);
 		if (candidate == null) {
@@ -281,6 +283,7 @@ public final class Staffing {
 		int bestUnder = 0;
 		for (String[] sh : SHARE) {
 			int quota = quotaOf(ref, sh, pop);
+			if (sh[0].equals("mason")) quota += stoneExtraMasons(level, ref, pop);
 			int missing = quota - have.getOrDefault(sh[0], 0);
 			if (missing > bestUnder && !sh[0].equals(own)) {
 				bestUnder = missing;
@@ -307,6 +310,23 @@ public final class Staffing {
 		String name = memory.name;
 		JobUtil.tellNearbyPlayers(level, v, 48, Component.literal((name.isEmpty() ? "Ein Dorfbewohner" : name) + " hilft vorübergehend als " + label + " aus."));
 		return true;
+	}
+
+	private static boolean onTemporaryAssignment(Villager v) {
+		var assignment = v.getAttached(VillagerPlus.TEMPORARY_JOB);
+		return assignment != null && !assignment.original().isEmpty();
+	}
+
+	/**
+	 * Temporary extra masons while stone is the village's bottleneck: a plan waits on cobblestone, the village has a mine to
+	 * work in and the player's mason quota is above 0 %. The quota itself (the player's slider) is never changed; the helpers
+	 * return to their old profession after one day, like every temporary assignment. One extra per 12 residents (at least 1).
+	 */
+	public static int stoneExtraMasons(ServerLevel level, VillageRef ref, int pop) {
+		if (quotaPercent(ref, "mason") <= 0 || ref.data().mine.isEmpty()) return 0;
+		var chest = ref.chest(level);
+		if (chest == null || de.villagerplus.job.PlanStoneSupply.villageCobbleShortage(ref.data(), chest) <= 0) return 0;
+		return Math.max(1, pop / 12);
 	}
 
 	/** Stellt eine Notfall-Berufszuweisung nach einem Ingame-Tag wieder her, solange niemand den Beruf inzwischen geändert hat. */
