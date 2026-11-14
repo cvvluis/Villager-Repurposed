@@ -160,6 +160,8 @@ public final class Mining {
 			return de.villagerplus.village.Balance.wants(level, ref, de.villagerplus.village.Balance.Kind.METAL);
 		}
 		if (PlanStoneSupply.needsCobble(level, d, box)) return true;
+		// Any active plan that waits on cobblestone counts, not only the one shown in the primary plan view.
+		if (PlanStoneSupply.villageCobbleShortage(d, box) > 0) return true;
 		// The plan asks for plain cobblestone directly (rustic or woodless palettes): mine it once the village chest cannot cover it.
 		// Cobblestone stairs and slabs are crafted from cobblestone (6 per 4 stairs, 3 per 6 slabs), so they count as demand too.
 		int stairs = PlanStoneSupply.wanted(d, net.minecraft.world.item.Items.COBBLESTONE_STAIRS);
@@ -211,7 +213,20 @@ public final class Mining {
 		org.slf4j.LoggerFactory.getLogger("villagerplus").info("Mine {}: {} bei {}", c.mem().name, reason, c.v().blockPosition().toShortString());
 	}
 
+	/** A miner with a pickaxe follows the kit rules; by hand the kit is skipped unless the resident is a stone hand. */
+	static boolean usesKit(boolean byHand, boolean kitForHands) {
+		return !byHand || kitForHands;
+	}
+
 	public static boolean tick(Ctx c, Need need) {
+		return tick(c, need, false);
+	}
+
+	/**
+	 * {@code kitForHands}: a resident without a pickaxe normally chips stone by hand and skips the supports-and-torches kit; stone
+	 * hands (residents who help out of their own idle time) never do: they follow the kit rules of a miner with a pickaxe.
+	 */
+	public static boolean tick(Ctx c, Need need, boolean kitForHands) {
 		VillageRef ref = c.village();
 		if (ref == null) {
 			return false;
@@ -391,7 +406,7 @@ public final class Mining {
 			return true;
 		}
 		// Hand mining happens where no wood exists for supports and torches: it works the stone face without a kit.
-		SupplyStatus supplies = byHand ? SupplyStatus.READY : kitStatus(c, ref, m);
+		SupplyStatus supplies = usesKit(byHand, kitForHands) ? kitStatus(c, ref, m) : SupplyStatus.READY;
 		if (supplies == SupplyStatus.WAITING) {
 			st.mineCheckAt = c.now() + 200;
 			return false;
@@ -2346,6 +2361,17 @@ public final class Mining {
 					// Below the entrance height is not enough: someone standing on the hillside outside the shaft is not underground.
 					|| inMineArea(mine, villager));
 		});
+	}
+
+	/**
+	 * True when this resident may take part in the mine: there is no mine yet (the first attempt may create one), he already
+	 * holds a route to it, or fewer residents hold a route than the mine has work stands.
+	 */
+	static boolean laneFreeFor(Ctx c) {
+		VillageRef ref = c.village();
+		if (ref == null || ref.data().mine.isEmpty()) return true;
+		VillageData.Mine m = ref.data().mine.get();
+		return mineRoute(c.v()) != null || liveMineRouteWorkerCount(c.level(), m) < MINE_WORK_STAND_COUNT;
 	}
 
 	static int liveMineRouteWorkerCount(ServerLevel level, VillageData.Mine mine) {

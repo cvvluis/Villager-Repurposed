@@ -54,7 +54,14 @@ public class MasonJob implements Job {
 		if (JobUtil.depositSurplus(c, produce(), 64, 0)) {
 			return true;
 		}
-		return Mining.tick(c, Mining.Need.STONE);
+		if (Mining.tick(c, Mining.Need.STONE)) {
+			return true;
+		}
+		// No mine to work in (none could be laid out, lanes full, no kit): break exposed stone like a plan owner does, so a
+		// mason without a plan of his own still delivers cobblestone to the plans that wait for it.
+		var box = c.village().chest(c.level());
+		return box != null && Mining.needed(c.level(), c.village(), c.village().data(), box, Mining.Need.STONE)
+			&& StoneHands.surfaceStep(c, box);
 	}
 
 	private static boolean placeTorch(Ctx c) {
