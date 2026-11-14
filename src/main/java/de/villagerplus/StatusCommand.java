@@ -240,6 +240,7 @@ public final class StatusCommand {
                 try { return de.villagerplus.dev.Checks090.run(ctx.getSource(),StringArgumentType.getString(ctx,"mode")); }
                 catch(Exception ex) { ex.printStackTrace(); ctx.getSource().sendFailure(Component.literal(ex.toString())); return 0; }
             })));
+			dispatcher.register(Commands.literal("vpfood").executes(ctx -> de.villagerplus.dev.FoodDiag.report(ctx.getSource())));
 			dispatcher.register(Commands.literal("vpkaravane").executes(ctx -> {
 
 				var source = ctx.getSource();

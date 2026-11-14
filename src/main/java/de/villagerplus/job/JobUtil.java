@@ -629,6 +629,7 @@ public final class JobUtil {
 		}
 		// Meilenstein-Gebaeude haben Vorrang: Nahrung -> Kornspeicher, Werkzeug/Ruestung -> Werkzeugkammer.
 		String depotLabel = null;
+		boolean foodBridge = false;
 		String destinationDepot = c.village() == null ? null : de.villagerplus.build.Blueprints.STORAGE;
 		if (c.village() != null) {
 			ItemStack sample = ItemStack.EMPTY;
@@ -647,8 +648,10 @@ public final class JobUtil {
 				depotLabel = depot.equals(de.villagerplus.build.Blueprints.GRANARY) ? "bringt Waren zum Kornspeicher" : "bringt Waren zur Werkzeugkammer";
 			} else if (de.villagerplus.build.Blueprints.GRANARY.equals(depot)) {
 				// Before the first granary exists, food (including starter seeds) uses the ordinary village chest.
-				// Keep the food policy for this internal public delivery so the material-store filter still rejects direct insertion.
+				// The controlled food bridge (StockPolicy.insertFoodBridge) lets this internal delivery pass the material-store filter;
+				// direct hopper/player insertion keeps refusing food.
 				destinationDepot = de.villagerplus.build.Blueprints.GRANARY;
+				foodBridge = true;
 			}
 		}
 		// Ist die Dorfkiste voll, geht der Ueberschuss in den Lagerschuppen (falls das Dorf einen hat).
@@ -703,6 +706,7 @@ public final class JobUtil {
 			ItemStack part = s.copyWithCount(planned);
 			int before = part.getCount();
 			ItemStack rest = c.village() == null ? HopperBlockEntity.addItem(null, box, part, null)
+				: foodBridge ? de.villagerplus.village.StockPolicy.insertFoodBridge(c.level(), c.village(), box, part)
 				: de.villagerplus.village.StockPolicy.insertInto(c.level(), c.village(), destinationDepot, box, part);
 			int moved = before - rest.getCount();
 			s.shrink(moved);

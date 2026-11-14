@@ -296,8 +296,12 @@ public class FarmerJob implements Job {
 		// food belongs in the granary. Keep the two delivery routes separate so a mixed harvest cannot
 		// be half-inserted into one depot and then reported as a failed delivery.
 		Predicate<ItemStack> foodProduce = stack -> isCrop(stack.getItem()) && !stack.is(Items.WHEAT_SEEDS);
-		if (JobUtil.depositSurplus(c, foodProduce, foodDeficit ? 1 : Config.FARM_DEPOSIT_THRESHOLD,
-			foodDeficit ? 0 : Config.FARM_KEEP)) {
+		int carriedBefore = JobUtil.count(c.v().getInventory(), foodProduce);
+		boolean depositing = JobUtil.depositSurplus(c, foodProduce, foodDeficit ? 1 : Config.FARM_DEPOSIT_THRESHOLD,
+			foodDeficit ? 0 : Config.FARM_KEEP);
+		if (carriedBefore > 0) farmBlocked(c, "deposit: carried=" + carriedBefore + " -> " + JobUtil.count(c.v().getInventory(), foodProduce) + " result=" + depositing
+			+ " deficit=" + foodDeficit + " blockedUntil=" + (c.st().depositBlockedUntil - c.now()) + " act='" + c.st().activity + "'");
+		if (depositing) {
 			return true;
 		}
 		if (starterSeedDepositDue(c) && JobUtil.depositSurplus(c, stack -> stack.is(Items.WHEAT_SEEDS), 1, 0)) {
@@ -336,7 +340,8 @@ public class FarmerJob implements Job {
 		}
 		c.setActivity("erntet auf dem Feld");
 		Anim.hold(c, Items.IRON_HOE);
-		if (!JobUtil.approach(c, target, 2.6)) {
+		boolean farField = target.distSqr(c.v().blockPosition()) > FAR_HARVEST_DISTANCE * FAR_HARVEST_DISTANCE;
+		if (!(farField ? JobUtil.approachLong(c, target, 2.6) : JobUtil.approach(c, target, 2.6))) {
 			return true;
 		}
 		// Farm zones may have changed while the farmer was walking to a remembered crop.
@@ -838,7 +843,9 @@ public class FarmerJob implements Job {
 					&& Livestock.hasEligibleLivestockForInitialPenCached(c.level(), ref);
 				initialPenDue = shouldStartInitialPen(ref.data().farms, true, residents,
 					eligibleLivestock, publicStorageReady, savedPenPlan)
-					&& Livestock.canPlanInitialPen(c.level(), ref, c.v());
+					&& Livestock.canPlanInitialPen(c.level(), ref, c.v())
+					// A pen without a site must not shadow the starter field (m11: the farmers never reached the field path).
+					&& (savedPenPlan || !Builder.penSiteRetryPending(ref, c.now()));
 				penReadinessMarker = initialPenReadinessMarker(true, savedFieldPlan, savedPenPlan,
 					ref.data().farms, residents, eligibleLivestock, publicStorageReady,
 					ref.data().activeBuildProjectCount(), initialPenStockSignature(builderStock));
@@ -855,6 +862,9 @@ public class FarmerJob implements Job {
 		}
 		boolean prioritizeInitialPen = shouldPrioritizeInitialPenBeforeNewExpansion(
 			savedFieldPlan, initialPenDue, savedFarmExpansion);
+		farmBlocked(c, "secondary: firstFarm=" + firstFarm + " savedFarmerPlan=" + savedFarmerPlan + " waitVisible=" + waitForVisibleStarterFarm
+			+ " newStarter=" + newStarterFarm + " prioPen=" + prioritizeInitialPen + " legacy=" + legacyBuilder + " seeds=" + builderWheatSeeds
+			+ " hasPlan=" + (ref != null && ref.data().hasPlan()) + " penMissing=" + (ref != null && ref.data().extra.pen.isEmpty()));
 		if (prioritizeInitialPen && Builder.tick(c, false)) return true;
 		// If the paid direct plot cannot find a safe site, let Builder try its terrain-aware compact plot.
 		if ((firstFarm && savedFarmerPlan && !waitForVisibleStarterFarm && Builder.tick(c, false))
@@ -958,6 +968,16 @@ public class FarmerJob implements Job {
 		org.slf4j.LoggerFactory.getLogger("villagerplus").info("Farmstart {}: {}", c.mem().name, message);
 	}
 
+	private static final java.util.Map<java.util.UUID, Long> FARM_BLOCKED_DIAG = new java.util.HashMap<>();
+
+	/** Why the farmer's field plan did not start (rate-limited like {@link #farmDiag}). */
+	private static void farmBlocked(Ctx c, String message) {
+		long last = FARM_BLOCKED_DIAG.getOrDefault(c.v().getUUID(), -1_000_000L);
+		if (c.now() - last < 2400L) return;
+		FARM_BLOCKED_DIAG.put(c.v().getUUID(), c.now());
+		org.slf4j.LoggerFactory.getLogger("villagerplus").info("Farmstart {}: {}", c.mem().name, message);
+	}
+
 	private static boolean expandCluster(Ctx c) {
 		VillageRef ref = c.village();
 		if (ref == null) return false;
@@ -1000,7 +1020,10 @@ public class FarmerJob implements Job {
 			|| !shouldExpand(data.farms, data.farms == 0 || belowFoodTarget(c))) return false;
 		var stores = Balance.storage(c.level(), ref);
 		// The very first field is a food emergency and must not wait behind a stalled public building plan.
-		if (stores.isEmpty() || c.now() < data.extra.nextFarm || (data.hasPlan() && data.farms > 0)) return false;
+		if (stores.isEmpty() || c.now() < data.extra.nextFarm || (data.hasPlan() && data.farms > 0)) {
+			farmBlocked(c, "blocked: stores=" + stores.size() + " nextFarm-now=" + (data.extra.nextFarm - c.now()) + " plan=" + data.hasPlan() + " farms=" + data.farms);
+			return false;
+		}
 		List<Villager> residents = Villages.residents(c.level(), ref, Config.VILLAGE_RADIUS, v -> true);
 		if (residents.isEmpty()) return false;
 		boolean starter = data.farms == 0;
@@ -1012,12 +1035,14 @@ public class FarmerJob implements Job {
 			c.setActivity(SeasonCompat.active(c.level()) && seedStockIgnoringSeason(stores, starter)
 				? "wartet auf eine Jahreszeit, in der das Saatgut wächst"
 				: starter ? "wartet auf acht öffentliche Weizensamen für das erste Feld" : "wartet auf Saatgut für die nächste Feldfläche");
+			farmBlocked(c, "blocked: no usable seed (starter=" + starter + ")");
 			c.st().materialWaitUntil = c.now() + 600;
 			return false;
 		}
 		BlockPos site = findClusterSite(c, ref, starter);
 		if (site == null) {
 			c.setActivity("wartet auf ein sicheres, freies Feldgrundstück");
+			farmBlocked(c, "blocked: no safe field site (starter=" + starter + ")");
 			c.st().materialWaitUntil = c.now() + 600;
 			return false;
 		}
@@ -1033,6 +1058,7 @@ public class FarmerJob implements Job {
 			kit = fenceKit(stores, requiredFences);
 			if (kit == null) {
 				c.setActivity("wartet auf öffentliche Zutaten für Zaun und Tor");
+				farmBlocked(c, "blocked: no fence kit");
 				c.st().materialWaitUntil = c.now() + 600;
 				return false;
 			}
@@ -1041,12 +1067,14 @@ public class FarmerJob implements Job {
 			if (ensureEmptyFarmBucket(c, stores)) return true;
 			if (!hasEmptyFarmBucket(c, stores)) {
 				c.setActivity("wartet auf einen leeren Eimer für die Feldbewässerung");
+				farmBlocked(c, "blocked: no empty bucket");
 				c.st().materialWaitUntil = c.now() + 600;
 				return false;
 			}
 			BlockPos water = findFarmWaterSource(c.level(), ref, site);
 			if (water == null) {
 				c.setActivity("wartet auf einen sicheren Wasserquellblock in Dorfnähe");
+				farmBlocked(c, "blocked: no water source");
 				c.st().materialWaitUntil = c.now() + 600;
 				return false;
 			}
@@ -1857,6 +1885,82 @@ public class FarmerJob implements Job {
 					best = p.immutable();
 					bestDist = d;
 				}
+			}
+		}
+		if (best == null) best = nearestVillageCrop(c, zones);
+		return best;
+	}
+
+	/** Planted field cells within this radius of the bell are harvest candidates even when the farmer has no job site or work memory nearby. */
+	static final int CROP_SCAN_RADIUS = 80;
+	private static final int CROP_SCAN_HEIGHT = 24;
+	private static final int CROP_SCAN_MAX_CELLS = 2048;
+	private static final long CROP_SCAN_TICKS = 1200L;
+	/** Farmers walk this far with the bounded long-route search instead of the plain approach. */
+	private static final double FAR_HARVEST_DISTANCE = 24.0;
+	private record CropScan(long expiresAt, List<BlockPos> cells) { }
+	private static final Map<Long, CropScan> CROP_SCANS = new java.util.HashMap<>();
+
+	static void clearCropScans() {
+		CROP_SCANS.clear();
+	}
+
+	/**
+	 * Generated (CTOV) fields lie far from the farmer's own position and are not mod-built, so the radius-9 search around the
+	 * farmer never reaches them and their crops stay ripe forever. Reads only loaded chunks and rescans at most every 1200 ticks.
+	 */
+	static List<BlockPos> villageCropCells(ServerLevel level, VillageRef ref) {
+		long key = ref.bell().asLong();
+		long now = level.getGameTime();
+		CropScan cached = CROP_SCANS.get(key);
+		if (cached != null && now < cached.expiresAt()) return cached.cells();
+		List<BlockPos> cells = new ArrayList<>();
+		BlockPos bell = ref.bell();
+		int minY = Math.max(level.getMinY(), bell.getY() - CROP_SCAN_HEIGHT);
+		int maxY = Math.min(level.getMaxY() - 1, bell.getY() + CROP_SCAN_HEIGHT);
+		long radiusSquared = (long) CROP_SCAN_RADIUS * CROP_SCAN_RADIUS;
+		for (int chunkX = Math.floorDiv(bell.getX() - CROP_SCAN_RADIUS, 16); chunkX <= Math.floorDiv(bell.getX() + CROP_SCAN_RADIUS, 16); chunkX++) {
+			for (int chunkZ = Math.floorDiv(bell.getZ() - CROP_SCAN_RADIUS, 16); chunkZ <= Math.floorDiv(bell.getZ() + CROP_SCAN_RADIUS, 16); chunkZ++) {
+				var chunk = level.getChunkSource().getChunkNow(chunkX, chunkZ);
+				if (chunk == null) continue;
+				for (int sectionIndex = chunk.getSectionIndex(minY); sectionIndex <= chunk.getSectionIndex(maxY); sectionIndex++) {
+					var section = chunk.getSection(sectionIndex);
+					if (!section.maybeHas(state -> state.getBlock() instanceof CropBlock)) continue;
+					int sectionMinY = chunk.getSectionYFromSectionIndex(sectionIndex) << 4;
+					for (int localY = 0; localY < 16; localY++) {
+						int y = sectionMinY + localY;
+						if (y < minY || y > maxY) continue;
+						for (int localX = 0; localX < 16; localX++) for (int localZ = 0; localZ < 16; localZ++) {
+							if (!(section.getBlockState(localX, localY, localZ).getBlock() instanceof CropBlock)) continue;
+							int x = (chunkX << 4) + localX, z = (chunkZ << 4) + localZ;
+							long dx = x - bell.getX(), dz = z - bell.getZ();
+							if (dx * dx + dz * dz > radiusSquared) continue;
+							BlockPos pos = new BlockPos(x, y, z);
+							if (!level.getBlockState(pos.below()).is(Blocks.FARMLAND)) continue;
+							if (cells.size() < CROP_SCAN_MAX_CELLS) cells.add(pos);
+						}
+					}
+				}
+			}
+		}
+		CROP_SCANS.put(key, new CropScan(now + CROP_SCAN_TICKS, cells));
+		return cells;
+	}
+
+	/** Nearest ripe planted crop of the whole village that the farm zones allow; null when none is ripe. */
+	private static BlockPos nearestVillageCrop(Ctx c, List<ZonePolicy.Zone> zones) {
+		return c.village() == null ? null : nearestRipeVillageCrop(c.level(), c.village(), c.v().blockPosition(), zones);
+	}
+
+	static BlockPos nearestRipeVillageCrop(ServerLevel level, VillageRef ref, BlockPos from, List<ZonePolicy.Zone> zones) {
+		BlockPos best = null;
+		double bestDist = Double.MAX_VALUE;
+		for (BlockPos p : villageCropCells(level, ref)) {
+			if (!mature(level, p) || !harvestAllowedByFarmZones(zones, p)) continue;
+			double d = p.distSqr(from);
+			if (d < bestDist) {
+				best = p;
+				bestDist = d;
 			}
 		}
 		return best;
