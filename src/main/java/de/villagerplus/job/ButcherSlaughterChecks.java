@@ -139,8 +139,9 @@ public final class ButcherSlaughterChecks {
 				"all dropped loot is in the butcher's inventory, none is left or lost"); checks++;
 			require(state.idleUntil[0] == later + 400, "the butcher idles after finding no surplus"); checks++;
 
-			// Delivery without a granary: raw meat is food, the central material chest rejects food by design, so the
-			// butcher keeps what he carries (nothing is destroyed) and retries later.
+			// Delivery without a granary: raw meat is food and the central material chest refuses it directly, but the controlled
+			// pre-granary food bridge (StockPolicy.insertFoodBridge, bounded to about a dozen portions per resident, at least 48)
+			// lets the butcher hand his real stacks over. Nothing may be destroyed or duplicated either way.
 			butcher.getInventory().clearContent();
 			butcher.getInventory().setItem(0, new ItemStack(Items.BEEF, 6));
 			butcher.getInventory().setItem(1, new ItemStack(Items.PORKCHOP, 4));
@@ -151,10 +152,28 @@ public final class ButcherSlaughterChecks {
 			BlockPos stand = JobUtil.sharedStandSpot(ctx(level, butcher, state, memory, ref, deliverAt), chestPos, 4.0);
 			require(stand != null, "the public village chest has a delivery stand"); checks++;
 			butcher.teleportTo(stand.getX() + 0.5, stand.getY(), stand.getZ() + 0.5);
-			boolean refused = job.primary(ctx(level, butcher, state, memory, ref, deliverAt));
-			require(!refused && count(village, Items.BEEF) == 0 && count(village, Items.PORKCHOP) == 0
-				&& count(butcher.getInventory(), Items.BEEF) == 6 && count(butcher.getInventory(), Items.PORKCHOP) == 4,
-				"without a granary the central chest refuses raw meat and the butcher keeps all ten items"); checks++;
+			int beefBefore = count(village, Items.BEEF);
+			int porkBefore = count(village, Items.PORKCHOP);
+			job.primary(ctx(level, butcher, state, memory, ref, deliverAt));
+			int beefMoved = count(village, Items.BEEF) - beefBefore;
+			int porkMoved = count(village, Items.PORKCHOP) - porkBefore;
+			require(beefMoved + count(butcher.getInventory(), Items.BEEF) == 6
+				&& porkMoved + count(butcher.getInventory(), Items.PORKCHOP) == 4,
+				"without a granary the raw meat is conserved between butcher and village chest (beef moved " + beefMoved
+				+ ", pork moved " + porkMoved + ", butcher keeps " + count(butcher.getInventory(), Items.BEEF) + "/"
+				+ count(butcher.getInventory(), Items.PORKCHOP) + ")"); checks++;
+			require(beefMoved == 6 && porkMoved == 4,
+				"the pre-granary food bridge takes all ten items while the bridge room (min 48) lasts"); checks++;
+			// Hand the raw meat back to the butcher so the granary phase below starts from the same ten items.
+			for (int slot = 0; slot < village.getContainerSize(); slot++) {
+				ItemStack held = village.getItem(slot);
+				if (held.is(Items.BEEF) || held.is(Items.PORKCHOP)) {
+					village.setItem(slot, ItemStack.EMPTY);
+				}
+			}
+			butcher.getInventory().clearContent();
+			butcher.getInventory().setItem(0, new ItemStack(Items.BEEF, 6));
+			butcher.getInventory().setItem(1, new ItemStack(Items.PORKCHOP, 4));
 
 			// Delivery with a registered granary: all raw meat reaches the public food store and leaves the butcher.
 			BlockPos granaryPos = chunkOrigin.offset(1, 0, 8);

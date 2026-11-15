@@ -397,3 +397,15 @@ Aenderung: dorfweite Ernte, Gehege-Prioritaet nur wenn startbar, gedeckelte Nahr
 Eigener Lauf nach dem Merge (je 1 Lauf, einzeln): foodchain 17, farmexpand 172, seasonfarm 65, firstbuilding 12, cookdelight 26, mealcycle 10, butchercooking 16, stockpolicy 58, roles 112, a01behavior 20, builderchecks 318, builderpaths 86 - alle PASS.
 Natuerliche Belege (Agent, n=2 je 48 000 Ticks): Hungrige 3 -> 0/1; Feldplan startet weiterhin nicht (Zaunholz fehlt, "no fence kit").
 Offen / naechster Schritt: kleine Holzreserve (~8-9 Staemme) fuer das Startfeld in der Dorfkiste halten, solange farms==0 und Nahrungsmangel (Woodcutting/Builder). Farmer "Ernst" steht im Hungerzustand dauerhaft auf y=316, Ursache ungeklaert. Vollpack und Client ungetestet.
+
+## Strenge Nachzaehlung der 62 Punkte (15.11., HEAD be6768a + Fix butcherslaughter)
+Methode: 3 Lese-Agenten (G / D,B,K,R / J,U,A,E) lasen Produktivcode UND Check-Koerper je ID und urteilten A (Code + Check, Wortlaut voll abgedeckt), B (Luecke im Wortlaut), C (nur Client/manuell), D (Code fehlt). Ich liess alle 128 Einzelgruppen auf HEAD laufen und las 3 A-Checks (A03WeatherChecks, HealerCareChecks, MarketLifecycleChecks) gegen: echte Verhaltens-Assertions.
+Ergebnis: **A 17, B 35, C 10, D 0** (Summe 62). Natuerlich bewiesen (Dorf ohne Fixture): **0**.
+A: G02 G03 G04 G06 G07 G13 D01 D02 D06 B05 K02 K04 J03 J04 A02 A03 E01. K02/K04 stuetzen sich teils auf den Hauptlauf (/vptest090 run, braucht Dev-Client, in der Cloud nie gelaufen): strikt ohne diese beiden 15.
+J11 vom Agenten A, von mir auf B gesetzt, weil HealerCareChecks (Gruppe healer) rot ist.
+C (nur Client): K01 U01-U07 E03 E04 (U02/U04-U07/E03: Server-Teil belegt).
+Frueher gemeldet 19/62 (Lese-Agent, ungeprueft) und 13/62 (docs-Audit 30.10.): beide nicht vergleichbar, hier neu und strenger.
+Rote Gruppen auf HEAD (je 2 Laeufe, reproduzierbar; 9 davon auch auf d7d4044 = vor Nahrungskette, also nicht vom Merge): healer, caravanr02, caravanroad, charcoal, craftrecipes, g02 (Check "stand": bounded construction search 59 Bloecke), projectvisibility (readablePause=false), roadbridge, wallconstruction (Kosten 57 statt erwartet, Stock 192/135). Ursachen NICHT untersucht. Restart-Paare (roadbridgeverify, roadclearprepare/verify, woodcutprepare/verify) schlagen als Einzelgruppe erwartungsgemaess fehl (brauchen Prepare+Neustart+Verify).
+Ein Fehler kam vom Merge: butcherslaughter erwartete "Zentralkiste lehnt Rohfleisch ohne Kornspeicher ab"; die neue Nahrungsbruecke nimmt es bewusst (bis 48/12 je Einwohner). Check angepasst (Erhaltung + Bruecke nimmt alle 10), Gruppe 14 PASS.
+Leere Gruppen (0 Checks, vermutlich nur Hauptlauf/Client): board, plaza, toast, trader. Nicht einzeln gelaufen: ctov (braucht CTOV-Welt), headless, verify, performance.
+Naechster Schritt: die 9 roten Gruppen auf Ursache pruefen (Fixture-Rot oder echter Produktivfehler), dann B-Punkte mit kleinstem Rest zu A machen (siehe Master-Prompt).
