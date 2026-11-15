@@ -305,7 +305,7 @@ public class FarmerJob implements Job {
 		boolean batching = false;
 		if (foodDeficit && carriedBefore > 0 && carriedBefore < DEFICIT_DEPOSIT_BATCH) {
 			ripeLeft = ripeCropLeft(c);
-			batching = ripeLeft;
+			batching = keepHarvesting(foodDeficit, carriedBefore, ripeLeft);
 		}
 		boolean depositing = !batching && JobUtil.depositSurplus(c, foodProduce, foodDeficit ? 1 : Config.FARM_DEPOSIT_THRESHOLD,
 			foodDeficit ? 0 : Config.FARM_KEEP);
@@ -1933,8 +1933,13 @@ public class FarmerJob implements Job {
 	}
 
 	/** With a food deficit a farmer delivers at once only when this many food units are carried or nothing ripe is left to harvest. */
-	private static final int DEFICIT_DEPOSIT_BATCH = 8;
+	private static final int DEFICIT_DEPOSIT_BATCH = 6;
 	private static final int SEED_HARVEST_BATCH = 16;
+
+	/** In a food deficit a small load stays with the farmer while ripe crops remain; a full batch or an empty field triggers the delivery. */
+	static boolean keepHarvesting(boolean foodDeficit, int carriedFood, boolean ripeCropLeft) {
+		return foodDeficit && carriedFood > 0 && carriedFood < DEFICIT_DEPOSIT_BATCH && ripeCropLeft;
+	}
 
 	private static boolean ripeCropLeft(Ctx c) {
 		BlockPos target = c.st().target;

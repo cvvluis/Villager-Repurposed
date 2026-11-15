@@ -65,6 +65,19 @@ public final class FoodChainChecks {
 				&& !de.villagerplus.build.Builder.penSiteRetryPending(null, level.getGameTime()),
 				"a village without a failed pen search has no pen-site retry pending"); checks++;
 
+			check(FarmerJob.keepHarvesting(true, 1, true) && FarmerJob.keepHarvesting(true, 5, true)
+				&& !FarmerJob.keepHarvesting(true, 6, true) && !FarmerJob.keepHarvesting(true, 3, false)
+				&& !FarmerJob.keepHarvesting(false, 3, true) && !FarmerJob.keepHarvesting(true, 0, true),
+				"a deficit farmer keeps harvesting a small load while ripe crops remain and delivers a full batch or the last load"); checks++;
+			net.minecraft.world.SimpleContainer woodStock = new net.minecraft.world.SimpleContainer(9);
+			check(FarmerJob.woodSignature(List.of(woodStock)) == 0, "an empty depot has no fence wood"); checks++;
+			woodStock.setItem(0, new ItemStack(Items.OAK_LOG, 3));
+			woodStock.setItem(1, new ItemStack(Items.SPRUCE_PLANKS, 5));
+			woodStock.setItem(2, new ItemStack(Items.STICK, 2));
+			woodStock.setItem(3, new ItemStack(Items.OAK_FENCE, 4));
+			woodStock.setItem(4, new ItemStack(Items.COBBLESTONE, 40));
+			check(FarmerJob.woodSignature(List.of(woodStock)) == 14, "the fence-wood signature counts logs, planks, sticks and fences only"); checks++;
+
 			// ---- pre-granary food bridge
 			BlockPos chestPos = ref.chestPos(level);
 			Container chest = HopperBlockEntity.getContainerAt(level, chestPos);

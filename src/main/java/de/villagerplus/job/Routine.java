@@ -446,11 +446,12 @@ public final class Routine {
 
 	/** Below this many food units in the village pantry the lunch take-away reserve is suspended. */
 	static final int SCARCE_PANTRY_FOOD = 48;
+	/** With scarce pantry food, residents at or above this satiety leave the lunch portions to the hungry. */
+	static final int WELL_FED_SATIETY = 70;
 
 	/** Gemeinsames Mittagessen; ausserdem Vorrat auffuellen (Nahrung im Inventar ermoeglicht den Nachwuchs). */
 	private static void centerMeal(Ctx c) {
 		Container box = JobUtil.box(c);
-		Meals.eat(c, box);
 		java.util.List<Container> pantry = new java.util.ArrayList<>();
 		if (box != null) {
 			pantry.add(box);
@@ -458,13 +459,13 @@ public final class Routine {
 		if (c.village() != null) {
 			pantry.addAll(de.villagerplus.village.Specials.containers(c.level(), c.village(), de.villagerplus.build.Blueprints.GRANARY));
 		}
-		if (pantry.isEmpty()) {
-			return;
-		}
-		// Scarce food: every resident gets the lunch portion eaten above first; nobody takes a reserve home while others go hungry.
 		int pantryFood = 0;
 		for (Container b : pantry) pantryFood += JobUtil.count(b, Meals::isFood);
-		if (pantryFood < SCARCE_PANTRY_FOOD) {
+		boolean scarce = pantryFood < SCARCE_PANTRY_FOOD;
+		// Scarce food goes to the hungry first: a well-fed resident skips the pantry portion, and nobody takes a reserve home.
+		boolean wellFed = scarce && de.villagerplus.village.Wellbeing.of(c.level(), c.v(), c.mem()).satiety() >= WELL_FED_SATIETY;
+		Meals.eat(c, wellFed ? null : box);
+		if (pantry.isEmpty() || scarce) {
 			return;
 		}
 		int have = JobUtil.count(c.v().getInventory(), Meals::isFood);
