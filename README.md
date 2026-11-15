@@ -4,6 +4,14 @@ Dorfbewohner haben Namen, feste Häuser mit Schild, einen festen Tagesplan und e
 mit Doppelkiste und wächst selbstständig. Server- und Client-Mod (der Info-Knopf braucht die Mod auch beim Spieler; Einzelspieler funktioniert), benötigt Fabric Loader 0.20.1+,
 Fabric API und Java 25.
 
+## Neu in 0.10.1: Nahrungskette und mehr Steinarbeit (Playtest 4)
+
+Stand: nur auf dem Dev-Server geprüft (Prüfgruppen, Fixtures, Naturläufe ohne Spieler), **nicht im Client oder Vollpack erprobt**. Es ist weiterhin kein Bau in einem Naturlauf fertig geworden; der Feldplan im Hungerzustand scheitert noch am Zaunholz. Neun Prüfgruppen sind auf diesem Stand rot (siehe CLOUD-LOG, Ursachen offen).
+
+- **Nahrung:** Bauern ernten reife Pflanzen im ganzen Dorf, bei Mangel auch per Angel; Essen geht vor dem Kornspeicher über eine begrenzte Brücke in die Dorfkiste; knappe Mittagsportionen gehen an die Hungrigen; ein nicht startbares Gehege blockiert den Feldplan nicht mehr.
+- **Stein und Holz:** untätige Bewohner und freie Maurer arbeiten an Bruchstein, wenn Pläne warten; Holzversorgung und Planken im Block.
+- **Erstes Gebäude:** Ablauf und Prüfgruppe für das erste Gebäude; Einwohner ticken ohne Spieler (Chunk-Lease-Radius 2).
+
 ## Neu in 0.10.0: stabilere Dörfer (Playtest 3)
 
 Stand: nur auf dem Dev-Server geprüft (Prüfgruppen, synthetische Fixtures und Naturläufe ohne Spieler), **nicht im Client oder Vollpack erprobt**.
