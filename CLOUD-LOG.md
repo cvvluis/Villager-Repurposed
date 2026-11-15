@@ -390,3 +390,10 @@ Meine Laeufe (Stand 4056c01): m10: granary 118,67,-349 @2582, Planstand 122 -> 1
 Planstand granary 125,67,-348: 119 (24k) -> 191 (48k) -> 227 (72k) -> 269/439 (97k), danach in Etappe 4/5 konstant; storage 195,65,-363: 75 -> 174 (72k) -> 176/266, danach konstant. Etappe 4/5: 0 gebrochene Steine; Wunschliste granary: cobblestone x28 + cobblestone_stairs x20; Hausplan 55,67,-332 @124301 (Hausbedarf entsteht erst jetzt; fehlt cobblestone x48 / spruce_planks x25).
 Neues Glied der Kette: Planbesitzer "ist hungrig und arbeitet langsam" (Etappe 5, ab ~120k Ticks): in 145k Ticks nie ein Feldplan ("Bauplan farm": 0 Zeilen), Nahrung der generierten CTOV-Felder erschoepft. Hunger bremst Arbeitstempo (Wellbeing.workQuarters). Noch KEIN Bau fertig.
 Reproduktionsstand fuer Agents: Welt-Kopie /tmp/claude-0/worlds/m11-hunger (Tick ~145k, Dorf 15 Einwohner, hungrig).
+
+## Nahrungskette gemergt (claude/food-chain, 46dbcbe)
+Ursachen (aus Agent-Bericht, Hungerzustand m11): Bauern fanden das CTOV-Feld nicht (Suchradius 9, Feld ~57 Bloecke entfernt), Essen liess sich ohne Kornspeicher nirgends ablegen (Materialkisten lehnen Nahrung ab), nicht startbares Gehege blockierte den Feldplan (prioritizeInitialPen).
+Aenderung: dorfweite Ernte, Gehege-Prioritaet nur wenn startbar, gedeckelte Nahrungsbruecke (insertFoodBridge), Angel-Fallback, Mittagsportion bei Knappheit an Hungrige, Diagnose /vpfood.
+Eigener Lauf nach dem Merge (je 1 Lauf, einzeln): foodchain 17, farmexpand 172, seasonfarm 65, firstbuilding 12, cookdelight 26, mealcycle 10, butchercooking 16, stockpolicy 58, roles 112, a01behavior 20, builderchecks 318, builderpaths 86 - alle PASS.
+Natuerliche Belege (Agent, n=2 je 48 000 Ticks): Hungrige 3 -> 0/1; Feldplan startet weiterhin nicht (Zaunholz fehlt, "no fence kit").
+Offen / naechster Schritt: kleine Holzreserve (~8-9 Staemme) fuer das Startfeld in der Dorfkiste halten, solange farms==0 und Nahrungsmangel (Woodcutting/Builder). Farmer "Ernst" steht im Hungerzustand dauerhaft auf y=316, Ursache ungeklaert. Vollpack und Client ungetestet.
