@@ -607,6 +607,10 @@ public final class Checks090 {
    int total=count;
    source.sendSuccess(()->Component.literal("VP090 farmexpand PASS "+total+" checks"),false);return total;
   }
+  if(mode.equals("foodchain")) {
+   int count=de.villagerplus.job.FoodChainChecks.run(level,new BlockPos(53000,201,53000));
+   source.sendSuccess(()->Component.literal("VP090 foodchain PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("stonehands")) {
    BlockPos at=new BlockPos(49200,201,49200);
    long oldClock=level.getOverworldClockTime();

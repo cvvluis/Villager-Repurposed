@@ -242,6 +242,49 @@ public final class StockPolicy {
 		return offered.copyWithCount(offered.getCount() - moved);
 	}
 
+	/** True only inside {@link #insertFoodBridge}: the registered public material chests then accept food on this controlled path. */
+	private static boolean foodBridgeOpen;
+
+	/** Food count the public material chests may hold on the pre-granary bridge: about a dozen portions per resident, at least 48. */
+	public static int foodBridgeRoom(ServerLevel level, VillageRef ref) {
+		int residents = Villages.residents(level, ref, de.villagerplus.Config.VILLAGE_RADIUS, v -> true).size();
+		long stored = 0;
+		// Only the public material chests count: food in a registered granary must not close the overflow route.
+		for (BlockPos pos : Lager.materialChests(level, ref)) {
+			Container box = Lager.publicContainerAt(level, pos);
+			if (box == null) continue;
+			for (int slot = 0; slot < box.getContainerSize(); slot++) {
+				ItemStack stack = box.getItem(slot);
+				if (!stack.isEmpty() && category(stack.getItem()) == Category.FOOD) stored += stack.getCount();
+			}
+		}
+		return (int) Math.max(0L, Math.max(48L, 12L * residents) - stored);
+	}
+
+	/**
+	 * Pre-granary food route: a village without a registered granary that has room would otherwise never be able to
+	 * store harvested food at all (the material chests refuse it), so the farmers' bread and crops stayed in their pockets while
+	 * residents starved. The caller passes an already resolved village chest or lager chest (JobUtil.communalDeliveryChest).
+	 * Real stacks only, bounded by {@link #foodBridgeRoom} and the saved
+	 * stock policy; direct hopper/player insertion and {@link #insertVillage} keep refusing food.
+	 */
+	public static ItemStack insertFoodBridge(ServerLevel level, VillageRef ref, Container destination, ItemStack offered) {
+		if (offered.isEmpty() || destination == null || category(offered.getItem()) != Category.FOOD) return offered.copy();
+		int allowed = Math.min(offered.getCount(), Math.min(deliveryRoom(level, ref, offered.getItem()), foodBridgeRoom(level, ref)));
+		if (allowed <= 0) return offered.copy();
+		ItemStack moving = offered.copyWithCount(allowed);
+		ItemStack insertRemainder;
+		boolean previous = foodBridgeOpen;
+		foodBridgeOpen = true;
+		try {
+			insertRemainder = net.minecraft.world.level.block.entity.HopperBlockEntity.addItem(null, destination, moving, null);
+		} finally {
+			foodBridgeOpen = previous;
+		}
+		int moved = allowed - insertRemainder.getCount();
+		return offered.copyWithCount(offered.getCount() - moved);
+	}
+
 	/** Routes a village delivery to its category depot and returns every item that could not be stored. */
 	public static ItemStack insertVillage(ServerLevel level, VillageRef ref, ItemStack offered) {
 		if (offered.isEmpty()) return offered;
@@ -299,6 +342,7 @@ public final class StockPolicy {
 	public static boolean rejectsDirectMaterialStoreInsert(ServerLevel level, BlockPos pos, ItemStack offered) {
 		if (level == null || pos == null || offered == null || offered.isEmpty()
 			|| acceptsMaterialStoreItem(offered.getItem()) || !level.hasChunkAt(pos)) return false;
+		if (foodBridgeOpen && category(offered.getItem()) == Category.FOOD) return false;
 
 		BlockState state = level.getBlockState(pos);
 		if (!(state.getBlock() instanceof ChestBlock) || level.getBlockEntity(pos) == null) return false;
