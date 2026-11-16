@@ -413,7 +413,7 @@ public final class JobManager {
 				v.blockPosition().toShortString(), state(v).activity, walk.map(w -> w.getTarget().currentBlockPosition().toShortString()).orElse("-"),
 				v.getNavigation().isDone() ? "fertig" : "aktiv");
 		}
-		if (village != null) de.villagerplus.village.Anchor.keepVillagerActive(level, v);
+		if (village != null && de.villagerplus.village.Anchor.isKept(level, village)) de.villagerplus.village.Anchor.keepVillagerActive(level, v);
 		if (de.villagerplus.village.Staffing.restoreTemporary(level, v, mem, now)) {
 			JobState restored = state(v);
 			restored.idleSince = 0L;

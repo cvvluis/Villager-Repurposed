@@ -2,6 +2,13 @@
 
 **Aktuelle Übergabe, 30.10.2026.** GitHub-Repository: https://github.com/LvisXVI/Villager-Repurposed (privat, Branch `main`). Aktueller Code und die folgenden Nachweise gehen älteren Abschnitten vor.
 
+## Lauf 16.11.2026 – Lag im großen Modpack (Dorf-Ladebudget)
+
+- Meldung des Nutzers: im großen Modpack "Can't keep up", hoher Ping, Essen dauert extrem lange (Serverlast). Ursache laut Code: `Anchor.keepLoaded` hielt JEDES bekannte Dorf dauerhaft per `setChunkForced` geladen (mind. 81, bis 256 Chunks je Dorf, als /forceload im Weltstand gespeichert, wird beim Start wieder geladen, jedes besuchte Dorf kam dazu), plus ein Residenten-Lease mit Radius 2 (0.10.0). Nicht gemessen im Modpack, nur aus dem Code abgeleitet.
+- Änderung: Budget `Anchor.MAX_KEPT_VILLAGES` = 1 je Level (Dorf am nächsten zu einem Spieler, Hysterese 0,5625 auf die quadrierte Distanz), Footprint-Radius 3 auf 2, Cap 256 auf 100 Chunks; Dörfer außerhalb des Budgets werden freigegeben (auch alte Zwangsladungen aus gespeicherten Welten, Radius 3 um die Glocke; geteilte Chunks bleiben); Residenten-Lease nur für Dörfer im Budget (`Anchor.isKept`). Überschreibbar mit `-Dvillagerplus.keptVillages=N` (0 = nie zwangsladen). Von Hand gesetzte /forceload-Chunks im Footprint eines freigegebenen Dorfs werden mitfreigegeben.
+- Geprüft (je 1 Lauf, einzeln): anchorbudget 6 (neu), a04lease 2 (Fixture markiert das Dorf als gehalten), a04survival 5, minetickets 20, a04idle 7, roles 112, builderchecks 318, a01behavior 20. NICHT geprüft: Lastmessung im Modpack, Verhalten bei mehreren echten Dörfern mit Spielern, Wirkung auf das Dorfwachstum ohne Spieler (weniger Dörfer wachsen, wenn der Spieler weit weg ist).
+- Nächster Schritt: Messung der Tickzeit mit und ohne Budget in einer Welt mit mehreren Dörfern; Nachholsimulation für nicht geladene Dörfer (Arbeit gebündelt statt dauerhaft geladen).
+
 ## Lauf 31.10.2026 – Phase 4 CTOV-Kornspeicher
 
 - Ehrlicher Lauf `runWalk`: kein `setNoAi`, kein `setPos`, Material nur bei neuer Wunschliste, danach nur Server-Ticks. Maurer ging 34 Blöcke und baute den Kornspeicher `-253, 71, -341`. Der Stand bei `-331, 75, -275` bleibt der Harness.

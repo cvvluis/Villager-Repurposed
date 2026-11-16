@@ -590,6 +590,10 @@ public final class Checks090 {
    }
    source.sendSuccess(()->Component.literal("VP090 a04idle PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("anchorbudget")) {
+   int count=de.villagerplus.village.AnchorBudgetChecks.run(level,new BlockPos(53000,201,53000));
+   source.sendSuccess(()->Component.literal("VP090 anchorbudget PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("a04lease")) {
    int count=de.villagerplus.village.A04LeaseChecks.run(level,new BlockPos(52000,201,52000));
    if(count<0) { source.sendSuccess(()->Component.literal("VP090 a04lease PREPARING; retry after server ticks"),false);return -1; }

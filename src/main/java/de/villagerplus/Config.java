@@ -102,8 +102,8 @@ public final class Config {
 	public static final int TOWNHALL_POP = 12;
 	/** Doerfer (und ihre aktive Mine) dauerhaft laden, damit sie auch ohne Spieler in der Naehe weiterarbeiten. */
 	public static final boolean KEEP_VILLAGES_LOADED = true;
-	/** Radius in Chunks um die Glocke, der geladen bleibt (3 = 7x7 Chunks, rund 100 Bloecke Kantenlaenge). */
-	public static final int ANCHOR_RADIUS_CHUNKS = 3;
+	/** Radius in Chunks um die Glocke, der geladen bleibt (2 = 5x5 Chunks plus 1 Rand; mehr Dörfer als Anchor.MAX_KEPT_VILLAGES werden freigegeben). */
+	public static final int ANCHOR_RADIUS_CHUNKS = 2;
 	/** Abstand zwischen Expeditionen (Ticks) und ihre Dauer. */
 	public static final long EXPEDITION_INTERVAL = 36000L;
 	public static final long EXPEDITION_TICKS = 9000L;

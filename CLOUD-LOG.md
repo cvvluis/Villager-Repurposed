@@ -409,3 +409,6 @@ Rote Gruppen auf HEAD (je 2 Laeufe, reproduzierbar; 9 davon auch auf d7d4044 = v
 Ein Fehler kam vom Merge: butcherslaughter erwartete "Zentralkiste lehnt Rohfleisch ohne Kornspeicher ab"; die neue Nahrungsbruecke nimmt es bewusst (bis 48/12 je Einwohner). Check angepasst (Erhaltung + Bruecke nimmt alle 10), Gruppe 14 PASS.
 Leere Gruppen (0 Checks, vermutlich nur Hauptlauf/Client): board, plaza, toast, trader. Nicht einzeln gelaufen: ctov (braucht CTOV-Welt), headless, verify, performance.
 Naechster Schritt: die 9 roten Gruppen auf Ursache pruefen (Fixture-Rot oder echter Produktivfehler), dann B-Punkte mit kleinstem Rest zu A machen (siehe Master-Prompt).
+
+## Lag im Modpack: Dorf-Ladebudget (0.10.2)
+Siehe AI-HANDOFF.md (Lauf 16.11.2026). Gruppen: anchorbudget 6, a04lease 2, a04survival 5, minetickets 20, a04idle 7, roles 112, builderchecks 318, a01behavior 20. Nicht gemessen: echte Tickzeit im Modpack.
