@@ -204,7 +204,7 @@ public final class Builder {
 		List<Step> candidatePlan = candidateSteps;
 		if (type.equals(Blueprints.HOUSE)) {
 			int clearance = design == null ? Blueprints.headroom(type) : siteHeadroom(type, variant, design);
-			if (templateCandidate) clearance = Math.max(clearance, 10);
+			if (templateCandidate) clearance = Math.max(clearance, templateHeadroom(design));
 			if (!housePlotFits(c.level(), anchor, candidateSteps, outward, clearance)) { SITE_REJECT[3]++; return null; }
 			if (!templateCandidate) {
 				int yardStyle = Paths.yardStyle(c.level(), anchor, outward);
@@ -3299,8 +3299,8 @@ public final class Builder {
 				half = siteHalf(type, variant, design);
 				headroom = siteHeadroom(type, variant, design);
 				if (templateEligible(design)) {
-					half = Math.max(half, 4);
-					headroom = Math.max(headroom, 10);
+					half = Math.max(half, templateHalf(design));
+					headroom = Math.max(headroom, templateHeadroom(design));
 				}
 			}
 			// Bis zu 4 Entwuerfe probieren: ein kleinerer passt oft noch auf einen engen oder huegeligen Platz.
@@ -3317,8 +3317,8 @@ public final class Builder {
 					half = siteHalf(type, variant, design);
 					headroom = siteHeadroom(type, variant, design);
 					if (Blueprints.HOUSE.equals(type) && templateEligible(design)) {
-						half = Math.max(half, 4);
-						headroom = Math.max(headroom, 10);
+						half = Math.max(half, templateHalf(design));
+						headroom = Math.max(headroom, templateHeadroom(design));
 					}
 				} else if (Landmarks.handles(type)) {
 					long seed = type.equals(Blueprints.DECOR) ? Landmarks.decorSeed(variant, c.v().getRandom().nextInt(1 << 24))
@@ -3588,7 +3588,7 @@ public final class Builder {
 		d.claimPlanBuilder(c.v().getUUID());
 		if (source == null && Blueprints.HOUSE.equals(type)
 			&& newHouseTemplatePreview(level, ref, type, designForPlan(type, variant), site, dir) != null) {
-			markTemplatePlan(ref, site);
+			markTemplatePlan(ref, site, designForPlan(type, variant));
 		}
 		String earlyPalette = source == null ? EARLY_PALETTE_SITES.remove(site.asLong()) : null;
 		if (earlyPalette != null && !ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.<Long>of()).contains(site.asLong())) {
@@ -3694,8 +3694,8 @@ public final class Builder {
 		int half = design != null ? siteHalf(type, variant, design) : Landmarks.handles(type) ? Landmarks.half(type) : Blueprints.half(type);
 		int headroom = design != null ? siteHeadroom(type, variant, design) : Landmarks.handles(type) ? Landmarks.headroom(type) : Blueprints.headroom(type);
 		if (Blueprints.HOUSE.equals(type) && templateEligible(design)) {
-			half = Math.max(half, 4);
-			headroom = Math.max(headroom, 10);
+			half = Math.max(half, templateHalf(design));
+			headroom = Math.max(headroom, templateHeadroom(design));
 		}
 		int min = type.equals(Blueprints.HOUSE) && houseMinRadiusOverride > 0 ? houseMinRadiusOverride
 			: type.equals(Blueprints.WELL) || type.equals(Blueprints.DECOR) ? 5 : type.equals(Blueprints.TOWNHALL) ? 7
@@ -4756,15 +4756,45 @@ public final class Builder {
 	private static List<Step> newHouseTemplatePreview(ServerLevel level, VillageRef ref, String type,
 		Architect.Design design, BlockPos origin, Direction dir) {
 		if (!Blueprints.HOUSE.equals(type) || !templateEligible(design)) return null;
-		List<Step> preview = previewTemplateSteps(level, ref, origin, dir, "haus_klein");
+		List<Step> preview = previewTemplateSteps(level, ref, origin, dir, templateTypeFor(design));
 		return preview == null || preview.isEmpty() ? null : preview;
 	}
 
-	private static void markTemplatePlan(VillageRef ref, BlockPos origin) {
+	/** Small house shape (9x9) used by every template-eligible plan that started before the village house existed. */
+	static final String HOUSE_TEMPLATE_SMALL = "haus_klein";
+	/** Larger village house (about 14x13): chosen for tall two-storey designs of NEW plans only. */
+	static final String HOUSE_TEMPLATE_VILLAGE = "haus_dorf";
+
+	/** Template shape for a fresh plan, derived from its saved design so a restart picks the same one. */
+	static String templateTypeFor(Architect.Design design) {
+		return design != null && design.wallH() >= 6 && design.hw() >= 4 ? HOUSE_TEMPLATE_VILLAGE : HOUSE_TEMPLATE_SMALL;
+	}
+
+	/**
+	 * Template shape of a plan. Plans marked before the village house existed keep the small house; a village-house plan
+	 * is recorded as the origin marker plus its bitwise complement (never a valid position: the y bits fall below the world).
+	 */
+	static String templateTypeForPlan(VillageRef ref, BlockPos origin, Architect.Design design) {
+		List<Long> marked = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.of());
+		if (marked.contains(~origin.asLong())) return HOUSE_TEMPLATE_VILLAGE;
+		if (marked.contains(origin.asLong())) return HOUSE_TEMPLATE_SMALL;
+		return templateTypeFor(design);
+	}
+
+	private static int templateHalf(Architect.Design design) {
+		return HOUSE_TEMPLATE_VILLAGE.equals(templateTypeFor(design)) ? 7 : 4;
+	}
+
+	private static int templateHeadroom(Architect.Design design) {
+		return HOUSE_TEMPLATE_VILLAGE.equals(templateTypeFor(design)) ? 14 : 10;
+	}
+
+	private static void markTemplatePlan(VillageRef ref, BlockPos origin, Architect.Design design) {
 		List<Long> marked = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.of());
 		if (marked.contains(origin.asLong())) return;
 		List<Long> next = new ArrayList<>(marked);
 		next.add(origin.asLong());
+		if (HOUSE_TEMPLATE_VILLAGE.equals(templateTypeFor(design))) next.add(~origin.asLong());
 		ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.copyOf(next));
 		ref.dirty();
 	}
@@ -4828,7 +4858,7 @@ public final class Builder {
 			ConstructionSite site = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.CONSTRUCTION, null);
 			templated = false;
 			if (d.planType.equals(Blueprints.HOUSE) && planDesign != null && templateEligible(planDesign)) {
-				List<Step> fromTemplate = templateSteps(level, ref, origin, dir, d, "haus_klein");
+				List<Step> fromTemplate = templateSteps(level, ref, origin, dir, d, templateTypeForPlan(ref, origin, planDesign));
 				if (fromTemplate != null && !fromTemplate.isEmpty()) {
 					steps = fromTemplate;
 					templated = true;
@@ -5509,8 +5539,8 @@ public final class Builder {
 		int searchHeadroom = siteHeadroom(type, search.variant, searchDesign);
 		int searchVariant = search.variant;
 		if (templateEligible(searchDesign)) {
-			searchHalf = Math.max(searchHalf, 4);
-			searchHeadroom = Math.max(searchHeadroom, 10);
+			searchHalf = Math.max(searchHalf, templateHalf(searchDesign));
+			searchHeadroom = Math.max(searchHeadroom, templateHeadroom(searchDesign));
 		}
 		int oldMargin = Sites.margin;
 		int evaluatedBefore = SITE_REJECT[0];
