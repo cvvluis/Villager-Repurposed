@@ -4,6 +4,13 @@ Dorfbewohner haben Namen, feste Häuser mit Schild, einen festen Tagesplan und e
 mit Doppelkiste und wächst selbstständig. Server- und Client-Mod (der Info-Knopf braucht die Mod auch beim Spieler; Einzelspieler funktioniert), benötigt Fabric Loader 0.20.1+,
 Fabric API und Java 25.
 
+## Neu in 0.10.3: kein Zwangsladen mehr (Playtest 6)
+
+Zweiter Hotfix gegen "Can't keep up" im großen Modpack. Nicht im Modpack gemessen, nur auf dem Dev-Server geprüft.
+
+- Die Mod setzt keine /forceload-Chunks mehr. Das nächste Dorf wird nur noch mit kurzlebigen Tickets gehalten, nur für bereits geladene Chunks (es wird nie neues Gelände erzeugt), nicht solange ein Spieler in der Nähe ist und nicht, wenn der Server schon überlastet ist (Ø Tickzeit über 40 ms).
+- Alte Zwangsladungen aus 0.10.0 bis 0.10.2 werden beim Spielen freigegeben. `-Dvillagerplus.keptVillages=0` schaltet das Festhalten ganz ab.
+
 ## Neu in 0.10.2: weniger Serverlast (Playtest 5)
 
 Hotfix für Lag im großen Modpack ("Can't keep up", hoher Ping). Nicht im Modpack gemessen, nur auf dem Dev-Server geprüft.

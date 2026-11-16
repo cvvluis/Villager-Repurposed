@@ -2,6 +2,13 @@
 
 **Aktuelle Übergabe, 30.10.2026.** GitHub-Repository: https://github.com/LvisXVI/Villager-Repurposed (privat, Branch `main`). Aktueller Code und die folgenden Nachweise gehen älteren Abschnitten vor.
 
+## Lauf 16.11.2026 (2) – Can't keep up trotz Budget (0.10.3)
+
+- Nutzer-Log (366 Mods, frische Welt, 0.10.2): direkt nach "Village footprint ... forced-loading the nearest 100 only" folgt "Can't keep up! 6323ms behind"; weitere Spitzen 5,5 s und 17 s. Ursache laut Log/Code: auch ein einzelnes Dorf zwang per `setChunkForced` bis zu 100 Chunks, in einer frischen Welt mit schwerer Weltgenerierung (Tectonic, Biolith, Wild-Mods) heisst das Chunk-Generierung. Teile der Spitzen (8,6 s beim Weltstart) stammen nicht von der Mod (Weltgenerierung, Voxy), das ist nicht belegt getrennt.
+- Änderung: kein persistentes /forceload mehr. Das Dorf im Budget (1 je Level) wird nur noch mit ablaufenden Tickets (`FOOTPRINT_WORK`, 240 Ticks) gehalten, und nur Chunks, deren acht Nachbarn schon geladen sind (`Anchor.pinnable`): es wird nie Gelände erzeugt. Nicht festgehalten wird, solange ein Spieler näher als (Simulationsdistanz - 3) Chunks ist (`Anchor.attended`, das Spiel simuliert das Dorf selbst) oder der Server überlastet ist (Ø Tickzeit über 40 ms, `Anchor.overloaded`). Residenten-Lease nur noch mit geladenen Nachbarn und nicht unter Last. Fußabdruck 49 Chunks statt 100. Alte /forceload-Einträge aus 0.10.0/0.10.1/0.10.2 werden weiter freigegeben.
+- Geprüft: anchorbudget 9, a04lease 2 (Fixture lädt Nachbarchunks), a04survival 5, minetickets 20, a04idle 7, roles 112. NICHT geprüft: Lastmessung im Modpack, Verhalten mit mehreren echten Spielern; Dörfer wachsen fern vom Spieler langsamer. Schalter: `-Dvillagerplus.keptVillages=0` schaltet das Festhalten komplett ab.
+- Nächster Schritt: Nutzer bestätigt, ob "Can't keep up" weg ist (sonst `/villagerplus perf` ausgeben lassen: Ø µs je Tick der Mod); danach die zurückgestellte Arbeit an den drei Vorlagenhäusern (git stash "wip-house-templates") fortsetzen.
+
 ## Lauf 16.11.2026 – Lag im großen Modpack (Dorf-Ladebudget)
 
 - Meldung des Nutzers: im großen Modpack "Can't keep up", hoher Ping, Essen dauert extrem lange (Serverlast). Ursache laut Code: `Anchor.keepLoaded` hielt JEDES bekannte Dorf dauerhaft per `setChunkForced` geladen (mind. 81, bis 256 Chunks je Dorf, als /forceload im Weltstand gespeichert, wird beim Start wieder geladen, jedes besuchte Dorf kam dazu), plus ein Residenten-Lease mit Radius 2 (0.10.0). Nicht gemessen im Modpack, nur aus dem Code abgeleitet.

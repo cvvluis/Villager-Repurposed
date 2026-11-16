@@ -65,6 +65,10 @@ public final class A04LeaseChecks {
 		BlockPos controlOrigin = origin.offset(400, 0, 0);
 		level.getChunkAt(origin);
 		level.getChunkAt(controlOrigin);
+		// A lease never generates terrain: it needs the eight neighbours of the resident's chunk already loaded.
+		for (int dx = -1; dx <= 1; dx++) {
+			for (int dz = -1; dz <= 1; dz++) level.getChunkAt(origin.offset(dx * 16, 0, dz * 16));
+		}
 		for (BlockPos p : new BlockPos[] {origin, controlOrigin}) {
 			for (int dx = 0; dx < 16; dx++) for (int dz = 0; dz < 16; dz++) for (int dy = -2; dy <= 4; dy++) {
 				BlockPos q = p.offset(dx, dy, dz);

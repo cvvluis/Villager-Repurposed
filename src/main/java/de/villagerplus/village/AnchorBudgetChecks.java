@@ -45,6 +45,12 @@ public final class AnchorBudgetChecks {
 				&& !level.getChunkSource().getForceLoadedChunks().contains(net.minecraft.world.level.ChunkPos.pack(cx, cz)),
 				"the shared chunk is still forced and the released one is not");
 			level.setChunkForced(cx + 2, cz, false);
+
+			// Pinning never generates terrain: it needs the chunk and its eight neighbours already loaded.
+			for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) level.getChunkAt(origin.offset(dx * 16, 0, dz * 16));
+			check(Anchor.pinnable(level, new net.minecraft.world.level.ChunkPos(cx, cz)), "a chunk with all eight neighbours loaded may be pinned");
+			check(!Anchor.pinnable(level, new net.minecraft.world.level.ChunkPos(cx + 50000, cz)), "a chunk that is not loaded is never pinned");
+			check(!Anchor.attended(level, origin) || !level.players().isEmpty(), "without any player no village counts as attended");
 			check(Anchor.releaseChunks(level, candidates, null, Set.of()) == 0, "releasing already free chunks changes nothing");
 			return checks;
 		} finally {
