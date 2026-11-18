@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 560" role="img" aria-labelledby="title desc">
+  <title id="title">A village grows together</title>
+  <desc id="desc">A block-built village of oak houses, lanterns, fields, and a central bell beneath a dusky green sky.</desc>
+  <defs>
+    <linearGradient id="sky" x2="0" y2="1"><stop stop-color="#1e3430"/><stop offset="1" stop-color="#60715a"/></linearGradient>
+    <linearGradient id="ground" x2="0" y2="1"><stop stop-color="#68834b"/><stop offset="1" stop-color="#324c35"/></linearGradient>
+    <pattern id="grain" width="18" height="18" patternUnits="userSpaceOnUse"><circle cx="2" cy="3" r="1" fill="#f5e5ad" opacity=".13"/><circle cx="13" cy="11" r="1" fill="#101b18" opacity=".14"/></pattern>
+  </defs>
+  <path fill="url(#sky)" d="M0 0h1440v560H0z"/>
+  <circle cx="1160" cy="104" r="45" fill="#edcf86" opacity=".9"/><circle cx="1160" cy="104" r="67" fill="#edcf86" opacity=".08"/>
+  <path d="M0 300 170 205l126 73 165-130 164 150 178-115 152 117 120-92 165 101v115H0z" fill="#334b3b" opacity=".9"/>
+  <path fill="url(#ground)" d="M0 342h1440v218H0z"/>
+  <!-- distant village -->
+  <g opacity=".58" transform="translate(140 265) scale(.7)"><path fill="#725943" d="M0 75h164v95H0z"/><path fill="#3a3028" d="m-18 78 97-66 103 66z"/><path fill="#edcf86" d="M22 101h20v24H22zm100 0h20v24h-20z"/></g>
+  <g opacity=".72" transform="translate(1110 255) scale(.78)"><path fill="#806348" d="M0 82h164v92H0z"/><path fill="#403229" d="m-20 82 101-68 103 68z"/><path fill="#edcf86" d="M22 105h20v24H22zm100 0h20v24h-20z"/></g>
+  <!-- main houses -->
+  <g transform="translate(310 228)"><path fill="#b38b5c" d="M0 101h275v159H0z"/><path fill="#8a6548" d="M-20 105 134 0l159 105z"/><path fill="#70533e" d="m-20 105 154-105 159 105-21 13L134 29 1 118z"/><path fill="#56412f" d="M34 144h57v116H34z"/><path fill="#d8b977" d="M166 136h60v50h-60z"/><path fill="#755b3f" d="M188 136h16v50h-16zM166 153h60v14h-60z"/><path fill="#718f76" d="M47 158h31v48H47z"/></g>
+  <g transform="translate(820 236)"><path fill="#ad8455" d="M0 92h247v166H0z"/><path fill="#66513d" d="m-19 97 142-94 143 94z"/><path fill="#8c6947" d="m-19 97 142-94 143 94-22 13L123 34 4 110z"/><path fill="#56412f" d="M31 143h52v115H31z"/><path fill="#d9bd7c" d="M145 128h61v49h-61z"/><path fill="#718f76" d="M163 128h15v49h-15zm-18 17h61v14h-61z"/></g>
+  <!-- bell, path, field -->
+  <path fill="#b99a63" d="M671 343h14v126h-14z"/><path fill="#c5a761" d="M657 341h43v18h-43z"/><path fill="#dfc783" d="M663 359h31v31h-31z"/><path fill="#75573a" d="M0 462h1440v30H0z" opacity=".7"/>
+  <path d="M685 488c-62 20-104 28-167 72m167-72c69 20 131 30 205 72" fill="none" stroke="#c8b17a" stroke-width="18" opacity=".55"/>
+  <g fill="#b7cf86"><path d="M90 416h94v56H90z"/><path d="M104 400h20v16h-20zm36 0h20v16h-20z"/><path d="M1070 420h114v55h-114z"/><path d="M1087 402h20v18h-20zm40 0h20v18h-20z"/></g>
+  <!-- lamplight -->
+  <g><path stroke="#413a2c" stroke-width="7" d="M265 359v100m900-101v100"/><path fill="#e5c66d" d="M252 349h26v27h-26zm900 0h26v27h-26z"/><circle cx="265" cy="363" r="36" fill="#f1cd70" opacity=".16"/><circle cx="1165" cy="363" r="36" fill="#f1cd70" opacity=".16"/></g>
+  <path fill="url(#grain)" d="M0 0h1440v560H0z"/>
+</svg>

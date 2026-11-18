@@ -1,4 +1,19 @@
 # Villagers: Repurposed (Fabric, Minecraft 26.2)
+> **A living village, block by block.** Villagers: Repurposed gives Minecraft villages homes, daily routines, work, trade, and room to grow.
+
+[Project website](https://cvvluis.github.io/Villager-Repurposed/) · [GitHub repository](https://github.com/cvvluis/Villager-Repurposed) · [Luis's portfolio](https://cvvluis.github.io/)
+
+<p align="center"><img src="docs/assets/villagers-repurposed-logo.png" alt="Villagers: Repurposed" width="420" /></p>
+
+**Fabric · Minecraft 26.2 · Java 25**
+
+Villagers: Repurposed turns a village into a small, persistent community. Residents keep homes and personal belongings, follow a daily schedule, take on jobs, trade with neighbours, and build useful places as the village grows. The project is under active development; compatibility and feature status are documented below and in the project docs.
+
+### Explore
+
+- [What the mod does](#neu-in-090-handelsnetz-dorfschrein-und-marktleben)
+- [Project website](https://cvvluis.github.io/Villager-Repurposed/)
+- [More projects by Luis](https://cvvluis.github.io/)
 
 Dorfbewohner haben Namen, feste Häuser mit Schild, einen festen Tagesplan und echte Aufgaben. Das Dorf bekommt eine Dorfmitte
 mit Doppelkiste und wächst selbstständig. Server- und Client-Mod (der Info-Knopf braucht die Mod auch beim Spieler; Einzelspieler funktioniert), benötigt Fabric Loader 0.20.1+,
@@ -214,7 +229,7 @@ Alle Tätigkeiten sind sichtbar: Der Dorfbewohner hält das passende Werkzeug/Ge
 
 **Leistung:** Zeitbudget je Tick (Config.TICK_BUDGET_NANOS), automatisch seltenere Taktung bei Serverlast, Zwischenspeicher für Dorfsuche/Vorräte/Lager, spaltenweise Baumsuche. /villagerplus perf zeigt die Messwerte (zuletzt Ø 21–36 µs je Tick bei 33–155 Villagern).
 **Berufsnachbesetzung:** Fällt der letzte Maurer/Pfeilmacher/Bauer aus, übernimmt ein Arbeitsloser oder Überzähliger (ab 8 Einwohnern).
-Eine vollständige Funktionsliste steht in FEATURES.md.
+Den aktuellen Stand und die Funktionsübersicht zeigt die [Projektseite](https://cvvluis.github.io/Villager-Repurposed/).
 
 ## Kompatibilität mit anderen Mods
 - Unterklassen von `Villager` und eigene Namen aus anderen Mods werden mitverwaltet.
