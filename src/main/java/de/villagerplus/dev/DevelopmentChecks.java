@@ -373,14 +373,18 @@ public final class DevelopmentChecks {
 		int cell = de.villagerplus.village.VillageMap.gridCellSize(level, ref);
 		BlockPos firstOrigin = new BlockPos(origin[0] + 6 * cell + 1, ref.bell().getY(), origin[1] + 16 * cell + 1);
 		BlockPos secondOrigin = new BlockPos(origin[0] + 30 * cell + 1, ref.bell().getY(), origin[1] + 16 * cell + 1);
+		// A fresh world is younger than the stall threshold, so the status is rendered for an explicit later game time.
+		long stallNow = Math.max(level.getGameTime(), 146_301L);
 		var site = new de.villagerplus.build.ConstructionSite(firstOrigin, java.util.List.of(), java.util.List.of(2, 4, 8), true);
 		var first = new de.villagerplus.village.VillageData.BuildProject(Blueprints.SCHOOL, firstOrigin, 0, 3, 0,
-			java.util.Optional.empty(), level.getGameTime() - 146_300L, java.util.Optional.empty(), 0,
-			java.util.List.of("minecraft:birch_planks#16"),
+			java.util.Optional.empty(), stallNow - 146_300L, java.util.Optional.empty(), 0,
+			// No open shortage or wait: only then is the idle time a stall (VillageStats.constructionStallEligible).
+			java.util.List.of(),
 			de.villagerplus.village.VillageData.ProjectHaul.empty(), java.util.Optional.empty(), java.util.Optional.of(site),
 			java.util.Optional.empty(), false, false);
 		var second = new de.villagerplus.village.VillageData.BuildProject(Blueprints.TOOLSHED, secondOrigin, 0, 1, 0,
-			java.util.Optional.empty(), level.getGameTime(), java.util.Optional.empty(), 0, java.util.List.of(),
+			java.util.Optional.empty(), stallNow, java.util.Optional.empty(), 0,
+			java.util.List.of("minecraft:birch_planks#16"),
 			de.villagerplus.village.VillageData.ProjectHaul.empty(), java.util.Optional.of("Werkzeug fehlt"), java.util.Optional.empty(),
 			java.util.Optional.empty(), false, false);
 		var cleanup = new de.villagerplus.village.VillageData.BuildProject("", secondOrigin.north(8), 0, 0, 0,
@@ -399,17 +403,17 @@ public final class DevelopmentChecks {
 			+ Math.floorDiv(secondOrigin.getX() - origin[0], cell);
 		check(marks[firstIndex] == 13 && marks[secondIndex] == 13,
 			"map marks each independently active build project and ignores cleanup-only records");
-		java.util.List<String> stats = de.villagerplus.village.VillageStats.lines(level, multiRef);
+		java.util.List<String> stats = de.villagerplus.village.VillageStats.lines(level, multiRef, stallNow);
 		boolean activeCountShown = stats.stream().anyMatch(line -> line.contains("2 aktive Baustellen"));
 		boolean firstCursorShown = stats.stream().anyMatch(line -> line.contains("Schule") && line.contains("Schritt 3/8"));
 		boolean secondWaitShown = projectStatusIncludesWait(stats, "Werkzeugschuppen", "Werkzeug fehlt");
 		boolean friendlyMaterials = stats.stream().anyMatch(line -> line.startsWith("  Noch zu liefern: ")
 			&& line.contains("×16") && !line.contains("minecraft:birch_planks"));
-		boolean readablePause = stats.stream().anyMatch(line -> line.equals("  Stillstand: 2 Std. 1 Min. 55 Sek."));
+		boolean readablePause = stats.stream().anyMatch(line -> line.equals("  Kein Bau- oder Materialfortschritt seit 2 Std. 1 Min. 55 Sek. Spielzeit."));
 		if (!(activeCountShown && firstCursorShown && secondWaitShown && friendlyMaterials && readablePause)) {
 			String visibleBuildStatus = String.join(" || ", stats.stream()
 				.filter(line -> line.startsWith("Aktueller Bau:") || line.startsWith("Baustelle")
-					|| line.startsWith("  Ort:") || line.startsWith("  Wartet:") || line.startsWith("Bauplan:"))
+					|| line.startsWith("  Ort:") || line.startsWith("  Wartet:") || line.startsWith("  Kein Bau") || line.startsWith("Bauplan:"))
 				.toList());
 			throw new IllegalStateException("DEVELOPMENT CHECK FAILED village info lists every active project's cursor and visible wait reason"
 				+ " [activeCount=" + activeCountShown + ", firstCursor=" + firstCursorShown + ", secondWait=" + secondWaitShown
