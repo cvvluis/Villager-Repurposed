@@ -2,6 +2,12 @@
 
 **Aktuelle Übergabe, 30.10.2026.** GitHub-Repository: https://github.com/LvisXVI/Villager-Repurposed (privat, Branch `main`). Aktueller Code und die folgenden Nachweise gehen älteren Abschnitten vor.
 
+## Lauf 18.11.2026 (2) – Einfrieren im Modpack, Hänger-Bericht (0.10.6)
+
+- Nutzer: Spiel stürzt nicht richtig ab, friert aber ein (nicht mehr bedienbar, nicht normal schließbar) nach starkem Lag; Log zeigte "large tps diff! client:15 server:3" und eine Stacktrace durch GameRenderer/Iris/Jacaranda (kein villagerplus-Frame im sichtbaren Teil), Anfang der Meldung fehlt. Ursache NICHT gefunden.
+- Neu: `StallWatchdog` (Server und Client): wenn die Tickschleife über 8 s nicht schlägt, werden die Stapel aller wichtigen Threads nach `logs/villagerplus-stall-<server|client>.txt` geschrieben (max. 3 je Start, pausierter Server-Thread zählt nicht). Check `stallwatchdog` (3 Checks, 11,5 s blockierend). NICHT geprüft: Verhalten im echten Modpack, Fehlalarme beim Weltstart des Clients.
+- Nächster Schritt: Nutzer schickt `logs/villagerplus-stall-*.txt` und `/villagerplus perf`; erst danach gezielte Behebung. Ohne diese Daten keine weiteren Annahmen über die Ursache.
+
 ## Lauf 18.11.2026 – drei Vorlagenhäuser (0.10.5)
 
 - Nutzer lieferte drei NBT-Dateien (Dorfhaus, Rathaus mit Veranda, Schmiede mit Wohnhaus). Als `haus_dorf`, `rathaus_dorf`, `schmiede_dorf` in `data/villagerplus/templates` (Originaldateien, ein File für alle Biome). `TemplateLibrary`: Meta je Datei (Haupttür, Bodenlage), Ausrichtung nach dem Türfacing (die Türen sind von innen gesetzt, also Facing = außen), Fundamentschicht unter dem Boden entfällt, Filter `skipped` (Lava, Glocke, Leiter, Topf, Teppich, Schild, Arbeitsblöcke ...). Treppen-Ersatz kommt aus `Supply.stairsFor` (bis zu Bruchsteintreppen), per Check belegt.

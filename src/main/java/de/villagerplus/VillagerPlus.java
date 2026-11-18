@@ -147,6 +147,10 @@ public class VillagerPlus implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		de.villagerplus.entity.ModEntities.initialize();
+		StallWatchdog serverWatchdog = new StallWatchdog("server", net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir());
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(server -> serverWatchdog.start());
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> serverWatchdog.stop());
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> serverWatchdog.beat());
 		de.villagerplus.village.Anchor.register();
 		de.villagerplus.build.Wall.register();
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents.CHUNK_LOAD.register((world, chunk, generated) -> de.villagerplus.village.Villages.noteChunk(chunk));
