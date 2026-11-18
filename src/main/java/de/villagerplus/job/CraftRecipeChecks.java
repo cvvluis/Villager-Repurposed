@@ -85,8 +85,7 @@ public final class CraftRecipeChecks {
 
 			// Cooking is an intentional non-crafting job path and must opt in explicitly.
 			box.clearContent();
-			box.setItem(0, new ItemStack(Items.BEEF, 1));
-			box.setChanged();
+			stockRawBeef(level, ref, box);
 			check(!loadedRecipeProduces(level, box, Items.COOKED_BEEF),
 				"raw beef has no matching loaded crafting recipe for cooked beef in the test inventory");
 			checks++;
@@ -105,9 +104,12 @@ public final class CraftRecipeChecks {
 			ctx = new Ctx(level, villager, new JobState(),
 				villager.getAttachedOrCreate(VillagerPlus.MEMORY), ref, level.getGameTime() + 1300);
 			boolean cookingRan = Craft.run(ctx, List.of(explicitCook));
+			// Cooked food is not a material: JobUtil.insert routes it through StockPolicy.insertVillage to a granary, and with
+			// none the public material chest refuses it, so the real cooked item stays in the cook's own inventory (never lost).
 			check(cookingRan && JobUtil.count(box, stack -> stack.is(Items.BEEF)) == 0
-				&& JobUtil.count(box, stack -> stack.is(Items.COOKED_BEEF)) == 1,
-				"explicit manual cooking consumes raw beef and deposits cooked beef");
+				&& JobUtil.count(box, stack -> stack.is(Items.COOKED_BEEF)) == 0
+				&& JobUtil.count(villager.getInventory(), stack -> stack.is(Items.COOKED_BEEF)) == 1,
+				"explicit manual cooking consumes raw beef and keeps the cooked beef as a real item with the cook");
 			checks++;
 			return checks;
 		} finally {
@@ -115,6 +117,16 @@ public final class CraftRecipeChecks {
 			for (int slot = 0; slot < originalStock.size(); slot++) box.setItem(slot, originalStock.get(slot));
 			box.setChanged();
 		}
+	}
+
+	/**
+	 * The fixture chest is a registered public material store: direct writes of food are refused by StockPolicy
+	 * (StockPolicyDirectWriteChecks), so the raw beef is stocked through the controlled pre-granary food route.
+	 */
+	private static void stockRawBeef(ServerLevel level, de.villagerplus.village.VillageRef ref, Container box) {
+		ItemStack rest = de.villagerplus.village.StockPolicy.insertFoodBridge(level, ref, box, new ItemStack(Items.BEEF, 1));
+		check(rest.isEmpty() && JobUtil.count(box, stack -> stack.is(Items.BEEF)) == 1,
+			"raw beef fixture reaches the public chest through the food route");
 	}
 
 	private static boolean loadedRecipeProduces(ServerLevel level, Container stock, Item output) {

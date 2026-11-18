@@ -60,8 +60,7 @@ public final class HealerCareChecks {
 			check(injuredMemory.lastMeal == now,
 				"food used for injury treatment also refreshes the resident's meal clock"); checks++;
 
-			chest.clearContent();
-			chest.setItem(0, new ItemStack(Items.BREAD, 3));
+			stockBread(level, ref, chest, 3);
 			healer.getInventory().clearContent();
 			VillagerMemory hungryMemory = hungry.getAttachedOrCreate(VillagerPlus.MEMORY);
 			hungry.setHealth(hungry.getMaxHealth());
@@ -124,7 +123,7 @@ public final class HealerCareChecks {
 				&& exhaustedMemory.lastMeal == now
 				&& Wellbeing.of(level, exhausted, exhaustedMemory).energy() >= HealerJob.LOW_ENERGY_THRESHOLD,
 				"food restores the exhausted resident's care state without duplicating or losing the item"); checks++;
-			chest.setItem(0, new ItemStack(Items.BREAD, 2));
+			stockBread(level, ref, chest, 2);
 
 			// A full inventory leaves the real public stock in place instead of dropping a withdrawn item.
 			hungryMemory.lastMeal = oldMealTime(now);
@@ -189,6 +188,17 @@ public final class HealerCareChecks {
 			container.setItem(i, stacks.get(i).copy());
 		}
 		container.setChanged();
+	}
+
+	/**
+	 * The public village chest is a registered material store: direct writes of food are refused by StockPolicy
+	 * (StockPolicyDirectWriteChecks), so the fixture stocks bread through the controlled pre-granary food route.
+	 */
+	private static void stockBread(ServerLevel level, VillageRef ref, Container chest, int count) {
+		chest.clearContent();
+		ItemStack rest = de.villagerplus.village.StockPolicy.insertFoodBridge(level, ref, chest, new ItemStack(Items.BREAD, count));
+		check(rest.isEmpty() && chest.getItem(0).is(Items.BREAD) && chest.getItem(0).getCount() == count,
+			"bread fixture reaches the public chest through the food route");
 	}
 
 	private static void check(boolean condition, String message) {

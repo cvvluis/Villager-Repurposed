@@ -837,7 +837,7 @@ public final class LightingSpacingChecks {
 		Map<BlockPos, Cell> before = new LinkedHashMap<>();
 		BlockPos site = origin.offset(120, 0, 120);
 		BlockPos furnacePos = origin.offset(-120, 0, -120);
-		loadSpacingRegion(level, site, 32);
+		loadSpacingRegion(level, site, Lighting.MIN_LIGHT_SPACING);
 		for (int dx = -24; dx <= 24; dx++) for (int dz = -24; dz <= 24; dz++) for (int dy = -8; dy <= 8; dy++) {
 			BlockPos pos = site.offset(dx, dy, dz).immutable();
 			capture(level, before, pos);
