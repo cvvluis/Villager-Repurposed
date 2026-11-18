@@ -1,79 +1,79 @@
-# Master-Prompt – offene Punkte
+# Master Prompt – Open Items
 
-Wortgleiche offene Anforderungen aus `docs/master-prompt.md`. Vollständig umgesetzte Punkte wurden entfernt; der aktuelle Audit-Stand zählt 8 von 62 als umgesetzt und 54 als offen oder teilweise umgesetzt.
+Verbatim open requirements from `docs/master-prompt.md`. Fully implemented items have been removed; the current audit status counts 8 of 62 as implemented and 54 as open or partially implemented.
 
-## 1. Generation, Gebäude, Mine und Identität
-- G01: Geordnete organische Dorf-/CTOV-Generation mit größeren Hausabständen, Vorgärten, Bäumen, Weiden und Parzellen.
-- G02: Jedes Dorf, auch 2–3 Bewohner, hat von Anfang an einen schrittweisen Infrastrukturauftrag.
-- G03: Baustoff-Zentrallager nimmt nur Baumaterial an.
-- G04: Kornspeicher hält rohe/gekochte Nahrung, Feldfrüchte, Fleisch und Zutaten.
-- G05: Separate Werkzeug-/Waffen-/Rüstungskammer einschließlich Reparaturgut.
-- G06: Schule mit Klassenzimmer/Bänken, Kinderlehre und Berufs-XP.
-- G07: Küche/Bäckerei mit Kochtopf, Schneidebrett und Öfen.
-- G08: Später Bahnhof/Lokschuppen als Schienen-Terminal.
-- G09: Mischung kleiner/mittlerer/mehrstöckiger Häuser und Funktionsgebäude; Paletten orientieren sich an tatsächlich installierten CTOV-Assets.
-- G10: Markt und Rathaus liegen zentral und lassen Expansionsflächen frei; Dorfmitte reichhaltiger dekorieren.
-- G11: Störende Bauten physisch abbauen, Material zurückführen, Areal ebnen/renaturieren und gegebenenfalls passend neu errichten.
-- G12: Terrassierte Mineneingänge, sichere Navigation ohne Teleportations-Glitches oder Hänger.
-- G14: Prozedurale biomabhängige Dorfnamen; unbekannte Nachbarn erst nach erfolgreichem Handelskontakt dauerhaft entdecken.
-- G15: Dörfer entwickeln sich ohne Spieler-Bauauftrag kontinuierlich bedarfsorientiert weiter; Mauer umschließt ursprüngliche Gebäude und Neubauten.
+## 1. Generation, Buildings, Mine and Identity
+- G01: Orderly organic village/CTOV generation with larger spacing between houses, front gardens, trees, pastures and plots.
+- G02: Every village, even with 2–3 residents, has a step-by-step infrastructure assignment from the start.
+- G03: The central building-material warehouse accepts only building material.
+- G04: The granary holds raw/cooked food, crops, meat and ingredients.
+- G05: Separate tool/weapon/armor chamber, including repair goods.
+- G06: School with classroom/benches, teaching of children and profession XP.
+- G07: Kitchen/bakery with cooking pot, cutting board and ovens.
+- G08: Later a train station/locomotive shed as a rail terminal.
+- G09: Mix of small/medium/multi-story houses and functional buildings; palettes are based on the CTOV assets actually installed.
+- G10: Market and town hall are central and leave expansion areas free; decorate the village center more richly.
+- G11: Physically dismantle disruptive buildings, return the material, level/renaturalize the area and, where appropriate, rebuild suitably.
+- G12: Terraced mine entrances, safe navigation without teleportation glitches or getting stuck.
+- G14: Procedural biome-dependent village names; unknown neighbors are permanently discovered only after successful trade contact.
+- G15: Villages keep developing continuously and according to need without a player build assignment; a wall encloses the original buildings and new buildings.
 
-## 2. Diplomatie, Straßen und Eisenbahn
-- D03: Ab Handelspartner bauen Straßenbauer beider Dörfer aufeinander zu, roden 3 Blöcke Breite und planieren.
-- D04: Feste biomgerechte Pflaster-/Kiestrasse mit Randsteinen, Brücken über Flüsse/Schluchten und regelmäßigen Lampen.
-- D05: Karawanen benutzen fertiggestellte Straßen.
-- D06: Bahn erst bei Metropolen-Verbund, Zivilisationsfortschritt, Mindestbevölkerung beider Orte, Schmiede-/Minenressourcen und Zentrallagern.
-- D07: Sichtbarer Bau aus echten Ressourcen: Schienen, Antriebsschienen, Redstoneversorgung und überdachte Bahnhöfe an beiden Enden.
-- D08: Automatische echte Truhenloren transportieren Ernte/Holz/Barren; Personenzüge befördern Pendler/Marktbesucher.
+## 2. Diplomacy, Roads and Railway
+- D03: From Trade Partner on, road builders of both villages build toward each other, clear 3 blocks of width and level the ground.
+- D04: Fixed biome-appropriate cobblestone/gravel road with curbs, bridges over rivers/ravines and regular lamps.
+- D05: Caravans use completed roads.
+- D06: Railway only with Metropolis Union, civilization progress, minimum population of both places, smithy/mine resources and central warehouses.
+- D07: Visible construction from real resources: rails, powered rails, redstone supply and roofed stations at both ends.
+- D08: Automatic real chest minecarts transport harvest/wood/ingots; passenger trains carry commuters/market visitors.
 
-## 3. Physisches Bauen und Privateigentum
-- B01: Berufe beschaffen Rohstoffe, craften benötigte Arbeitsblöcke an einer Werkbank und platzieren sie selbst.
-- B02: Sichtbare Vorbereitung mit Gerüst/Werkbank, Fundamentaushub/Bruchstein, Tragwerk/Stützen, Wände/Fenster/Türen, Dach, Inneneinrichtung/Deko/Gerüstabbau.
-- B03: Blocksetzen zeigt Werkzeug/Armschwung, Sound und Partikel; Abbau kontinuierliche Risse 0–9 und Werkzeugschwung.
-- B04: Hausschilder zeigen Name, Funktion, Bewohner, Status.
-- B05: Jeder Bewohner hat eine private Truhe, die Gemeinschaftsträger nicht entnehmen.
+## 3. Physical Building and Private Ownership
+- B01: Professions procure raw materials, craft the required work blocks at a crafting table and place them themselves.
+- B02: Visible preparation with scaffold/crafting table, foundation excavation/cobblestone, framework/supports, walls/windows/doors, roof, interior furnishing/decoration/scaffold removal.
+- B03: Block placement shows tool/arm swing, sound and particles; dismantling shows continuous cracks 0–9 and tool swing.
+- B04: House signs show name, function, residents, status.
+- B05: Every resident has a private chest that community carriers do not take from.
 
-## 4. Karawanen
-- K01: Eigener Händler-Skin mit Reisekleidung, Rucksack, Hut.
-- K03: Temporäres Randlager mit Zelt, Feuer, Pflöcken und bewaffneter Wache.
-- K04: Sichtbar echte Waren aus Eseltruhe zur Dorfkiste tragen; Überschuss gegen tatsächliche Smaragde ankaufen.
+## 4. Caravans
+- K01: Own trader skin with travel clothing, backpack, hat.
+- K03: Temporary edge camp with tent, fire, stakes and an armed guard.
+- K04: Visibly carry real goods from the donkey chest to the village chest; buy surplus for actual emeralds.
 
-## 5. Berufe: Bedarf, Schwelle, Arbeitszyklus, Erweiterung, Wartung
-- J01: Farmer erweitert bei Nahrung < Einwohner × 5 selbständig Felder samt Wasser/Zäunen; Ernte ins Nahrungslager.
-- J02: Koch/Chef craftet Küchenblöcke, kocht mit Farmer’s-/Chef’s-Delight-Zutaten und beliefert Tavernen/Haushalte; Mahlzeiten geben Stimmungs-/Effizienzboni.
-- J03: Metzger füttert/zuchtet bis Gehege-Cap >8, erweitert Stall und schlachtet kontrolliert; Fleisch ins Nahrungslager.
-- J04: Schmied repariert am Amboss, schmilzt Erze, ersetzt Werkzeuge und produziert Bahnmaterial/Loren.
-- J05: Holzfäller fällt echte Bäume sichtbar, sammelt Drops, pflanzt nach, schützt verbaute Hölzer und legt bei Kahlhieb Plantagen an.
-- J06: Steinmetz/Bergmann arbeitet in aktiver Mine mit Stützen/Fackeln und produziert Schotter für Straßen/Bahn.
-- J07: Träger sortiert Baumaterial/Nahrung/Werkzeuge in die richtigen Depots und belädt Güterloren am Bahnhof.
-- J08: Straßen-/Schienenbauer repariert und baut Straßen, Schienen, Brücken und Pfeiler.
-- J09: Köhler verarbeitet Restholz zu Holzkohle und versorgt Schmiede/Küche/Beleuchtung/Dampfloren.
-- J10: Laternenanzünder prüft Licht <1 und beleuchtet Dorf sowie Überlandrouten.
-- J11: Heiler versorgt Verletzte mit echten Braustand-Tränken und Entkräftete mit Nahrung.
-- J12: Wache/Lookout/Abenteurer besetzt Türme, patrouilliert Straßen/Bahn, bekämpft Mobs und läutet bei Raids Alarm.
+## 5. Professions: Demand, Threshold, Work Cycle, Expansion, Maintenance
+- J01: When food < residents × 5, the farmer independently expands fields including water/fences; harvest goes to the food store.
+- J02: Cook/chef crafts kitchen blocks, cooks with Farmer's Delight/Chef's Delight ingredients and supplies taverns/households; meals give mood/efficiency bonuses.
+- J03: Butcher feeds/breeds up to a pen cap >8, expands the stable and slaughters in a controlled way; meat goes to the food store.
+- J04: Smith repairs at the anvil, smelts ores, replaces tools and produces rail material/minecarts.
+- J05: Lumberjack visibly fells real trees, collects drops, replants, protects built-in wood and creates plantations after clear-cutting.
+- J06: Stonemason/miner works in the active mine with supports/torches and produces gravel for roads/railway.
+- J07: Carrier sorts building material/food/tools into the right depots and loads freight minecarts at the station.
+- J08: Road/rail builder repairs and builds roads, rails, bridges and pillars.
+- J09: Charcoal burner processes leftover wood into charcoal and supplies smithy/kitchen/lighting/steam locomotives.
+- J10: Lamplighter checks light <1 and illuminates the village and overland routes.
+- J11: Healer treats the injured with real brewing stand potions and the weakened with food.
+- J12: Guard/lookout/adventurer staffs towers, patrols roads/railway, fights mobs and rings the alarm during raids.
 
-## 6. Dorftafel und Verwaltung
-- U01: Inworld-Block mit rustikaler Holzleiste, dynamischem Dorfnamen, unebener Pinnwand/Pergamenten und 3D-Laternen/Eisenbeschlägen.
-- U04: Gebäude anklicken, zuweisen, abreißen und verschieben; Mine/Schule/Lager/Baustellen anzeigen.
-- U05: Zonen per Drag-and-drop auf der Karte markieren und speichern.
-- U06: Nachbarn-/Verträge-Reiter mit Beziehung, Straßen-/Bahnstatus und Handelsbilanz; Spieler genehmigt Großprojekte.
-- U07: Schieberegler für Berufsquoten und Kinder-Lehrlingszuteilung.
-- U08: Getrennte Lagerübersichten/Filter und Sollmengen; Villager liefern nur bis zum Ziel, Überschuss bleibt privat.
+## 6. Village Board (Dorftafel) and Administration
+- U01: In-world block with rustic wooden frame, dynamic village name, uneven pinboard/parchments and 3D lanterns/iron fittings.
+- U04: Click buildings, assign, demolish and move them; show mine/school/warehouse/construction sites.
+- U05: Mark zones on the map by drag and drop and save them.
+- U06: Neighbors/contracts tab with relation, road/rail status and trade balance; the player approves major projects.
+- U07: Sliders for profession quotas and child apprentice assignment.
+- U08: Separate storage overviews/filters and target quantities; villagers deliver only up to the target, surplus stays private.
 
-## 7. Arbeitsmarkt und Alltag
-- A03: Morgenglocke; bei Unwetter/Gewitter Außenarbeit beenden, drinnen arbeiten oder Schutz suchen.
-- A04: Aktivierung auch in Survival; Bewohner stehen nicht dauerhaft untätig im Zentrum.
+## 7. Labor Market and Daily Life
+- A03: Morning bell; during storms/thunderstorms end outdoor work, work indoors or seek shelter.
+- A04: Activation also in Survival; residents do not stand idle in the center permanently.
 
-## 8. Crafting und Beschaffung
-- R01: Geladene Vanilla-/Fabric-Rezeptverwaltung für alle verfügbaren herstellbaren Items einschließlich Schienen/Loren/Hebeln, korrekte Zutaten/Tags/Komponenten und Restbehälter.
-- R02: Bei dauerhaft fehlenden Rohstoffen biomgerechte Ersatzpalette oder Karawanenbeschaffung mit sichtbarer Lieferung.
+## 8. Crafting and Procurement
+- R01: Loaded vanilla/Fabric recipe management for all available craftable items including rails/minecarts/levers, correct ingredients/tags/components and leftover containers.
+- R02: For permanently missing raw materials, a biome-appropriate substitute palette or caravan procurement with visible delivery.
 
-## 9. Markt, RPG und Darstellung
-- E01: Gemietete Marktstände mit sichtbaren Waren; Villager kaufen untereinander aus privatem Smaragdbestand Essen/Werkzeug/Zuchtgut.
-- E02: Hunger/Stimmung wirken direkt auf Arbeitstempo; Feierabend in echter Village-Taverns-Taverne mit gekochten Mahlzeiten.
-- E03: Talk-Tab zeigt Aufgabe, Zielkoordinaten, Hunger/Stimmung, privaten Truheninhalt und fehlendes Baumaterial.
-- E04: Werkzeuge/Fracht sichtbar in Händen; eigene Skins für Händler/Wachen/Lokführer/Abenteurer, kompatibel mit Fresh Animations/EMF/ETF.
+## 9. Market, RPG and Presentation
+- E01: Rented market stalls with visible goods; villagers buy food/tools/breeding stock from one another out of their private emerald holdings.
+- E02: Hunger/mood directly affect work speed; end-of-work-day gathering in a real Village Taverns tavern with cooked meals.
+- E03: Talk tab shows task, target coordinates, hunger/mood, private chest contents and missing building material.
+- E04: Tools/freight visible in hands; own skins for traders/guards/train drivers/adventurers, compatible with Fresh Animations/EMF/ETF.
 
-## Modpack-Verträge
+## Modpack Contracts
 
-Integrationen betreffen CTOV, Farmer’s Delight Refabricated, Chef’s Delight, More Villagers: Re-employed, Fresh Animations/EMF/ETF, Actually 3D Stuff, Serene Seasons, Towns and Towers und Village Taverns. Vorhandene Registry-Erkennung allein gilt nicht als vollständiger Ingame-Kompatibilitätstest. Die aktuelle Dev-Installation enthält nur CTOV, Lithostitched und Cloth Config.
+Integrations concern CTOV, Farmer's Delight Refabricated, Chef's Delight, More Villagers: Re-employed, Fresh Animations/EMF/ETF, Actually 3D Stuff, Serene Seasons, Towns and Towers and Village Taverns. Existing registry detection alone does not count as a complete in-game compatibility test. The current dev installation contains only CTOV, Lithostitched and Cloth Config.
