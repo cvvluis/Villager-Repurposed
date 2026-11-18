@@ -32,6 +32,11 @@ public final class VillageStats {
 	}
 
 	public static List<String> lines(ServerLevel level, VillageRef ref) {
+		return lines(level, ref, level.getGameTime());
+	}
+
+	/** Same status with an explicit game time for the stall wording, so checks do not depend on the world's age. */
+	public static List<String> lines(ServerLevel level, VillageRef ref, long now) {
 		VillageData d = ref.data();
 		List<Villager> people = Villages.residents(level, ref, de.villagerplus.Config.VILLAGE_RADIUS, v -> true);
 		List<Villager> residents = people.stream().filter(v -> !Guests.isGuest(v)).toList();
@@ -80,7 +85,7 @@ public final class VillageStats {
 				+ " (Hauptplan " + planName(activeProjects.getFirst().type()) + ", Schritt " + activeProjects.getFirst().step() + ")"
 			: d.hasPlan() ? planName(d.planType) + " (Schritt " + d.planStep + ")" : "keiner";
 		out.add("Aktueller Bau: " + currentBuild + ", Mine: " + Mining.describe(d));
-		out.addAll(liveSite(level, ref, residents));
+		out.addAll(liveSite(level, ref, residents, now));
 		// Nur die noch FEHLENDEN Sorten stehen auf der Wunschliste; alles Uebrige liegt schon bereit. Angezeigt: vorhanden/benoetigt.
 		var savedConstruction = ref.bellEntity().getAttachedOrElse(VillagerPlus.CONSTRUCTION, null);
 		int planSize = de.villagerplus.build.Builder.planSize(d, savedConstruction);
@@ -113,15 +118,15 @@ public final class VillageStats {
 	}
 
 	/** Baustelle live: Planschritte, Bauarbeiter und konkrete Wartegruende; Aktualisierung alle zwei Sekunden. */
-	private static List<String> liveSite(ServerLevel level, VillageRef ref, List<Villager> residents) {
+	private static List<String> liveSite(ServerLevel level, VillageRef ref, List<Villager> residents, long now) {
 		VillageData d = ref.data();
 		List<VillageData.BuildProject> projects = d.buildProjects.stream().filter(VillageData.BuildProject::active).toList();
-		if (!projects.isEmpty()) return liveProjectSites(level, ref, residents, projects);
-		return legacyLiveSite(level, ref, residents);
+		if (!projects.isEmpty()) return liveProjectSites(level, ref, residents, projects, now);
+		return legacyLiveSite(level, ref, residents, now);
 	}
 
 	private static List<String> liveProjectSites(ServerLevel level, VillageRef ref, List<Villager> residents,
-			List<VillageData.BuildProject> projects) {
+			List<VillageData.BuildProject> projects, long now) {
 		List<String> out = new ArrayList<>();
 		List<Container> storage = Balance.storage(level, ref);
 		de.villagerplus.build.ConstructionSite attached = ref.bellEntity().getAttachedOrElse(VillagerPlus.CONSTRUCTION, null);
@@ -148,7 +153,7 @@ public final class VillageStats {
 				out.add("  Materialprüfung und Geländevorbereitung");
 			}
 			out.add("  Baustellen-Team: " + projectWorkers(level, project, residents));
-			String stall = constructionStallLine(project, level.getGameTime());
+			String stall = constructionStallLine(project, now);
 			if (stall != null) out.add("  " + stall);
 			if (!project.wanted().isEmpty()) {
 				List<MaterialNeed> needs = materialNeeds(project.wanted(), storage);
@@ -221,7 +226,7 @@ public final class VillageStats {
 			|| lower.contains("bauholz") || lower.contains("baustein");
 	}
 
-	private static List<String> legacyLiveSite(ServerLevel level, VillageRef ref, List<Villager> residents) {
+	private static List<String> legacyLiveSite(ServerLevel level, VillageRef ref, List<Villager> residents, long now) {
 		VillageData d = ref.data();
 		List<String> out = new ArrayList<>();
 		de.villagerplus.build.ConstructionSite construction = ref.bellEntity().getAttachedOrElse(VillagerPlus.CONSTRUCTION, null);
@@ -274,7 +279,7 @@ public final class VillageStats {
 		} else {
 			out.add("  Bauarbeiter vor Ort: niemand");
 		}
-		String stall = legacyConstructionStallLine(d, level.getGameTime());
+		String stall = legacyConstructionStallLine(d, now);
 		if (stall != null) out.add("  " + stall);
 		return out;
 	}
