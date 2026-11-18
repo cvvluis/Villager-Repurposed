@@ -1,25 +1,26 @@
 package de.villagerplus.village;
 
+import de.villagerplus.Config;
+import de.villagerplus.VillagerMemory;
 import de.villagerplus.VillagerPlus;
-import de.villagerplus.build.Built;
 import de.villagerplus.world.LoadedColumns;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.NbtOps;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -29,18 +30,24 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BellBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 
 /**
  * Village bell breaks require confirmation; sneak-break moves village data on the dropped bell item.
  * {@link de.villagerplus.mixin.VillageBellExplosionMixin} keeps bells from being destroyed by explosions.
  */
 public final class BellProtection {
-	private static final long CONFIRM_TICKS = 100L;
-	private static final String RELOCATION_TAG = "villagerplus_village";
+	public static final long CONFIRM_TICKS = 100L;
+	public static final String RELOCATION_TAG = BellRelocation.RELOCATION_TAG;
+
 	private record Pending(long bellPos, long until) { }
-	private record PendingPlace(UUID playerId, BlockPos pos, ItemStack stack, long until) { }
+	private record PendingPlace(UUID playerId, BlockPos pos, UUID token, long until) { }
+
 	private static final Map<UUID, Pending> PENDING = new HashMap<>();
 	private static final Map<Long, PendingPlace> PENDING_PLACES = new HashMap<>();
+	/** Ungenutzte Umzugs-Tokens (nach Serverstart leer — Platzierung aus Item-NBT ist dann einmalig möglich). */
+	private static final Set<UUID> OPEN_RELOCATION_TOKENS = ConcurrentHashMap.newKeySet();
+	private static final Set<UUID> CONSUMED_RELOCATION_TOKENS = ConcurrentHashMap.newKeySet();
 
 	private BellProtection() { }
 
@@ -58,17 +65,26 @@ public final class BellProtection {
 	public static void clearPending() {
 		PENDING.clear();
 		PENDING_PLACES.clear();
+		OPEN_RELOCATION_TOKENS.clear();
+		CONSUMED_RELOCATION_TOKENS.clear();
+	}
+
+	/** Entfernt Dorfdaten aus einer Item-Kopie (Kreativ-Duplett / Pick-Block-Klon). */
+	public static void stripRelocationCopy(ItemStack copy) {
+		if (copy == null || copy.isEmpty() || !copy.is(Items.BELL)) return;
+		CustomData data = copy.get(DataComponents.CUSTOM_DATA);
+		if (data == null || !data.copyTag().contains(RELOCATION_TAG)) return;
+		copy.remove(DataComponents.CUSTOM_DATA);
 	}
 
 	private static InteractionResult onUseBlock(Player player, Level world, net.minecraft.world.InteractionHand hand,
 		net.minecraft.world.phys.BlockHitResult hit) {
 		if (world.isClientSide() || !(world instanceof ServerLevel level)) return InteractionResult.PASS;
 		ItemStack stack = player.getItemInHand(hand);
-		if (!stack.is(Items.BELL)) return InteractionResult.PASS;
-		CustomData data = stack.get(DataComponents.CUSTOM_DATA);
-		if (data == null || !data.copyTag().contains(RELOCATION_TAG)) return InteractionResult.PASS;
+		UUID token = relocationToken(stack);
+		if (token == null) return InteractionResult.PASS;
 		BlockPos place = hit.getBlockPos().relative(hit.getDirection());
-		PENDING_PLACES.put(place.asLong(), new PendingPlace(player.getUUID(), place, stack.copy(), level.getGameTime() + 4L));
+		PENDING_PLACES.put(place.asLong(), new PendingPlace(player.getUUID(), place, token, level.getGameTime() + 4L));
 		return InteractionResult.PASS;
 	}
 
@@ -85,9 +101,37 @@ public final class BellProtection {
 			if (!(be instanceof BellBlockEntity bellBe)) return true;
 			Player player = server.getPlayerList().getPlayer(pending.playerId());
 			if (player == null) return true;
-			afterPlace(level, player, pending.pos(), level.getBlockState(pending.pos()), bellBe, pending.stack());
+			ItemStack stack = findRelocationBell(player, pending.token());
+			if (stack == null) return true;
+			afterPlace(level, player, pending.pos(), bellBe, stack);
 			return true;
 		});
+	}
+
+	private static ItemStack findRelocationBell(Player player, UUID token) {
+		for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
+			ItemStack stack = player.getInventory().getItem(i);
+			if (matchesToken(stack, token)) return stack;
+		}
+		return null;
+	}
+
+	private static boolean matchesToken(ItemStack stack, UUID token) {
+		UUID found = relocationToken(stack);
+		return found != null && found.equals(token);
+	}
+
+	private static UUID relocationToken(ItemStack stack) {
+		if (stack == null || !stack.is(Items.BELL)) return null;
+		CustomData data = stack.get(DataComponents.CUSTOM_DATA);
+		if (data == null || !data.copyTag().contains(RELOCATION_TAG)) return null;
+		var tag = data.copyTag().getCompoundOrEmpty(RELOCATION_TAG);
+		if (!tag.contains(BellRelocation.TOKEN_KEY)) return null;
+		try {
+			return UUID.fromString(tag.getStringOr(BellRelocation.TOKEN_KEY, ""));
+		} catch (IllegalArgumentException ignored) {
+			return null;
+		}
 	}
 
 	private static boolean beforeBreak(Level world, Player player, BlockPos pos, BlockState state, BlockEntity blockEntity) {
@@ -117,10 +161,12 @@ public final class BellProtection {
 	}
 
 	private static void dropRelocationBell(ServerLevel level, Player player, BlockPos pos, BellBlockEntity bellBe) {
-		CompoundTag village = exportBellData(bellBe);
+		UUID token = UUID.randomUUID();
+		var payload = BellRelocation.export(bellBe, pos, level.dimension(), token);
+		OPEN_RELOCATION_TOKENS.add(token);
 		ItemStack bell = new ItemStack(Items.BELL);
-		CompoundTag root = new CompoundTag();
-		root.put(RELOCATION_TAG, village);
+		var root = new net.minecraft.nbt.CompoundTag();
+		root.put(RELOCATION_TAG, payload);
 		bell.set(DataComponents.CUSTOM_DATA, CustomData.of(root));
 		level.removeBlock(pos, false);
 		level.removeBlockEntity(pos);
@@ -132,49 +178,82 @@ public final class BellProtection {
 		}
 	}
 
-	private static void afterPlace(ServerLevel level, Player player, BlockPos pos, BlockState state, BellBlockEntity bellBe, ItemStack stack) {
+	private static void afterPlace(ServerLevel level, Player player, BlockPos pos, BellBlockEntity bellBe, ItemStack stack) {
 		if (!stack.is(Items.BELL)) return;
 		CustomData data = stack.get(DataComponents.CUSTOM_DATA);
 		if (data == null || !data.copyTag().contains(RELOCATION_TAG)) return;
-		if (Villages.villageNear(level, pos, de.villagerplus.Config.VILLAGE_RADIUS) != null) {
-			if (player instanceof ServerPlayer sp) {
-				VillageMessages.overlay(sp, Component.translatable("message.villagerplus.bell_place_too_close"));
-			}
-			level.removeBlock(pos, false);
+		var payload = data.copyTag().getCompoundOrEmpty(RELOCATION_TAG);
+		UUID token = relocationToken(stack);
+		if (token != null && CONSUMED_RELOCATION_TOKENS.contains(token)) {
+			rejectPlace(level, player, pos, "message.villagerplus.bell_relocate_duplicate");
 			return;
 		}
-		importBellData(bellBe, data.copyTag().getCompoundOrEmpty(RELOCATION_TAG));
+		if (token != null && !OPEN_RELOCATION_TOKENS.remove(token)) {
+			// Nach Reload: Token-Set leer, aber Item-NBT darf einmal konsumiert werden.
+			if (CONSUMED_RELOCATION_TOKENS.contains(token)) {
+				rejectPlace(level, player, pos, "message.villagerplus.bell_relocate_duplicate");
+				return;
+			}
+		}
+		if (Villages.villageNear(level, pos, Config.VILLAGE_RADIUS) != null) {
+			if (token != null) OPEN_RELOCATION_TOKENS.add(token);
+			rejectPlace(level, player, pos, "message.villagerplus.bell_place_too_close");
+			return;
+		}
+		BellRelocation.ImportResult result = BellRelocation.importData(bellBe, payload, pos, level.dimension());
+		if (!result.success()) {
+			if (token != null) OPEN_RELOCATION_TOKENS.add(token);
+			rejectPlace(level, player, pos, result.rejectionKey());
+			return;
+		}
+		if (token != null) CONSUMED_RELOCATION_TOKENS.add(token);
 		stack.remove(DataComponents.CUSTOM_DATA);
+		realignResidents(level, result.oldBell(), pos, result.delta());
 		if (player instanceof ServerPlayer sp) {
 			VillageMessages.overlay(sp, Component.translatable("message.villagerplus.bell_relocated_place"));
+			for (String key : result.noteKeys()) {
+				VillageMessages.overlay(sp, Component.translatable(key));
+			}
 		}
 		Villages.noteChunk(level.getChunkAt(pos));
 	}
 
-	private static CompoundTag exportBellData(BellBlockEntity bell) {
-		CompoundTag out = new CompoundTag();
-		encode(out, "village", VillageData.CODEC, bell.getAttachedOrCreate(VillagerPlus.VILLAGE));
-		encode(out, "zones", ZonePolicy.Zone.CODEC.listOf(), bell.getAttachedOrElse(VillagerPlus.ZONES, List.of()));
-		encode(out, "buildings", Built.CODEC.listOf(), bell.getAttachedOrElse(VillagerPlus.BUILDINGS, List.of()));
-		encode(out, "village_name", com.mojang.serialization.Codec.STRING, bell.getAttached(VillagerPlus.VILLAGE_NAME));
-		return out;
+	private static void rejectPlace(ServerLevel level, Player player, BlockPos pos, String messageKey) {
+		if (player instanceof ServerPlayer sp) {
+			VillageMessages.overlay(sp, Component.translatable(messageKey));
+		}
+		level.removeBlock(pos, false);
 	}
 
-	private static <T> void encode(CompoundTag out, String key, com.mojang.serialization.Codec<T> codec, T value) {
-		if (value == null) return;
-		codec.encodeStart(NbtOps.INSTANCE, value).ifSuccess(tag -> out.put(key, tag));
+	private static void realignResidents(ServerLevel level, BlockPos oldBell, BlockPos newBell, BlockPos delta) {
+		if (oldBell == null || delta.equals(BlockPos.ZERO)) return;
+		String tag = "vp_resident_bell:" + oldBell.asLong();
+		String newTag = "vp_resident_bell:" + newBell.asLong();
+		int radius = Math.max(Config.VILLAGE_RADIUS, 128);
+		AABB box = new AABB(oldBell).inflate(radius).minmax(new AABB(newBell).inflate(radius));
+		for (Villager villager : level.getEntitiesOfClass(Villager.class, box, Villager::isAlive)) {
+			if (!villager.entityTags().contains(tag)) continue;
+			villager.removeTag(tag);
+			villager.addTag(newTag);
+			if (!delta.equals(BlockPos.ZERO)) {
+				shiftMemory(villager, delta);
+			}
+		}
 	}
 
-	private static void importBellData(BellBlockEntity bell, CompoundTag tag) {
-		decode(tag, "village", VillageData.CODEC).ifPresent(v -> bell.setAttached(VillagerPlus.VILLAGE, v));
-		decode(tag, "zones", ZonePolicy.Zone.CODEC.listOf()).ifPresent(z -> bell.setAttached(VillagerPlus.ZONES, z));
-		decode(tag, "buildings", Built.CODEC.listOf()).ifPresent(b -> bell.setAttached(VillagerPlus.BUILDINGS, b));
-		decode(tag, "village_name", com.mojang.serialization.Codec.STRING).ifPresent(n -> bell.setAttached(VillagerPlus.VILLAGE_NAME, n));
-	}
-
-	private static <T> java.util.Optional<T> decode(CompoundTag tag, String key, com.mojang.serialization.Codec<T> codec) {
-		if (!tag.contains(key)) return java.util.Optional.empty();
-		return codec.parse(NbtOps.INSTANCE, tag.get(key)).result();
+	private static void shiftMemory(Villager villager, BlockPos delta) {
+		VillagerMemory memory = villager.getAttachedOrCreate(VillagerPlus.MEMORY);
+		memory.homeBed = memory.homeBed.map(p -> p.offset(delta));
+		memory.homeDoor = memory.homeDoor.map(p -> p.offset(delta));
+		memory.signPos = memory.signPos.map(p -> p.offset(delta));
+		memory.homeChest = memory.homeChest.map(p -> p.offset(delta));
+		for (int i = 0; i < memory.containers.size(); i++) {
+			memory.containers.set(i, memory.containers.get(i).offset(delta));
+		}
+		for (int i = 0; i < memory.workSpots.size(); i++) {
+			memory.workSpots.set(i, memory.workSpots.get(i).offset(delta));
+		}
+		villager.setAttached(VillagerPlus.MEMORY, memory);
 	}
 
 	public static boolean protectFromExplosion(ServerLevel level, BlockPos pos) {

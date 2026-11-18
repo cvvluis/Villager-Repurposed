@@ -10,7 +10,9 @@
     "CompoundContainerAccessorMixin",
     "MaterialStoreSlotMixin",
     "JigsawHouseSpacingMixin",
-    "SinglePoolElementTemplateAccessor"
+    "SinglePoolElementTemplateAccessor",
+    "VillageBellExplosionMixin",
+    "ItemStackRelocationCopyMixin"
   ],
   "injectors": {
     "defaultRequire": 1

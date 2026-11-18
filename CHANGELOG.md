@@ -8,9 +8,9 @@ Dorftafel: fünfte Zonenart **Sperrzone** (`protected`). Darin dürfen Villager 
 
 - **Bauplatzdiagnose:** Letzte Hausplatz-Suche wird an der Glocke gespeichert und auf der Dorftafel unter den Statistikzeilen zusammengefasst.
 - **Weltwechsel:** `WorldCaches` leert Anchor-, Builder-, Job-, Dorf- und Schutz-Zustände beim Serverstopp.
-- **Dorfglocke:** Umzug mit Schleich-Abruch und Bestätigung; Explosionsschutz per Mixin; Relokationsdaten auf dem Glocken-Item.
+- **Dorfglocke:** Umzug mit Schleich-Abruch und Bestätigung; alle Dorf-Attachments an der Glocke (Netz, Markt, Journal, Pläne, Straßen, Quoten, …) wandern mit; Koordinaten werden verschoben; andere Dimension wird abgelehnt; Kreativ-Kopien tragen keine zweite Datensatz-Kopie; Explosionsschutz per Mixin.
 - **Relief:** Große Dorftafel überspringt Relief-Neuaufbau solange sich das Kartenraster nicht ändert.
-- **Release-JAR:** `*Checks` und `de/villagerplus/dev/**` bleiben außen vor; `AutoTest` nur in der Entwicklungsumgebung.
+- **Release-JAR:** Größtenteils ohne `*Checks` und `de/villagerplus/dev/**`; Produktionspfad-Klassen (`G02SupplyTrace`, `AutoTest`, `G01VillageSpacingChecks`) bleiben in der JAR.
 
 `gradle build` ist auf diesem Stand durchgelaufen.
 

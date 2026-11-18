@@ -66,8 +66,19 @@ java {
 }
 
 tasks.named('jar', Jar).configure {
-	exclude 'de/villagerplus/dev/**'
-	exclude '**/*Checks.class'
+	exclude { file ->
+		String name = file.relativePath.pathString.replace('\\', '/')
+		if (name.startsWith('de/villagerplus/dev/')) {
+			return !(name == 'de/villagerplus/dev/G02SupplyTrace.class'
+				|| name.startsWith('de/villagerplus/dev/G02SupplyTrace$')
+				|| name == 'de/villagerplus/dev/AutoTest.class'
+				|| name.startsWith('de/villagerplus/dev/AutoTest$'))
+		}
+		if (name.endsWith('Checks.class')) {
+			return !name.equals('de/villagerplus/village/G01VillageSpacingChecks.class')
+		}
+		return false
+	}
 }
 
 // Preserve editor/agent conflict snapshots in the workspace without compiling duplicate classes.

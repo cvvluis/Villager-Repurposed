@@ -8,6 +8,11 @@
  "message.villagerplus.bell_relocated_pickup": "Dorfglocke mit Dorfdaten aufgenommen — an neuem Ort platzieren.",
  "message.villagerplus.bell_place_too_close": "Zu nah an einem anderen Dorf — Platzierung abgebrochen.",
  "message.villagerplus.bell_relocated_place": "Dorfglocke platziert; Dorfdaten übernommen.",
+ "message.villagerplus.bell_relocate_dimension": "Dorfglocke gehört zu einer anderen Dimension — Umzug abgebrochen.",
+ "message.villagerplus.bell_relocate_duplicate": "Diese Umzugs-Daten wurden bereits platziert oder sind eine ungültige Kopie.",
+ "message.villagerplus.bell_relocate_version": "Unbekannte Umzugs-Daten — bitte die Glocke erneut mit Schleichen aufnehmen.",
+ "message.villagerplus.bell_relocate_shifted": "Baupläne, Gebäude, Zonen, Wege und Marktpositionen wurden zum neuen Glockenort verschoben.",
+ "message.villagerplus.bell_relocate_external": "Handelsnetz-Nachbarpositionen, Dorftafel-Blöcke und der Journal-Verlauf bleiben unverändert; Bewohner-Tags wurden angepasst.",
  "board.villagerplus.site_search.none": "Keine aktuelle Bauplatzsuche.",
  "board.villagerplus.site_search.summary": "Letzte Suche (%s): %s%% Hang, %s%% außerhalb Zone, %s%% blockiert, %s%% übrige Gründe (vor %s s)."
 }

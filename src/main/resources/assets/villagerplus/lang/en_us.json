@@ -8,6 +8,11 @@
  "message.villagerplus.bell_relocated_pickup": "Bell picked up with village data — place it at a new location.",
  "message.villagerplus.bell_place_too_close": "Too close to another village — placement cancelled.",
  "message.villagerplus.bell_relocated_place": "Bell placed; village data restored.",
+ "message.villagerplus.bell_relocate_dimension": "This bell belongs to another dimension — relocation cancelled.",
+ "message.villagerplus.bell_relocate_duplicate": "These relocation data were already placed or are an invalid copy.",
+ "message.villagerplus.bell_relocate_version": "Unknown relocation data — sneak-pick up the bell again.",
+ "message.villagerplus.bell_relocate_shifted": "Build plans, buildings, zones, roads and market positions were shifted to the new bell.",
+ "message.villagerplus.bell_relocate_external": "Trade-network neighbor positions, village board blocks and the journal were kept; resident tags were updated.",
  "board.villagerplus.site_search.none": "No recent house-site search.",
  "board.villagerplus.site_search.summary": "Last search (%s): %s%% slope, %s%% outside zones, %s%% blocked, %s%% other reasons (%s s ago)."
 }
