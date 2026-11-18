@@ -1,38 +1,38 @@
-# Dev-Server-Skripte für Linux / Cloud-VMs
+# Dev server scripts for Linux / cloud VMs
 
-Diese Skripte starten den Mod-Dev-Server (`./gradlew runServer`) ohne Windows-Werkzeuge. Sie sind für Cloud-Sessions
-(Ubuntu, 4 vCPU, 16 GB RAM) gedacht, laufen aber auch lokal in Bash/Git Bash.
+These scripts start the mod dev server (`./gradlew runServer`) without Windows tools. They are intended for cloud sessions
+(Ubuntu, 4 vCPU, 16 GB RAM), but also run locally in Bash/Git Bash.
 
-| Datei | Zweck |
+| File | Purpose |
 |---|---|
-| `setup-env.sh` | JDK 25 nach `/opt/jdk25`, `~/.gradle/gradle.properties`, Rechte. Kurz halten (Setup-Skripte sollten in etwa 5 Minuten fertig sein). |
-| `autotest.sh <gruppe>` | Eine Prüfgruppe oder ein Bündel (`housesearch`, `builderchecks`, `mining` …) im Dev-Server ausführen und die Ergebniszeilen drucken. Läuft in der Welt `vp-featurebundle59-final4-live` (die Gruppen akzeptieren nur Weltnamen aus einer Liste in `dev/Checks090.java`). |
-| `natural-run.sh <label> [sprints] [ticks] [tag]` | Natürlicher CTOV-Lauf (Seed 4242, ohne Fixtures, serverseitige `tick sprint`) mit Zusammenfassung. |
-| `server.properties.template` | Vorlage der Dev-Server-Einstellungen (RCON-Passwort ist ein lokaler Testwert). |
+| `setup-env.sh` | JDK 25 to `/opt/jdk25`, `~/.gradle/gradle.properties`, permissions. Keep short (setup scripts should finish in about 5 minutes). |
+| `autotest.sh <gruppe>` | Run a test group or a bundle (`housesearch`, `builderchecks`, `mining` …) in the dev server and print the result lines. Runs in the world `vp-featurebundle59-final4-live` (the groups only accept world names from a list in `dev/Checks090.java`). |
+| `natural-run.sh <label> [sprints] [ticks] [tag]` | Natural CTOV run (seed 4242, without fixtures, server-side `tick sprint`) with summary. |
+| `server.properties.template` | Template of the dev server settings (RCON password is a local test value). |
 
-## Voraussetzungen
+## Prerequisites
 
-1. **JDK 25** (`JAVA_HOME`), Python 3 (für `tools/rcon.py`), Internet für Maven (`maven.fabricmc.net`, `api.modrinth.com`,
+1. **JDK 25** (`JAVA_HOME`), Python 3 (for `tools/rcon.py`), internet for Maven (`maven.fabricmc.net`, `api.modrinth.com`,
    `libraries.minecraft.net`, `piston-meta.mojang.com`, `piston-data.mojang.com`, `launchermeta.mojang.com`,
    `resources.download.minecraft.net`, `services.gradle.org`, `plugins.gradle.org`, `repo1.maven.org`).
-2. **Minecraft-EULA:** Der Dev-Server startet nur, wenn `run/eula.txt` den Inhalt `eula=true` hat. Lies die
-   [EULA](https://aka.ms/MinecraftEULA) und lege die Datei **selbst** an. Die Skripte tun das nicht für dich.
-3. Beim ersten Start lädt und dekompiliert Loom Minecraft; das dauert mehrere Minuten.
+2. **Minecraft EULA:** The dev server only starts if `run/eula.txt` contains `eula=true`. Read the
+   [EULA](https://aka.ms/MinecraftEULA) and create the file **yourself**. The scripts do not do this for you.
+3. On the first start Loom downloads and decompiles Minecraft; this takes several minutes.
 
-## Beispiele
+## Examples
 
 ```bash
 bash tools/cloud/setup-env.sh
-echo "eula=true" > run/eula.txt          # nur nach Lesen und Akzeptieren der EULA
+echo "eula=true" > run/eula.txt          # only after reading and accepting the EULA
 bash tools/cloud/autotest.sh housesearch
 bash tools/cloud/natural-run.sh vp-natural111-test1 10 2400
 ```
 
-Parallele Läufe (mehrere Git-Worktrees) brauchen unterschiedliche Ports: `VP_SERVER_PORT=25566 VP_RCON_PORT=25576 …`.
-`tools/rcon.py` liest den Port aus `VP_RCON_PORT` (Standard 25575).
+Parallel runs (several Git worktrees) need different ports: `VP_SERVER_PORT=25566 VP_RCON_PORT=25576 …`.
+`tools/rcon.py` reads the port from `VP_RCON_PORT` (default 25575).
 
-## Grenzen
+## Limits
 
-- Kein Minecraft-Client: Optik, Tafel-Darstellung, Skins und Bedienung lassen sich so **nicht** prüfen.
-- Natürliche Läufe nutzen `forceload` als Spielerersatz. Sie sind Beobachtungen, keine Abnahme.
-- Die Skripte wurden unter Windows (Git Bash) getestet, nicht unter Linux.
+- No Minecraft client: visuals, board rendering, skins and operation can **not** be checked this way.
+- Natural runs use `forceload` as a player substitute. They are observations, not acceptance.
+- The scripts were tested under Windows (Git Bash), not under Linux.

@@ -1,101 +1,101 @@
-# Villagers: Repurposed 0.10.0 – komplette Funktionsliste
+# Villagers: Repurposed 0.10.0 – complete feature list
 
-Fabric-Mod für Minecraft 26.2 (Server und Client; der Info-Knopf braucht die Mod auch beim Spieler). Stand: nach `AI-HANDOFF.md` ist
-vermerkt, was im Testlauf beobachtet wurde und was nur im Code steht.
+Fabric mod for Minecraft 26.2 (server and client; the Info button needs the mod on the player's side too). Status: `AI-HANDOFF.md` records
+what was observed in the test run and what exists only in the code.
 
-## 1. Villager im Alltag
-- **Eigene Chatmeldungen**: Villages: Repurposed nutzt ein gold-grünes `◆ DORF ›`-Kennzeichen und eine eigene animierte Toast-Karte im HUD (Einblenden, kurzes Verweilen, Ausblenden). Die formatierte Meldung bleibt im Systemchatverlauf; gewöhnlicher Spieler- und Vanilla-Chat bleibt unverändert. Visuell im Dev-Client geprüft.
-- Deutsche **Namen** (eindeutig; Namensschilder und Namen anderer Mods bleiben erhalten)
-- **Festes Zuhause**: das Bett, das die Vanilla-KI vergibt, wird gespeichert; **Schild neben der Haustür** (Name, Beruf, Stufe; bei Mitbewohnern „Haus von …“)
-- **Private Kiste** pro Villager im Haus; Öffnen/Zerstören durch Spieler kostet Ansehen und wird per Klatsch weitererzählt
-- **Fester Tagesplan**: Morgen (Frühstück, abliefern, Plausch) → Arbeit → Pause (Gespräche) → Arbeit → Mittag am Dorfplatz → Arbeit → Pause → Arbeit → Feierabend (Abendessen, Besitz einlagern) → Nacht (Schlaf)
-- **Essen und Hunger**, **Gespräche** mit Klatsch-Austausch, Lohn aus der Dorfkasse
-- **Befinden** (Sättigung, Energie, Soziales, Gesundheit, Stimmung) mit echter Wirkung: Arbeitstempo, Preise (Rabatt/Aufschlag), Handelsverweigerung bei Elend
-- **Gedächtnis**: Ruf/Klatsch verfällt 4× langsamer; merkt sich Haus, Tür, Schild, Kisten, Arbeitsplätze, erledigte Arbeiten, Geschenke je Spieler
-- **Geschenke** (Schleichen + Rechtsklick mit Smaragd, Diamant, Brot, Goldkarotte, Kuchen) verbessern dauerhaft den Ruf; leere Hand zeigt Kurzinfo
-- **Fertigkeiten** mit 6 Stufen (Lehrling … Legende): Schwellen 150/500/1200/2600/5000 Aufgaben, je Stufe +12 % Tempo und Zusatzerträge; Aufstiegsmeldung mit Partikeln
-- **Heilung im Schlaf**
-- **Kinder**: wachsen 3× langsamer auf, gehen tagsüber in die Schule und sammeln dort Erfahrung für später
-- **Berufsnachbesetzung**: fällt der letzte Maurer, Pfeilmacher oder Bauer aus, übernimmt ein Arbeitsloser oder ein Überzähliger
+## 1. Villagers in everyday life
+- **Custom chat messages**: Villages: Repurposed uses a gold-green `◆ DORF ›` marker and its own animated toast card in the HUD (fade in, short dwell, fade out). The formatted message stays in the system chat history; ordinary player and vanilla chat remain unchanged. Visually checked in the dev client.
+- German **names** (unique; name tags and names from other mods are kept)
+- **Fixed home**: the bed that the vanilla AI assigns is saved; **sign next to the front door** (name, profession, level; with housemates “Haus von …” (house of …))
+- **Private chest** per villager in the house; opening/destroying by players costs standing and is passed on by gossip
+- **Fixed daily schedule**: morning (breakfast, deliver, chat) → work → break (conversations) → work → midday at the village square → work → break → work → end of workday (dinner, store belongings) → night (sleep)
+- **Eating and hunger**, **conversations** with gossip exchange, wages from the village treasury
+- **Wellbeing** (satiety, energy, social, health, mood) with real effect: work speed, prices (discount/surcharge), trade refusal when miserable
+- **Memory**: reputation/gossip decays 4× slower; remembers house, door, sign, chests, workstations, completed work, gifts per player
+- **Gifts** (sneak + right-click with emerald, diamond, bread, golden carrot, cake) permanently improve reputation; empty hand shows short info
+- **Skills** with 6 levels (Lehrling … Legende, i.e. apprentice … legend): thresholds 150/500/1200/2600/5000 tasks, per level +12 % speed and extra yields; level-up message with particles
+- **Healing during sleep**
+- **Children**: grow up 3× slower, go to school during the day and gain experience for later there
+- **Profession backfill**: if the last mason, fletcher or farmer drops out, an unemployed or surplus villager takes over
 
-## 2. Berufe und ihre Arbeit
-- **Bauer**: erntet und pflanzt neu, Extra-Ernte nach Fertigkeit, backt Brot, legt neue Felder an
-- **Schäfer**: schert Schafe, baut Betten
-- **Metzger**: schlachtet Überschuss, sammelt Drops, gart Fleisch/Fisch
-- **Fischer**: angelt am Wasser
-- **Rüstungs-/Waffen-/Werkzeugschmied**: repariert Eisengolems; wartet beschädigte Depotwerkzeuge am Amboss der registrierten Werkzeugkammer mit einem laut `ItemStack`-Reparaturdaten kompatiblen Material; schmilzt Erz und arbeitet in der Mine (Metall). Ersatzwerkzeuge und Mod-Ausrüstung sind noch nicht vollständig abgedeckt.
-- **Kleriker**: heilt Villager, Golems und Spieler
-- **Maurer**: baut Häuser, Brunnen, Rathaus, Mauer, Gehege, Schule, Lager; stellt Fackeln auf; arbeitet in der Mine (Stein)
-- **Pfeilmacher**: Pfeile, Stöcke, **fällt echte Bäume** und pflanzt Setzlinge nach
-- **Gerber** (Bücher), **Kartograph** (Papier), **Bibliothekar** (Bücherregale)
-- **Träger** (Arbeitslose/Dorftrottel): sammeln herumliegende Items zur Dorfkiste
-- **Werkstatt**: Bretter, Treppen, Stufen, Mauern, Zäune, Türen, Glasscheiben, Steinziegel, Stein, Glas aus Rohstoffen (auch für Mod-Blöcke nach Vanilla-Benennung)
-- **Mine**: abseits des Dorfes, Eingang mit Schild und Laterne, Treppe nach unten; **echter Abbau** von Stein, Erde, Kies, Erzen samt Erzadern; Stollen mit wechselnder Breite/Höhe, **Seitenstollen, Holzstützen mit Deckenbalken, Fackeln**; Schutz vor Wasser, Lava, Spawnern, Höhlen darunter und herabfallenden Blöcken
-- **Ausgewogene Vorräte**: Holzfäller und Bergleute beschaffen, was relativ zu Essen/Holz/Stein/Metall knapp ist (keine festen Limits)
+## 2. Professions and their work
+- **Farmer**: harvests and replants, extra harvest by skill, bakes bread, lays out new fields
+- **Shepherd**: shears sheep, builds beds
+- **Butcher**: slaughters surplus, collects drops, cooks meat/fish
+- **Fisherman**: fishes at the water
+- **Armorer/Weaponsmith/Toolsmith**: repairs iron golems; maintains damaged depot tools at the anvil of the registered tool chamber with a material compatible according to the `ItemStack` repair data; smelts ore and works in the mine (metal). Replacement tools and mod equipment are not yet fully covered.
+- **Cleric**: heals villagers, golems and players
+- **Mason**: builds houses, wells, town hall, wall, pen, school, storage; places torches; works in the mine (stone)
+- **Fletcher**: arrows, sticks, **fells real trees** and replants saplings
+- **Leatherworker** (books), **Cartographer** (paper), **Librarian** (bookshelves)
+- **Carriers** (unemployed/nitwits): bring items lying around to the village chest
+- **Workshop**: planks, stairs, slabs, walls, fences, doors, glass panes, stone bricks, stone, glass from raw materials (also for mod blocks following vanilla naming)
+- **Mine**: away from the village, entrance with sign and lantern, stairs down; **real mining** of stone, dirt, gravel, ores together with ore veins; tunnels with varying width/height, **side tunnels, timber supports with ceiling beams, torches**; protection against water, lava, spawners, caves below and falling blocks
+- **Balanced supplies**: woodcutters and miners procure what is scarce relative to food/wood/stone/metal (no fixed limits)
 
-## 3. Dorf und Bauwerke
-- **Dorferkennung über die Glocke** (Vanilla und Welt-Mod-Dörfer, getestet mit Overhauled Villages)
-- **Dorfmitte** mit **Dorfkiste** (Doppelkiste), vier Laternenpfählen; vorhandene Doppelkiste wird übernommen; hügeliges Gelände wird eingeebnet
-- **Häuser nach Bedarf** (nur bei Bevölkerungswachstum oder Obdachlosen): kopieren eines der 6 nächsten Häuser Block für Block (Form, Dach, Materialien), zufällig **gespiegelt und gedreht**; Standardhaus im Dorfstil als Rückfall
-- **Dorfstil-Erkennung** (Boden, Wand, Dach, Treppen, Tür, Zaun)
-- **Brunnen**, **Felder** (7×7 → 9×9 → 11×11, bis 6), **Tiergehege** (9×9 mit Tor), **Rathaus**, **Schule**, **Lagerschuppen**
-- **Stadtmauer** (nur bei passender Dorfgröße): 5 Blöcke hoch mit Zinnen, Laternen, Ecktürmen und vier Toren mit Torbogen
-- **Reichtums-Aufbauten** nach Dorfreichtum (Laternenpfähle → Marktstand → Denkmal → Springbrunnen → Festplatz)
-- **Wege** zwischen Haus und Glocke
-- **Lager**: bei voller Dorfkiste wird gebaut, **Erweiterung durch Anbauten**; Maurer holen Material aus dem Lager; nichts wird weggeworfen
-- **Material-Kette**: Wunschliste → Werkstatt/Holzfäller/Mine → Händler; nicht beschaffbares Material wird über die Karawane gekauft, notfalls **Ersatzmaterial**
-- **Dauerhaft geladen**: Dorf (7×7 Chunks) und aktive Mine bleiben per Force-Load aktiv, damit alles auch ohne Spieler weiterläuft
+## 3. Village and buildings
+- **Village detection via the bell** (vanilla and world-mod villages, tested with Overhauled Villages)
+- **Village center** with **village chest** (double chest), four lantern posts; an existing double chest is adopted; hilly terrain is leveled
+- **Houses on demand** (only on population growth or homeless residents): copying one of the 6 nearest houses block by block (shape, roof, materials), randomly **mirrored and rotated**; standard house in village style as fallback
+- **Village style detection** (floor, wall, roof, stairs, door, fence)
+- **Well**, **fields** (7×7 → 9×9 → 11×11, up to 6), **animal pen** (9×9 with gate), **town hall**, **school**, **storage shed**
+- **Town wall** (only at a suitable village size): 5 blocks high with battlements, lanterns, corner towers and four gates with archway
+- **Wealth structures** by village wealth (lantern posts → market stall → monument → fountain → festival ground)
+- **Paths** between house and bell
+- **Storage**: built when the village chest is full, **expansion by extensions**; masons fetch material from storage; nothing is thrown away
+- **Material chain**: wish list → workshop/woodcutter/mine → trader; unobtainable material is bought via the caravan, if necessary **substitute material**
+- **Permanently loaded**: village (7×7 chunks) and active mine stay active via force-load, so that everything keeps running even without players
 
-## 4. Wirtschaft, Handel, Besucher
-- **Handelskarawane** (wandernder Händler) mit „imaginärem Dorf“: kauft Überschuss, verkauft Wunschliste, Saatgut, Setzlinge, Fackeln, liefert Tiere fürs Gehege; zahlt höchstens 6 Smaragde je Besuch
-- **Smaragde bleiben knapp**: Löhne aus der Dorfkasse, Gäste bringen nur selten einen
-- **Gäste aus fremden Dörfern** (einzeln oder Reisegruppe, Tracht anderer Biome): Gastgeschenke, handelbar, siedeln sich manchmal an
-- **Tierhaltung**: Füttern, Zucht, Bestandspflege (Metzger/Schäfer)
-- **Dorfreichtum** als Punktwert (Stufen 0–5)
-- **Expeditionen**: 1–3 mutige Villager erkunden Ruinen, Höhlen oder Festungen; Gesundheit und Fertigkeit entscheiden, ob sie verletzt oder gar nicht zurückkehren; **Beute** kommt in die Dorfkiste/ins Lager
+## 4. Economy, trade, visitors
+- **Trade caravan** (wandering trader) with “imaginary village”: buys surplus, sells wish list, seeds, saplings, torches, delivers animals for the pen; pays at most 6 emeralds per visit
+- **Emeralds stay scarce**: wages from the village treasury, guests rarely bring one
+- **Guests from foreign villages** (single or travel party, attire of other biomes): guest gifts, tradable, sometimes settle
+- **Animal husbandry**: feeding, breeding, population care (butcher/shepherd)
+- **Village wealth** as a score (levels 0–5)
+- **Expeditions**: 1–3 brave villagers explore ruins, caves or fortresses; health and skill decide whether they return injured or not at all; **loot** goes to the village chest/storage
 
-## 5. Dorftafel (Schild neben der Dorfkiste)
-- **Übersicht**: farbige **Karte** (4×4-Block-Felder) mit Bebauung, Feldern, Wasser, Wegen, Wald, Glocke/Kiste/Tafel/Schule/Lager/Gehege/Mine und den Dorfbewohnern, dazu **Balkendiagramme** (Einwohner, Stimmung, Reichtum, Essen/Holz/Stein/Metall)
-- **Details**: alle Zahlen (Einwohner, Berufe, Bauwerke, Reichtum, Dorfkiste, Lager, Tiere, Bau, Mine, Wunschliste, nächste Karawane)
-- **Expeditionen**: Stand, Gesundheit der Mitglieder, Berichte, Statistik
-- Reiter anklickbar; Schleichen + Rechtsklick öffnet direkt die Expeditionen
+## 5. Dorftafel (village board; sign next to the village chest)
+- **Übersicht** (overview): colored **map** (4×4-block cells) with development, fields, water, paths, forest, bell/chest/board/school/storage/pen/mine and the villagers, plus **bar charts** (residents, mood, wealth, food/wood/stone/metal)
+- **Details**: all numbers (residents, professions, structures, wealth, village chest, storage, animals, construction, mine, wish list, next caravan)
+- **Expeditionen** (expeditions): status, health of the members, reports, statistics
+- Tabs clickable; sneak + right-click opens the expeditions directly
 
-## 6. Handelsmenü
-- Knopf **„Info“** zeigt links den Steckbrief (Name, Beruf/Stufe, Tätigkeit, Stimmung, Sättigung, Energie, Soziales, Gesundheit, Haus, Besitz, Ruf, Geschenke, Arbeiten, Gespräche, Preiswirkung), live alle 1 s
-- **Stimmungspreise** (Rabatt/Aufschlag), Handelsverweigerung bei Erschöpfung
+## 6. Trade menu
+- Button **“Info”** shows the profile card on the left (name, profession/level, activity, mood, satiety, energy, social, health, house, possessions, reputation, gifts, work, conversations, price effect), live every 1 s
+- **Mood prices** (discount/surcharge), trade refusal when exhausted
 
-## 7. Animationen und Effekte
-- Passender Gegenstand in der Hand (Hacke, Schere, Spitzhacke, Axt, Angel, Schwert, Buch, Nahrung, Baumaterial …), Armschwung
-- Partikel und Geräusche: Block-Bruch, Angeln, Herzen, Essen, Gespräche, Aufstieg
-- (Eigene Körperposen wie Sitzen/Hämmern gibt es nicht – das bräuchte Client-Modelle)
+## 7. Animations and effects
+- Matching item in hand (hoe, shears, pickaxe, axe, fishing rod, sword, book, food, building material …), arm swing
+- Particles and sounds: block breaking, fishing, hearts, eating, conversations, level-up
+- (Custom body poses such as sitting/hammering do not exist – that would need client models)
 
-## 8. Befehle
+## 8. Commands
 - `/villagerplus tafel [uebersicht|details|expeditionen]` – Dorftafel
-- `/villagerplus status` – Dorfbewohner und Dorf in der Nähe
-- `/villagerplus perf` – Zeit, die der Mod je Tick braucht
+- `/villagerplus status` – villagers and village nearby
+- `/villagerplus perf` – time the mod needs per tick
 
-## 9. Kompatibilität
-- Funktioniert mit Dörfern aus Weltgenerator-Mods (getestet: Overhauled Villages 4.1.0 + Lithostitched + Cloth Config)
-- **Unterklassen von Villager** anderer Mods werden mitverwaltet; Namen anderer Mods bleiben
-- **Fremde Berufe**: Datapack-Tags `villagerplus:job/<farmer|shepherd|butcher|smith|cleric|mason|fisherman|fletcher|leatherworker|cartographer|librarian>` oder automatische Erkennung über Schlüsselwörter im Berufsnamen; sonst Träger
-- Entity-Tag `villagerplus:ignored` nimmt Villager-Typen aus
-- Holz/Wolle anderer Mods über Vanilla-Block-Tags als beschaffbar erkannt
-- Mixins mit `@WrapOperation` und `require = 0` (kein Absturz, wenn eine andere Mod dieselbe Stelle ändert)
+## 9. Compatibility
+- Works with villages from world generator mods (tested: Overhauled Villages 4.1.0 + Lithostitched + Cloth Config)
+- **Subclasses of Villager** from other mods are managed as well; names from other mods are kept
+- **Foreign professions**: datapack tags `villagerplus:job/<farmer|shepherd|butcher|smith|cleric|mason|fisherman|fletcher|leatherworker|cartographer|librarian>` or automatic detection via keywords in the profession name; otherwise carrier
+- Entity tag `villagerplus:ignored` excludes villager types
+- Wood/wool from other mods recognized as obtainable via vanilla block tags
+- Mixins with `@WrapOperation` and `require = 0` (no crash if another mod changes the same spot)
 
-## 10. Leistung
-- Zeitbudget je Tick (2 ms) mit Fortsetzung im nächsten Tick; Taktung wird bei hoher Serverlast automatisch 2×/4× seltener
-- Zwischenspeicher für Dorfsuche, Smaragdzählung, Vorrats-Gleichgewicht und Lagertruhen
-- Baumsuche liest je Spalte nur die Oberfläche statt ~59 000 Blöcke; Material-Prüfung, Schild-Abfrage und Mine-Wegberechnung gedrosselt bzw. ohne Objekterzeugung
-- Messung: Ø 21–36 µs je Tick bei 33–155 Villagern (siehe `/villagerplus perf`)
+## 10. Performance
+- Time budget per tick (2 ms) with continuation in the next tick; cadence automatically becomes 2×/4× less frequent under high server load
+- Caches for village search, emerald counting, supply balance and storage chests
+- Tree search reads only the surface per column instead of ~59,000 blocks; material check, sign query and mine path computation throttled or without object creation
+- Measurement: avg 21–36 µs per tick with 33–155 villagers (see `/villagerplus perf`)
 
-## 11. Einstellungen (`Config.java`)
-Taktung, Tagesphasen, Hunger, Gespräche, Lohn, Baukosten, Felder, Gehege, Rathaus/Mauer-Größen, Karawanenintervall, Expeditionen, Wachstumsfaktor der Kinder, Schule/Lager-Einwohnerzahl, Force-Load, Zeitbudget.
+## 11. Settings (`Config.java`)
+Cadence, day phases, hunger, conversations, wages, building costs, fields, pen, town hall/wall sizes, caravan interval, expeditions, growth factor of children, school/storage resident count, force-load, time budget.
 
-## 12. Neu in 0.7.2: Gebäude-Generator und Instandhaltung
-- **Architekt**: Häuser, Schule und Lager werden pro Dorf aus dessen echten Baustoffen (Wand, Fachwerk, Sockel, Dach, Fenster, Zaun) frisch entworfen – nie als Kopie. Variiert: Größe, Wandhöhe 3–5, Dachrichtung, Überstand, Fachwerk, Fenster (symmetrisch), Tür, Vordach mit Laternen, Schornstein mit Rauch, Seitenanbau, Hofschmuck (Blumenbeet, Fass + Heu, Sitzbank, Holzstapel), Fensterläden, Blumentöpfe, Weg, Wegelaterne, Teppich + Tisch innen, Fundament am Hang.
-- **Abstand**: Neue Gebäude werden nicht mehr in bestehende hineingebaut (2 Blöcke Mindestabstand).
-- **Instandhaltung**: Maurer bessern fehlende Blöcke an selbst gebauten Gebäuden und an der Stadtmauer aus; zerstörte Gebäude (> 50 % fehlen) werden nicht ungefragt neu gebaut.
-- **Minen räumen auf**: Eingangsmarker (Pfosten, Laterne, Schild) beendeter Minen verschwinden; neue Mine ≥ 24 Blöcke von alten.
+## 12. New in 0.7.2: building generator and maintenance
+- **Architect**: houses, school and storage are freshly designed per village from its real building materials (wall, half-timbering, plinth, roof, windows, fence) – never as a copy. Varied: size, wall height 3–5, roof direction, overhang, half-timbering, windows (symmetrical), door, canopy with lanterns, chimney with smoke, side extension, yard decoration (flower bed, barrel + hay, bench, wood pile), shutters, flower pots, path, path lantern, carpet + table inside, foundation on slopes.
+- **Spacing**: New buildings are no longer built into existing ones (2 blocks minimum distance).
+- **Maintenance**: masons repair missing blocks on self-built buildings and on the town wall; destroyed buildings (> 50 % missing) are not rebuilt unasked.
+- **Mines clean up**: entrance markers (post, lantern, sign) of finished mines disappear; new mine ≥ 24 blocks from old ones.
 
-## 0.9.0-Erweiterungen
-Handelsnetz und Dorfkarten, Nachbarn-Menü, Anreise mit zwei Lamas und Spielerhandel, Beziehungen und Grußstimmung, Dorfschrein/Plaza, fünf Blöcke Bebauungsabstand, Marktkarrieren und Privatläden mit echten Einkäufen, Nachfolge, Dorfjournal mit Kategorien/Bewohnerfilter/Handelsrangfolge, eigene zweizeilige Namensanzeigen, gerade Routenwege, größere Dorfzählung und verlässlicher Verwaltungstakt. Einzelheiten und Grenzen stehen im README und im Testbericht.
+## 0.9.0 extensions
+Trade network and village maps, neighbors menu, arrival with two llamas and player trade, relationships and greeting mood, village shrine/plaza, five blocks of building spacing, market careers and private shops with real purchases, succession, village journal with categories/resident filter/trade ranking, custom two-line nameplates, straight route paths, larger village counting and a reliable management cadence. Details and limits are in the README and the test report.

@@ -1,27 +1,27 @@
-﻿# Plan-Review-Log
-Rollen: Planer/Coordinator Claude (Sonnet 5.5), Reviewer + Inspektor Codex, Builder Claude. Runden max 5. Modelle: CLI-Standard (nicht gesetzt). Autorisiert: Planen, Bauen, Inspizieren.
+﻿﻿# Plan Review Log
+Roles: planner/coordinator Claude (Sonnet 5.5), reviewer + inspector Codex, builder Claude. Rounds max 5. Models: CLI default (not set). Authorized: plan, build, inspect.
 
 
-## Runde 1 (Codex gpt-6-luna high, Artefakt %TEMP%\claudex-r1\claudex-onu8rj6i
+## Round 1 (Codex gpt-6-luna high, artifact %TEMP%\claudex-r1\claudex-onu8rj6i
 esult.json)
-Verdict REVISE, Findings R1-R5 (4x medium, 1x low). Alle angenommen und in PLAN.md eingearbeitet (siehe Abschnitt Review-Dispositionen).
+Verdict REVISE, findings R1-R5 (4x medium, 1x low). All accepted and incorporated into PLAN.md (see section Review dispositions).
 
-## Runde 2 (Artefakt %TEMP%\claudex-r2\claudex-lyuk6tkd
+## Round 2 (artifact %TEMP%\claudex-r2\claudex-lyuk6tkd
 esult.json)
-Verdict REVISE: R6 (Lamas), R7 (Paar-Abklingzeit), R8 (Handel-Gutschrift) - alle angenommen, in PLAN.md eingearbeitet.
+Verdict REVISE: R6 (llamas), R7 (pair cooldown), R8 (trade credit) - all accepted, incorporated into PLAN.md.
 
-## Runde 3 (Artefakt %TEMP%\claudex-r3\claudex-8v2vgbk5
+## Round 3 (artifact %TEMP%\claudex-r3\claudex-8v2vgbk5
 esult.json)
-REVISE: R9 (Link-Relation), R10 (Caravan-Dimension), R11 (Messgrenzen) - alle angenommen.
+REVISE: R9 (link relation), R10 (caravan dimension), R11 (measurement limits) - all accepted.
 
-## Runde 4 (Artefakt %TEMP%\claudex-r4\claudex-km21k5tr
+## Round 4 (artifact %TEMP%\claudex-r4\claudex-km21k5tr
 esult.json)
-REVISE: R12-R15 (2x low, 2x medium) - alle angenommen und eingearbeitet.
+REVISE: R12-R15 (2x low, 2x medium) - all accepted and incorporated.
 
-## Runde 5 (Artefakt %TEMP%\claudex-r5\claudex-1h03j5u7
+## Round 5 (artifact %TEMP%\claudex-r5\claudex-1h03j5u7
 esult.json)
-REVISE: R16-R18 (3x medium) - alle angenommen und in PLAN.md eingearbeitet. Rundenlimit (5) erreicht: Die finale Planfassung wurde NICHT erneut vom Reviewer bestaetigt (kein APPROVED). Bau startet auf Grundlage des Nutzerauftrags (Implementierung autorisiert); Absicherung durch die Pflicht-Inspektion des Codes in frischer Codex-Sitzung.
+REVISE: R16-R18 (3x medium) - all accepted and incorporated into PLAN.md. Round limit (5) reached: the final plan version was NOT confirmed again by the reviewer (no APPROVED). The build starts on the basis of the user's order (implementation authorized); safeguarded by the mandatory inspection of the code in a fresh Codex session.
 
-## Abschluss durch Codex, 29.10.2026
-Die finale Claude-Planfassung wurde nicht rückwirkend als genehmigt markiert. Codex hat die fehlende Umsetzung vervollständigt und eine unabhängige Codex-Codeinspektion in mehreren begrenzten Durchgängen durchführen lassen. Befunde führten u. a. zu atomarem Tausch auf Inventarkopien, Schutz komponententragender Waren, Spectator- und Chunk-Prüfungen, sicherem Karawanen-Aufräumen, genauer Fassadenquote, Mauerwerksdetails, geschützten Schlüsselberufen, abgestimmten Ladenzeiten, Nachfolge/Reparatur/Blockaden, Kollisionsprüfung der gesamten Plaza einschließlich Zugängen sowie Journal- und Wegekorrekturen.
-Zusätzliche Nutzerwünsche dieser Sitzung: größere Plaza mit Schrein, Privatläden und Marktkarrieren, echtes Bezahlen zwischen Villagern, Dorfjournal, eigene Namensanzeigen, fünf Blöcke Abstand und gerade Wege. Neuer Prüfbereich und frisches CTOV-Dorf wurden getrennt geprüft; maßgebliche Resultate stehen in TEST-REPORT-0.9.0.md. Keine Behauptung einer pauschalen Reviewer-Freigabe.
+## Completion by Codex, 29.10.2026
+The final Claude plan version was not retroactively marked as approved. Codex completed the missing implementation and had an independent Codex code inspection carried out in several bounded passes. Findings led, among other things, to atomic exchange on inventory copies, protection of component-carrying goods, spectator and chunk checks, safe caravan cleanup, exact facade ratio, masonry details, protected key professions, coordinated shop hours, succession/repair/blockages, collision checking of the entire plaza including access routes, as well as journal and path corrections.
+Additional user wishes of this session: larger plaza with shrine, private shops and market careers, real payment between villagers, village journal, custom nameplates, five blocks of spacing and straight paths. The new test area and a fresh CTOV village were checked separately; the authoritative results are in TEST-REPORT-0.9.0.md. No claim of a blanket reviewer approval.
