@@ -202,7 +202,7 @@ public final class Social {
 	private static boolean walkableMeetingBlock(net.minecraft.world.level.LevelReader level, BlockPos feet) {
 		BlockPos floorPos = feet.below();
 		BlockPos headPos = feet.above();
-		if (!level.hasChunkAt(floorPos) || !level.hasChunkAt(feet) || !level.hasChunkAt(headPos)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, floorPos) || !de.villagerplus.world.LoadedColumns.ready(level, feet) || !de.villagerplus.world.LoadedColumns.ready(level, headPos)) return false;
 		BlockState floor = level.getBlockState(floorPos);
 		BlockState body = level.getBlockState(feet);
 		BlockState head = level.getBlockState(headPos);

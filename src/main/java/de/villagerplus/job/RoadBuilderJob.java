@@ -75,7 +75,7 @@ public final class RoadBuilderJob implements Job {
     }
 
     private static Container publicExpansionChest(Ctx c, BlockPos pos) {
-        if (c == null || c.village() == null || pos == null || !c.level().hasChunkAt(pos)
+        if (c == null || c.village() == null || pos == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), pos)
             || !Lager.materialChests(c.level(), c.village()).contains(pos)) return null;
         return HopperBlockEntity.getContainerAt(c.level(), pos);
     }
@@ -325,8 +325,8 @@ public final class RoadBuilderJob implements Job {
             if(Math.abs(outwardX)+Math.abs(outwardZ)!=1)return null;
             BlockPos target=new BlockPos(lane.getX()+outwardX,road.gradeY(),lane.getZ()+outwardZ);
             BlockState slabState=slab.defaultBlockState().setValue(SlabBlock.TYPE,SlabType.BOTTOM);
-            if(c.level().hasChunkAt(target)&&c.level().getBlockState(target).is(slab))return null;
-            if(!c.level().hasChunkAt(target)||!c.level().getBlockState(target).isAir()
+            if(de.villagerplus.world.LoadedColumns.ready(c.level(), target)&&c.level().getBlockState(target).is(slab))return null;
+            if(!de.villagerplus.world.LoadedColumns.ready(c.level(), target)||!c.level().getBlockState(target).isAir()
                 ||Lighting.protectedVillageCell(c.level(),c.village(),target)
                 ||Lighting.protectedVillageCell(c.level(),c.village(),target.below()))return null;
             Roads.Repair curb=new Roads.Repair(target,slabState,road.worksite(),false,null,null,null,

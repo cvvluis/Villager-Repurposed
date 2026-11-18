@@ -188,7 +188,7 @@ public final class Market {
   for(BlockPos candidate:candidates) {
    // The finished stall is a ground-level footprint: vertical separation never makes two
    // stalls safe to overlap. Filter known reservations before the more expensive terrain scan.
-   if(!level.hasChunkAt(candidate)||tooCloseToExistingShop(shops,candidate)) continue;
+   if(!de.villagerplus.world.LoadedColumns.ready(level, candidate)||tooCloseToExistingShop(shops,candidate)) continue;
    Direction facing=marketFacingToward(center,candidate);
    BlockPos preparedSite=prepareMarketSite(level,ref,candidate,facing);
    if(preparedSite!=null&&!tooCloseToExistingShop(shops,preparedSite)) return new SitePlan(preparedSite,facing);
@@ -304,7 +304,7 @@ public final class Market {
    List<BlockPos> candidates) {
   if(level==null||ref==null||center==null||shops==null||candidates==null) return null;
   for(BlockPos candidate:candidates) {
-   if(candidate==null||!level.hasChunkAt(candidate)||!withinVillageDevelopmentArea(ref,candidate)
+   if(candidate==null||!de.villagerplus.world.LoadedColumns.ready(level, candidate)||!withinVillageDevelopmentArea(ref,candidate)
     ||Plaza.overlapsApproach(center,candidate,4)||tooCloseToExistingShop(shops,candidate)) continue;
    Direction facing=marketFacingToward(center,candidate);
    BlockPos site=prepareMarketSiteForNaturalTerrace(level,ref,candidate,facing);
@@ -470,7 +470,7 @@ public final class Market {
   Set<Long> checkedTreeColumns=new HashSet<>();
   int obstacles=0;
   for(BlockPos pos:targets) {
-   if(!level.hasChunkAt(pos)) return new NaturalSitePreparation.Scan(NaturalSitePreparation.Status.WAITING_FOR_CHUNK,null,obstacles);
+   if(!de.villagerplus.world.LoadedColumns.ready(level, pos)) return new NaturalSitePreparation.Scan(NaturalSitePreparation.Status.WAITING_FOR_CHUNK,null,obstacles);
    BlockState state=level.getBlockState(pos);
    if(state.hasBlockEntity()||level.getBlockEntity(pos)!=null||!state.getFluidState().isEmpty())
     return new NaturalSitePreparation.Scan(NaturalSitePreparation.Status.BLOCKED,null,obstacles);
@@ -525,7 +525,7 @@ public final class Market {
   int treeHeightLimit=Math.min(origin.getY()+MAX_MARKET_TREE_HEIGHT,level.getMaxY()-2);
   while(cursor.getY()<treeHeightLimit&&cursor.getY()<level.getMaxY()-1) {
    BlockPos above=cursor.above();
-   if(!level.hasChunkAt(above))
+   if(!de.villagerplus.world.LoadedColumns.ready(level, above))
     return new NaturalSitePreparation.Scan(NaturalSitePreparation.Status.WAITING_FOR_CHUNK,above,0);
    BlockState aboveState=level.getBlockState(above);
    if(!aboveState.is(BlockTags.OVERWORLD_NATURAL_LOGS)
@@ -537,7 +537,7 @@ public final class Market {
    cursor=above;
   }
   BlockPos above=cursor.above();
-  if(!level.hasChunkAt(above))
+  if(!de.villagerplus.world.LoadedColumns.ready(level, above))
    return new NaturalSitePreparation.Scan(NaturalSitePreparation.Status.WAITING_FOR_CHUNK,above,0);
   BlockState aboveState=level.getBlockState(above);
   if(aboveState.is(BlockTags.OVERWORLD_NATURAL_LOGS)
@@ -606,10 +606,10 @@ public final class Market {
   if(level==null||site==null||minX>maxX||minZ>maxZ) return true;
   for(int x=minX;x<=maxX;x++) for(int z=minZ;z<=maxZ;z++) {
    BlockPos column=new BlockPos(x,site.getY(),z);
-   if(!level.hasChunkAt(column)) return true;
-   int surfaceY=level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z);
+   if(!de.villagerplus.world.LoadedColumns.ready(level, column)) return true;
+   int surfaceY=de.villagerplus.world.LoadedColumns.heightOrMinY(level, net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
    BlockPos ground=new BlockPos(x,surfaceY-1,z);
-   if(!level.hasChunkAt(ground)||level.getBlockState(ground).is(Blocks.GRAVEL)) return true;
+   if(!de.villagerplus.world.LoadedColumns.ready(level, ground)||level.getBlockState(ground).is(Blocks.GRAVEL)) return true;
   }
   return false;
  }
@@ -662,9 +662,8 @@ public final class Market {
  }
 
  private static BlockPos marketSurfaceAnchor(ServerLevel level,BlockPos candidate) {
-  if(level==null||candidate==null||!level.hasChunkAt(candidate)) return null;
-  int surfaceY=level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
-   candidate.getX(),candidate.getZ());
+  if(level==null||candidate==null||!de.villagerplus.world.LoadedColumns.ready(level, candidate)) return null;
+  int surfaceY=de.villagerplus.world.LoadedColumns.heightOrMinY(level, net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, candidate.getX(), candidate.getZ());
   if(surfaceY<=level.getMinY()+1||surfaceY>=level.getMaxY()-MARKET_CLEARANCE_TOP) return null;
   return new BlockPos(candidate.getX(),surfaceY,candidate.getZ());
  }
@@ -680,7 +679,7 @@ public final class Market {
  }
 
  private static NaturalSitePreparation.Scan clearMarketSiteTarget(ServerLevel level,VillageRef ref,BlockPos origin,BlockPos pos,Villager worker) {
-  if(level==null||origin==null||pos==null||!level.hasChunkAt(pos))
+  if(level==null||origin==null||pos==null||!de.villagerplus.world.LoadedColumns.ready(level, pos))
    return new NaturalSitePreparation.Scan(NaturalSitePreparation.Status.WAITING_FOR_CHUNK,pos,0);
   BlockState state=level.getBlockState(pos);
   if(state.hasBlockEntity()||level.getBlockEntity(pos)!=null||!state.getFluidState().isEmpty())
@@ -791,7 +790,7 @@ public final class Market {
  static BlockPos counter(MarketData.Shop s) { return at(s,0,3,0); }
  static BlockPos stockPos(MarketData.Shop s) { return at(s,-1,-1,0); }
  static void refreshDisplays(ServerLevel level,VillageRef ref,MarketData.Shop shop) {
-  BlockPos pos=stockPos(shop);if(!level.hasChunkAt(pos))return;
+  BlockPos pos=stockPos(shop);if(!de.villagerplus.world.LoadedColumns.ready(level, pos))return;
   Container shelf=stock(level,shop);
   if(shelf==null)MarketDisplays.clear(level,ref.bell(),shop.origin());
   else MarketDisplays.sync(level,ref,shop,shelf);
@@ -1002,7 +1001,7 @@ public final class Market {
   } return stores;
  }
  private static boolean ownedWalletChest(ServerLevel level,BlockPos pos,UUID owner) {
-  if(!level.hasChunkAt(pos) || !Ownership.isOwnedBy(level,pos,owner)) return false;
+  if(!de.villagerplus.world.LoadedColumns.ready(level, pos) || !Ownership.isOwnedBy(level,pos,owner)) return false;
   var state=level.getBlockState(pos);
   if(!(state.getBlock() instanceof ChestBlock)) return false;
   return state.getValue(ChestBlock.TYPE)==net.minecraft.world.level.block.state.properties.ChestType.SINGLE
@@ -1015,7 +1014,7 @@ public final class Market {
  static Container stock(ServerLevel l,MarketData.Shop s) {
   if(l==null||s==null)return null;
   BlockPos pos=stockPos(s);
-  if(!l.hasChunkAt(pos)||!(l.getBlockEntity(pos) instanceof net.minecraft.world.level.block.entity.ChestBlockEntity chest)
+  if(!de.villagerplus.world.LoadedColumns.ready(l, pos)||!(l.getBlockEntity(pos) instanceof net.minecraft.world.level.block.entity.ChestBlockEntity chest)
     ||!s.owner().equals(chest.getAttached(VillagerPlus.OWNER)))return null;
   var state=l.getBlockState(pos);
   if(!(state.getBlock() instanceof ChestBlock)||state.getValue(ChestBlock.TYPE)!=net.minecraft.world.level.block.state.properties.ChestType.SINGLE)return null;

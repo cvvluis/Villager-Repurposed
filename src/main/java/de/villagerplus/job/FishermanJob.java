@@ -105,8 +105,8 @@ public class FishermanJob implements Job {
 		for (int dx = -r; dx <= r; dx += 2) {
 			for (int dz = -r; dz <= r; dz += 2) {
 				int x = bell.getX() + dx, z = bell.getZ() + dz;
-				if (!c.level().hasChunk(x >> 4, z >> 4)) continue;
-				int top = c.level().getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x, z) - 1;
+				if (!de.villagerplus.world.LoadedColumns.readyChunk(c.level(), x >> 4, z >> 4)) continue;
+				int top = de.villagerplus.world.LoadedColumns.heightOrMinY(c.level(), net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x, z) - 1;
 				if (Math.abs(top - bell.getY()) > 14) continue;
 				probe.set(x, top, z);
 				if (!c.level().getFluidState(probe).is(FluidTags.WATER) || !c.level().getBlockState(probe.above()).isAir() || UNREACHABLE_WATER.contains(probe)) continue;

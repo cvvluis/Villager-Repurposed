@@ -99,8 +99,8 @@ public final class NaturalSitePreparation {
 		for (int dx = -half; dx <= half; dx++) for (int dz = -half; dz <= half; dz++) {
 			int x = center.getX() + dx, z = center.getZ() + dz;
 			BlockPos column = new BlockPos(x, center.getY(), z);
-			if (!level.hasChunkAt(column)) return new Grade(Status.WAITING_FOR_CHUNK, low, high);
-			int surfaceY = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+			if (!de.villagerplus.world.LoadedColumns.ready(level, column)) return new Grade(Status.WAITING_FOR_CHUNK, low, high);
+			int surfaceY = de.villagerplus.world.LoadedColumns.heightOrMinY(level, net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 			BlockPos ground = new BlockPos(x, surfaceY - 1, z);
 			BlockState state = level.getBlockState(ground);
 			if (!safeNaturalGround(level, ground, state)) return new Grade(Status.BLOCKED, low, high);
@@ -138,8 +138,8 @@ public final class NaturalSitePreparation {
 		for (int dx = -half; dx <= half; dx++) for (int dz = -half; dz <= half; dz++) {
 			int x = center.getX() + dx, z = center.getZ() + dz;
 			BlockPos column = new BlockPos(x, center.getY(), z);
-			if (!level.hasChunkAt(column)) return new Grade(Status.WAITING_FOR_CHUNK, low, high);
-			int surfaceY = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+			if (!de.villagerplus.world.LoadedColumns.ready(level, column)) return new Grade(Status.WAITING_FOR_CHUNK, low, high);
+			int surfaceY = de.villagerplus.world.LoadedColumns.heightOrMinY(level, net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 			BlockPos ground = new BlockPos(x, surfaceY - 1, z);
 			BlockState state = level.getBlockState(ground);
 			if (state.is(BlockTags.OVERWORLD_NATURAL_LOGS)) {
@@ -149,13 +149,13 @@ public final class NaturalSitePreparation {
 				int rootDepth = 0;
 				while (rootDepth < 32 && root.getY() > level.getMinY() + 1) {
 					BlockPos below = root.below();
-					if (!level.hasChunkAt(below)) return new Grade(Status.WAITING_FOR_CHUNK, low, high);
+					if (!de.villagerplus.world.LoadedColumns.ready(level, below)) return new Grade(Status.WAITING_FOR_CHUNK, low, high);
 					if (!verticalNaturalLog(level.getBlockState(below))) break;
 					root = below;
 					rootDepth++;
 				}
 				if (rootDepth == 32) {
-					if (!level.hasChunkAt(root.below())) return new Grade(Status.WAITING_FOR_CHUNK, low, high);
+					if (!de.villagerplus.world.LoadedColumns.ready(level, root.below())) return new Grade(Status.WAITING_FOR_CHUNK, low, high);
 					if (verticalNaturalLog(level.getBlockState(root.below()))) return new Grade(Status.BLOCKED, low, high);
 				}
 				surfaceY = root.getY();
@@ -282,7 +282,7 @@ public final class NaturalSitePreparation {
 		List<TreeSpan> trees = new ArrayList<>();
 		Set<Long> extendedTrees = new HashSet<>();
 		for (BlockPos pos : BlockPos.betweenClosed(min, max)) {
-			if (!level.hasChunkAt(pos)) return new Scan(Status.WAITING_FOR_CHUNK, null, candidates.size());
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return new Scan(Status.WAITING_FOR_CHUNK, null, candidates.size());
 			BlockState state = level.getBlockState(pos);
 			if (state.hasBlockEntity() || level.getBlockEntity(pos) != null || !state.getFluidState().isEmpty()
 				|| hasPoiAt(level, pos)) {
@@ -303,7 +303,7 @@ public final class NaturalSitePreparation {
 				if (tree.maxY() > max.getY() && extendedTrees.add(root.asLong())) {
 					for (int y = max.getY() + 1; y <= tree.maxY(); y++) {
 						BlockPos continuation = new BlockPos(tree.x(), y, tree.z());
-						if (!level.hasChunkAt(continuation))
+						if (!de.villagerplus.world.LoadedColumns.ready(level, continuation))
 							return new Scan(Status.WAITING_FOR_CHUNK, continuation, candidates.size());
 						BlockState continuationState = level.getBlockState(continuation);
 						if (!verticalNaturalLog(continuationState) || continuationState.hasBlockEntity()
@@ -391,7 +391,7 @@ public final class NaturalSitePreparation {
 	/** Inspect one paid market target. Surface soil can remain under the paid floor; only safe natural cover and rooted tree parts can be removed. */
 	public static Scan inspectMarketTarget(ServerLevel level, BlockPos pos, boolean paidFloor) {
 		if (level == null || pos == null) return new Scan(Status.BLOCKED, null, 0);
-		if (!level.hasChunkAt(pos)) return new Scan(Status.WAITING_FOR_CHUNK, null, 0);
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return new Scan(Status.WAITING_FOR_CHUNK, null, 0);
 		BlockState state = level.getBlockState(pos);
 		if (state.hasBlockEntity() || level.getBlockEntity(pos) != null || !state.getFluidState().isEmpty()) {
 			return new Scan(Status.BLOCKED, null, 0);
@@ -440,7 +440,7 @@ public final class NaturalSitePreparation {
 	private static Status naturalPlantStatus(ServerLevel level, BlockPos pos, BlockPos min, BlockPos max) {
 		BlockPos support = pos.below();
 		for (int depth = 0; depth < 3; depth++, support = support.below()) {
-			if (!level.hasChunkAt(support)) return Status.WAITING_FOR_CHUNK;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, support)) return Status.WAITING_FOR_CHUNK;
 			BlockState below = level.getBlockState(support);
 			if (safeNaturalGround(level, support, below)) return Status.READY;
 			if (level.getBlockState(pos).is(Blocks.SNOW) && safeNaturalLeaves(below)) return naturalLeafStatus(level, support, min, max);
@@ -465,7 +465,7 @@ public final class NaturalSitePreparation {
 		if (nearBuiltTreeFeature(level, pos, pos)) return Status.BLOCKED;
 		BlockPos below = pos.below();
 		for (int depth = 0; depth < 32 && below.getY() > level.getMinY(); depth++, below = below.below()) {
-			if (!level.hasChunkAt(below)) return Status.WAITING_FOR_CHUNK;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, below)) return Status.WAITING_FOR_CHUNK;
 			BlockState state = level.getBlockState(below);
 			if (safeNaturalGround(level, below, state)) return Status.READY;
 			if (verticalNaturalLog(state)) {
@@ -539,34 +539,34 @@ public final class NaturalSitePreparation {
 		int searched = 0;
 		while (searched < MAX_NATURAL_TREE_HEIGHT && root.getY() > level.getMinY() + 1) {
 			BlockPos below = root.below();
-			if (!level.hasChunkAt(below)) return Status.WAITING_FOR_CHUNK;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, below)) return Status.WAITING_FOR_CHUNK;
 			BlockState belowState = level.getBlockState(below);
 			if (!verticalNaturalLog(belowState)) break;
 			root = below;
 			searched++;
 		}
 		if (searched == MAX_NATURAL_TREE_HEIGHT) {
-			if (!level.hasChunkAt(root.below())) return Status.WAITING_FOR_CHUNK;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, root.below())) return Status.WAITING_FOR_CHUNK;
 			if (verticalNaturalLog(level.getBlockState(root.below()))) return Status.BLOCKED;
 		}
 		for (TreeSpan tree : knownTrees) {
 			if (tree.x() == root.getX() && tree.z() == root.getZ() && tree.minY() == root.getY()) return tree.status();
 		}
 		BlockPos soil = root.below();
-		if (!level.hasChunkAt(soil)) return Status.WAITING_FOR_CHUNK;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, soil)) return Status.WAITING_FOR_CHUNK;
 		if (!safeNaturalGround(level, soil, level.getBlockState(soil))) return Status.BLOCKED;
 
 		BlockPos top = pos.immutable();
 		searched = 0;
 		while (searched < MAX_NATURAL_TREE_HEIGHT && top.getY() < level.getMaxY() - 1) {
 			BlockPos above = top.above();
-			if (!level.hasChunkAt(above)) return Status.WAITING_FOR_CHUNK;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, above)) return Status.WAITING_FOR_CHUNK;
 			if (!verticalNaturalLog(level.getBlockState(above))) break;
 			top = above;
 			searched++;
 		}
 		if (searched == MAX_NATURAL_TREE_HEIGHT) {
-			if (!level.hasChunkAt(top.above())) return Status.WAITING_FOR_CHUNK;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, top.above())) return Status.WAITING_FOR_CHUNK;
 			if (verticalNaturalLog(level.getBlockState(top.above()))) return Status.BLOCKED;
 		}
 		BlockPos canopyMin = root.offset(-3, -1, -3);
@@ -593,7 +593,7 @@ public final class NaturalSitePreparation {
 		BlockPos max = naturalCanopyMax(level, root, top);
 		boolean unloaded = false;
 		for (BlockPos leaf : BlockPos.betweenClosed(min, max)) {
-			if (!level.hasChunkAt(leaf)) { unloaded = true; continue; }
+			if (!de.villagerplus.world.LoadedColumns.ready(level, leaf)) { unloaded = true; continue; }
 			if (safeNaturalLeaves(level.getBlockState(leaf))) return Status.READY;
 		}
 		return unloaded ? Status.WAITING_FOR_CHUNK : Status.BLOCKED;
@@ -609,7 +609,7 @@ public final class NaturalSitePreparation {
 			Math.min(level.getMaxY() - 1, Math.max(top.getY() + 2,
 				root.getY() + MAX_NATURAL_TREE_HEIGHT + 8)), root.getZ() + 2);
 		for (BlockPos pos : BlockPos.betweenClosed(root.offset(-2, -1, -2), max)) {
-			if (!level.hasChunkAt(pos)) return true;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return true;
 			BlockState state = level.getBlockState(pos);
 			if (state.isAir() || !state.getFluidState().isEmpty() || state.is(BlockTags.OVERWORLD_NATURAL_LOGS) || state.is(BlockTags.LEAVES)
 				|| safeNaturalPlant(state) || state.is(BlockTags.FLOWERS) || state.is(Blocks.VINE)
@@ -628,7 +628,7 @@ public final class NaturalSitePreparation {
 	}
 
 	private static boolean loadedBox(ServerLevel level, BlockPos min, BlockPos max) {
-		for (BlockPos pos : BlockPos.betweenClosed(min, max)) if (!level.hasChunkAt(pos)) return false;
+		for (BlockPos pos : BlockPos.betweenClosed(min, max)) if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return false;
 		return true;
 	}
 

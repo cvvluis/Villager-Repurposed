@@ -89,7 +89,7 @@ public final class Furnisher {
 			return false;
 		}
 		for (BlockPos n : BlockPos.betweenClosed(p.offset(-1, 0, -1), p.offset(1, 1, 1))) {
-			if (!level.hasChunkAt(n)) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, n)) return false;
 			if (level.getBlockState(n).getBlock() instanceof DoorBlock) {
 				return false;
 			}
@@ -114,7 +114,7 @@ public final class Furnisher {
 			boolean hit = false;
 			for (int k = 1; k <= 10 && !hit; k++) {
 				BlockPos wall = p.relative(d, k);
-				if (!level.hasChunkAt(wall)) return false;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, wall)) return false;
 				// A doorway still bounds the classroom even when its door is open.
 				hit = level.getBlockState(wall).getBlock() instanceof DoorBlock || sturdy(level, wall, d.getOpposite());
 			}
@@ -127,7 +127,7 @@ public final class Furnisher {
 
 	/** Shared by classroom discovery and furnishing so an exterior lectern is never adopted. */
 	public static boolean isSchoolInterior(ServerLevel level, BlockPos pos) {
-		return level.hasChunkAt(pos) && roofed(level, pos) && enclosed(level, pos);
+		return de.villagerplus.world.LoadedColumns.ready(level, pos) && roofed(level, pos) && enclosed(level, pos);
 	}
 
 	/** Die Richtung, in der eine feste Wand direkt neben der Zelle liegt (null = keine). */
@@ -234,7 +234,7 @@ public final class Furnisher {
 	}
 
 	private static boolean schoolLoaded(ServerLevel level, BoundingBox bb) {
-		for (BlockPos pos : cells(bb)) if (!level.hasChunkAt(pos)) return false;
+		for (BlockPos pos : cells(bb)) if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return false;
 		return true;
 	}
 
@@ -400,7 +400,7 @@ public final class Furnisher {
 	}
 
 	private static boolean levelCanPlace(ServerLevel level, BlockPos pos) {
-		return level.hasChunkAt(pos) && level.hasChunkAt(pos.above()) && level.hasChunkAt(pos.below())
+		return de.villagerplus.world.LoadedColumns.ready(level, pos) && de.villagerplus.world.LoadedColumns.ready(level, pos.above()) && de.villagerplus.world.LoadedColumns.ready(level, pos.below())
 			&& level.getBlockState(pos).isAir() && level.getBlockState(pos.above()).isAir()
 			&& sturdy(level, pos.below(), Direction.UP);
 	}
@@ -488,7 +488,7 @@ public final class Furnisher {
 
 	private static List<BlockPos> publicSources(Ctx c, VillageRef ref) {
 		return Lager.materialChests(c.level(), ref).stream()
-			.filter(pos -> c.level().hasChunkAt(pos) && Lager.publicStorageAt(c.level(), pos))
+			.filter(pos -> de.villagerplus.world.LoadedColumns.ready(c.level(), pos) && Lager.publicStorageAt(c.level(), pos))
 			.distinct().sorted(Comparator.comparingDouble(pos -> c.v().position().distanceToSqr(Vec3.atBottomCenterOf(pos))))
 			.toList();
 	}
@@ -500,7 +500,7 @@ public final class Furnisher {
 
 	/** Selects a loaded, public, walkable interaction position beside a school supply chest. */
 	private static BlockPos publicChestStand(Ctx c, BlockPos chest) {
-		if (chest == null || !c.level().hasChunkAt(chest) || !Lager.publicStorageAt(c.level(), chest)) return null;
+		if (chest == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), chest) || !Lager.publicStorageAt(c.level(), chest)) return null;
 		return JobUtil.sharedStandSpot(c, chest, 3.0);
 	}
 
@@ -595,7 +595,7 @@ public final class Furnisher {
 		net.minecraft.world.level.block.state.BlockState desired = schoolBlockState(block, cargo.facing());
 		// A save can land after setBlock but before the inventory decrement. Treat the exact
 		// marked destination as the committed placement so reload cannot place a duplicate.
-		if (bb.isInside(cargo.target()) && c.level().hasChunkAt(cargo.target())
+		if (bb.isInside(cargo.target()) && de.villagerplus.world.LoadedColumns.ready(c.level(), cargo.target())
 			&& isSchoolInterior(c.level(), cargo.target())
 			&& c.level().getBlockState(cargo.target()).equals(desired)) {
 			if (consumeSchoolCargo(c, cargoStack)) {
@@ -732,7 +732,7 @@ public final class Furnisher {
 	}
 
 	private static boolean safeSchoolStand(ServerLevel level, BlockPos feet) {
-		return level.hasChunkAt(feet) && level.hasChunkAt(feet.above()) && level.hasChunkAt(feet.below())
+		return de.villagerplus.world.LoadedColumns.ready(level, feet) && de.villagerplus.world.LoadedColumns.ready(level, feet.above()) && de.villagerplus.world.LoadedColumns.ready(level, feet.below())
 			&& level.getBlockState(feet).getCollisionShape(level, feet).isEmpty()
 			&& level.getBlockState(feet.above()).getCollisionShape(level, feet.above()).isEmpty()
 			&& level.getBlockState(feet.below()).isFaceSturdy(level, feet.below(), Direction.UP);

@@ -74,7 +74,7 @@ public final class Lighting {
 	}
 
 	private static boolean basicPlaceable(ServerLevel level, BlockPos air) {
-		if (air == null || !level.hasChunkAt(air)) return false;
+		if (air == null || !de.villagerplus.world.LoadedColumns.ready(level, air)) return false;
 		BlockState here = level.getBlockState(air);
 		BlockPos below = air.below();
 		BlockState floor = level.getBlockState(below);
@@ -345,7 +345,7 @@ public final class Lighting {
 		if (JobUtil.count(inventory, stack -> stack.is(Items.DIRT)) < 1) {
 			BlockPos stockPos = ref.chestPos(c.level());
 			Container stock = communal(c);
-			if (stock == null || stockPos == null || !c.level().hasChunkAt(stockPos)
+			if (stock == null || stockPos == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), stockPos)
 				|| JobUtil.count(stock, stack -> stack.is(Items.DIRT)) < 1
 				|| !inventory.canAddItem(new ItemStack(Items.DIRT))) {
 				c.st().lightAt = c.now() + 200;
@@ -481,7 +481,7 @@ public final class Lighting {
 	}
 
 	private static PublicShovelSource publicPathShovelSourceAt(ServerLevel level, VillageRef ref, BlockPos pos) {
-		if (pos == null || !level.hasChunkAt(pos)) return null;
+		if (pos == null || !de.villagerplus.world.LoadedColumns.ready(level, pos)) return null;
 		BlockPos toolShed = Specials.get(ref, Blueprints.TOOLSHED);
 		boolean inToolShed = toolShed != null
 			&& pos.getX() >= toolShed.getX() - 9 && pos.getX() <= toolShed.getX() + 9
@@ -673,8 +673,8 @@ public final class Lighting {
 	private static PathCut pathCutColumn(ServerLevel level, VillageRef ref, BlockPos ground, Entity ignored,
 		Predicate<BlockPos> trustedPathCell) {
 		if (ground == null || ref == null || !trustedPathCell.test(ground)
-			|| protectedPathCell(level, ref, ground) || !level.hasChunkAt(ground) || !level.hasChunkAt(ground.below())
-			|| !level.hasChunkAt(ground.above(2))) return null;
+			|| protectedPathCell(level, ref, ground) || !de.villagerplus.world.LoadedColumns.ready(level, ground) || !de.villagerplus.world.LoadedColumns.ready(level, ground.below())
+			|| !de.villagerplus.world.LoadedColumns.ready(level, ground.above(2))) return null;
 		BlockState base = level.getBlockState(ground);
 		BlockPos support = ground.below();
 		BlockState supportState = level.getBlockState(support);
@@ -688,7 +688,7 @@ public final class Lighting {
 		BlockState obstructionState = null;
 		for (int height = 1; height <= MAX_PATH_CUT_LAYERS; height++) {
 			BlockPos layer = ground.above(height);
-			if (!level.hasChunkAt(layer) || protectedPathCell(level, ref, layer)) return null;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, layer) || protectedPathCell(level, ref, layer)) return null;
 			BlockState state = level.getBlockState(layer);
 			if (!naturalPathBase(state) || state.hasBlockEntity() || !state.getFluidState().isEmpty()) {
 				if (height == 1 || !state.isAir() || !state.getFluidState().isEmpty()) return null;
@@ -701,7 +701,7 @@ public final class Lighting {
 		if (layers == 0) return null;
 		if (layers == MAX_PATH_CUT_LAYERS) {
 			BlockPos headroom = ground.above(layers + 1);
-			if (!level.hasChunkAt(headroom) || !level.getBlockState(headroom).isAir()
+			if (!de.villagerplus.world.LoadedColumns.ready(level, headroom) || !level.getBlockState(headroom).isAir()
 				|| !level.getBlockState(headroom).getFluidState().isEmpty()) return null;
 		}
 		// Check the completed two-block path clearance and the space directly above a soil hump,
@@ -713,7 +713,7 @@ public final class Lighting {
 
 	private static boolean isCutAnchor(ServerLevel level, VillageRef ref, BlockPos anchor, Predicate<BlockPos> trustedPathCell) {
 		return trustedPathCell.test(anchor) && !protectedPathCell(level, ref, anchor)
-			&& level.hasChunkAt(anchor) && level.getBlockState(anchor).is(Blocks.DIRT_PATH)
+			&& de.villagerplus.world.LoadedColumns.ready(level, anchor) && level.getBlockState(anchor).is(Blocks.DIRT_PATH)
 			&& pathCellClear(level, anchor);
 	}
 
@@ -803,10 +803,10 @@ public final class Lighting {
 
 	/** Returns the exposed ground in an already-loaded column; never requests a chunk load. */
 	private static BlockPos pathSurface(ServerLevel level, BlockPos column) {
-		if (column == null || !level.hasChunkAt(column)) return null;
-		int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column.getX(), column.getZ()) - 1;
+		if (column == null || !de.villagerplus.world.LoadedColumns.ready(level, column)) return null;
+		int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column.getX(), column.getZ()) - 1;
 		BlockPos ground = new BlockPos(column.getX(), y, column.getZ());
-		return level.hasChunkAt(ground) && level.hasChunkAt(ground.above(2)) ? ground : null;
+		return de.villagerplus.world.LoadedColumns.ready(level, ground) && de.villagerplus.world.LoadedColumns.ready(level, ground.above(2)) ? ground : null;
 	}
 
 	private static boolean repairablePathCell(ServerLevel level, BlockPos ground, Entity ignored) {
@@ -814,7 +814,7 @@ public final class Lighting {
 	}
 
 	private static boolean pathCellClear(ServerLevel level, BlockPos ground) {
-		if (ground == null || !level.hasChunkAt(ground) || !level.hasChunkAt(ground.above(2))) return false;
+		if (ground == null || !de.villagerplus.world.LoadedColumns.ready(level, ground) || !de.villagerplus.world.LoadedColumns.ready(level, ground.above(2))) return false;
 		BlockState base = level.getBlockState(ground);
 		BlockPos support = ground.below();
 		return (base.is(Blocks.DIRT_PATH) || naturalPathBase(base)) && !base.hasBlockEntity()
@@ -938,8 +938,8 @@ public final class Lighting {
 	}
 
 	private static BlockPos surface(ServerLevel level, BlockPos column) {
-		if (!level.hasChunkAt(column)) return null;
-		int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column.getX(), column.getZ());
+		if (!de.villagerplus.world.LoadedColumns.ready(level, column)) return null;
+		int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column.getX(), column.getZ());
 		return new BlockPos(column.getX(), y, column.getZ());
 	}
 

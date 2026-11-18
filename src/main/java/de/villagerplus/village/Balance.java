@@ -31,7 +31,7 @@ public final class Balance {
 		// Kornspeicher, Werkzeugkammer und Bahnhof gehoeren zum Dorfvorrat (Nahrung liegt dort, nicht in der Dorfkiste).
 		for (String type : new String[] {de.villagerplus.build.Blueprints.GRANARY, de.villagerplus.build.Blueprints.TOOLSHED, de.villagerplus.build.Blueprints.STATION}) {
 			BlockPos origin = Specials.get(ref, type);
-			if (origin == null || !level.hasChunkAt(origin)) continue;
+			if (origin == null || !de.villagerplus.world.LoadedColumns.ready(level, origin)) continue;
 			for (BlockPos pos : BlockPos.betweenClosed(origin.offset(-9, -2, -9), origin.offset(9, 8, 9))) {
 				if (Lager.publicStorageAt(level, pos)) addStorage(level, byPosition, pos);
 			}

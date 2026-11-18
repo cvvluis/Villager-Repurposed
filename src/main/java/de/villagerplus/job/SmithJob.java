@@ -128,7 +128,7 @@ public class SmithJob implements Job {
 		// servers without the optional mod neither load its classes nor substitute unrelated vanilla blocks.
 		if (c.village() == null || !FabricLoader.getInstance().isModLoaded("farmersdelight")) return false;
 		BlockPos kitchen = Specials.get(c.village(), Blueprints.KITCHEN);
-		if (kitchen == null || !c.level().hasChunkAt(kitchen)) return false;
+		if (kitchen == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), kitchen)) return false;
 		return ensureKitchenStation(c, Blueprints.FARMERS_DELIGHT_COOKING_POT, kitchen)
 			|| ensureKitchenStation(c, Blueprints.FARMERS_DELIGHT_CUTTING_BOARD, kitchen);
 	}

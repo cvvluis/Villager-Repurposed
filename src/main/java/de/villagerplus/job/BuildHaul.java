@@ -93,7 +93,7 @@ public final class BuildHaul {
 			boolean projectActive, Container siteStock) {
 		if (c == null || c.v() == null || c.level() == null || c.village() == null || projectOrigin == null
 			|| siteStock == null) return false;
-		if (!c.level().hasChunkAt(projectOrigin)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(c.level(), projectOrigin)) return false;
 
 		ItemStack marked = firstCargo(c.v());
 		if (marked != null) {
@@ -115,7 +115,7 @@ public final class BuildHaul {
 			clearHaulCache(c.st());
 			return returnSiteStock(c, projectOrigin, deliveryStand, siteStock);
 		}
-		if (deliveryStand == null || !c.level().hasChunkAt(deliveryStand)) return false;
+		if (deliveryStand == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), deliveryStand)) return false;
 		Pickup pickup = cachedPickup(c, projectOrigin, projectDemand);
 		if (pickup == null) pickup = selectPickup(c, projectDemand);
 		if (pickup == null) {
@@ -317,9 +317,9 @@ public final class BuildHaul {
 			if (meeting.isPresent() && meeting.get().dimension() == level.dimension()) bell = meeting.get().pos();
 		}
 		if (bell == null) return null;
-		if (!level.hasChunkAt(bell)) {
-			// A death is rare; load the single owning bell chunk so the manifest can be settled durably.
-			level.getChunkAt(bell);
+		if (de.villagerplus.world.LoadedColumns.full(level, bell.getX(), bell.getZ()) == null) {
+			// The bell chunk is not ready. Generating it here would stall the server thread, so settlement waits.
+			return null;
 		}
 		if (!(level.getBlockEntity(bell) instanceof BellBlockEntity bellEntity)) return null;
 		return new VillageRef(bell.immutable(), bellEntity.getAttachedOrCreate(VillagerPlus.VILLAGE), bellEntity);
@@ -418,7 +418,7 @@ public final class BuildHaul {
 	}
 
 	private static boolean deliverInventoryCargo(Ctx c, BlockPos origin, BlockPos stand, Container siteStock, ItemStack cargoStack) {
-		if (stand == null || !c.level().hasChunkAt(stand)) {
+		if (stand == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), stand)) {
 			c.setActivity("wartet auf den geladenen Baustellenstand");
 			return true;
 		}
@@ -451,7 +451,7 @@ public final class BuildHaul {
 			cargo = cargo(cargoStack);
 			refreshManifest(c.level(), c.v());
 		}
-		if (!c.level().hasChunkAt(target)) {
+		if (!de.villagerplus.world.LoadedColumns.ready(c.level(), target)) {
 			c.setActivity("wartet auf geladenes öffentliches Lager");
 			return true;
 		}
@@ -482,7 +482,7 @@ public final class BuildHaul {
 	private static boolean returnSiteStock(Ctx c, BlockPos origin, BlockPos stand, Container siteStock) {
 		int slot = firstSiteStockSlot(siteStock, c, origin);
 		if (slot < 0) return false;
-		if (stand == null || !c.level().hasChunkAt(stand)) {
+		if (stand == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), stand)) {
 			c.setActivity("wartet auf den geladenen Baustellenstand zur Rückgabe");
 			return true;
 		}
@@ -530,7 +530,7 @@ public final class BuildHaul {
 	}
 
 	private static boolean takeFromPublicStorage(Ctx c, BlockPos origin, Pickup pickup) {
-		if (!c.level().hasChunkAt(pickup.source())) return true;
+		if (!de.villagerplus.world.LoadedColumns.ready(c.level(), pickup.source())) return true;
 		Container storage = Lager.publicContainerAt(c.level(), pickup.source());
 		if (storage == null) {
 			clearHaulCache(c.st());
@@ -618,7 +618,7 @@ public final class BuildHaul {
 		JobState state = c.st();
 		if (state.buildHaulProject == null || !state.buildHaulProject.equals(origin)
 			|| state.buildHaulSource == null || state.buildHaulItemId.isEmpty()
-			|| !c.level().hasChunkAt(state.buildHaulSource)
+			|| !de.villagerplus.world.LoadedColumns.ready(c.level(), state.buildHaulSource)
 			|| !Lager.publicStorageAt(c.level(), state.buildHaulSource)) return null;
 		Item cachedItem = item(state.buildHaulItemId);
 		if (cachedItem == null || parseDemand(projectDemand).stream().noneMatch(demand -> demand.item() == cachedItem)) return null;
@@ -687,7 +687,7 @@ public final class BuildHaul {
 		java.util.Set<BlockPos> candidates = new java.util.LinkedHashSet<>(Lager.materialChests(c.level(), c.village()));
 		candidates.addAll(publicBarrels(c));
 		return candidates.stream()
-			.filter(pos -> c.level().hasChunkAt(pos) && Lager.publicStorageAt(c.level(), pos))
+			.filter(pos -> de.villagerplus.world.LoadedColumns.ready(c.level(), pos) && Lager.publicStorageAt(c.level(), pos))
 			.distinct().sorted(Comparator
 				.comparing((BlockPos pos) -> pos.equals(c.village().chestPos(c.level())) ? 1 : 0)
 				.thenComparingDouble(pos -> c.v().position().distanceToSqr(Vec3.atBottomCenterOf(pos))))
@@ -707,7 +707,7 @@ public final class BuildHaul {
 			java.util.Set<BlockPos> positions = new java.util.LinkedHashSet<>();
 			for (BlockPos center : centers) {
 				for (BlockPos pos : BlockPos.betweenClosed(center.offset(-5, -1, -5), center.offset(5, 4, 5))) {
-					if (!c.level().hasChunkAt(pos) || !(c.level().getBlockState(pos).getBlock()
+					if (!de.villagerplus.world.LoadedColumns.ready(c.level(), pos) || !(c.level().getBlockState(pos).getBlock()
 						instanceof net.minecraft.world.level.block.BarrelBlock)) continue;
 					if (Lager.publicStorageAt(c.level(), pos)) positions.add(pos.immutable());
 				}

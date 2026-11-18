@@ -43,7 +43,7 @@ public final class RoadMaintenance {
 					int x = route.getX() + (alongX ? 0 : side);
 					int z = route.getZ() + (alongX ? side : 0);
 					BlockPos deck = new BlockPos(x, deckY.intValue(), z);
-					if (!level.hasChunkAt(deck)) continue;
+					if (!de.villagerplus.world.LoadedColumns.ready(level, deck)) continue;
      RoadBridge.Plan plan = RoadBridge.plan(level, deck, ref.bell(), link.bell());
 					if (plan != null && plan.next() != null) return plan.next();
 				}

@@ -115,9 +115,9 @@ final class MarketDisplays {
 		return "bread=" + count(stock, net.minecraft.world.item.Items.BREAD)
 			+ ", displayCount=" + displays.size() + ", displays=" + displays
 			+ ", lastSync=" + lastSyncResult
-			+ ", counterChunkLoaded=" + level.hasChunkAt(BlockPos.containing(counter))
+			+ ", counterChunkLoaded=" + de.villagerplus.world.LoadedColumns.ready(level, BlockPos.containing(counter))
 			+ "@" + BlockPos.containing(counter).toShortString()
-			+ ", stockVisualChunkLoaded=" + level.hasChunkAt(BlockPos.containing(fallback))
+			+ ", stockVisualChunkLoaded=" + de.villagerplus.world.LoadedColumns.ready(level, BlockPos.containing(fallback))
 			+ "@" + BlockPos.containing(fallback).toShortString();
 	}
 
@@ -178,13 +178,13 @@ final class MarketDisplays {
 			discard(level, display);
 			return;
 		}
-		if (!level.hasChunkAt(bellPos) || !level.hasChunkAt(origin)) return;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, bellPos) || !de.villagerplus.world.LoadedColumns.ready(level, origin)) return;
 		if (!(level.getBlockEntity(bellPos) instanceof BellBlockEntity bell)) { discard(level, display); return; }
 		VillageRef ref = new VillageRef(bellPos, bell.getAttachedOrCreate(de.villagerplus.VillagerPlus.VILLAGE), bell);
 		MarketData.Shop shop = Market.of(ref).shops().stream().filter(candidate -> candidate.origin().equals(origin)).findFirst().orElse(null);
 		if (shop == null || shop.opened() == 0) { discard(level, display); return; }
 		BlockPos stockPos = Market.stockPos(shop);
-		if (!level.hasChunkAt(stockPos)) return;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, stockPos)) return;
 		Container stock = Market.stock(level, shop);
 		if (stock == null) { discard(level, display); return; }
 		sync(level, ref, shop, stock);
@@ -234,9 +234,9 @@ final class MarketDisplays {
 
 	private static Vec3 loadedPosition(ServerLevel level, MarketData.Shop shop, int slot) {
 		Vec3 counter = counterPosition(shop, slot);
-		if (level.hasChunkAt(BlockPos.containing(counter))) return counter;
+		if (de.villagerplus.world.LoadedColumns.ready(level, BlockPos.containing(counter))) return counter;
 		Vec3 stock = stockPosition(shop, slot);
-		return level.hasChunkAt(BlockPos.containing(stock)) ? stock : null;
+		return de.villagerplus.world.LoadedColumns.ready(level, BlockPos.containing(stock)) ? stock : null;
 	}
 
 	private static Vec3 counterPosition(MarketData.Shop shop, int slot) {

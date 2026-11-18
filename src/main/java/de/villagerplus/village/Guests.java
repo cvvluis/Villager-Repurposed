@@ -185,13 +185,13 @@ public final class Guests {
 			State s = e.getValue();
 			Entity ent = level.getEntity(e.getKey());
 			if (!(ent instanceof Villager guest) || !guest.isAlive()) {
-				if (ent == null && !level.hasChunkAt(s.bell)) {
+				if (ent == null && !de.villagerplus.world.LoadedColumns.ready(level, s.bell)) {
 					continue;
 				}
 				remove.add(e.getKey());
 				continue;
 			}
-			var be = level.hasChunkAt(s.bell) ? level.getBlockEntity(s.bell) : null;
+			var be = de.villagerplus.world.LoadedColumns.ready(level, s.bell) ? level.getBlockEntity(s.bell) : null;
 			if (be == null) {
 				continue;
 			}

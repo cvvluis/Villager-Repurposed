@@ -77,11 +77,8 @@ public class VillagerPlusClient implements ClientModInitializer {
 			de.villagerplus.block.ModBlocks.DORFTAFEL_NAME, DorftafelNameRenderer::new);
 		VillageMessageToast.register();
 		de.villagerplus.StallWatchdog clientWatchdog = new de.villagerplus.StallWatchdog("client", net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir(),
-			() -> { var mc = net.minecraft.client.Minecraft.getInstance(); return mc.level != null && mc.player != null; });
-		net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(mc -> {
-			clientWatchdog.start();
-			clientWatchdog.beat();
-		});
+			() -> { var mc = net.minecraft.client.Minecraft.getInstance(); return mc.level != null && mc.player != null; }, 3_000L);
+		de.villagerplus.StallWatchdog.attachClient(clientWatchdog);
 		E04RoleRenderer.register();
 		net.fabricmc.fabric.api.client.rendering.v1.ModelLayerRegistry.registerModelLayer(
 			CaravanTraderModel.LAYER, CaravanTraderModel::createBodyLayer);

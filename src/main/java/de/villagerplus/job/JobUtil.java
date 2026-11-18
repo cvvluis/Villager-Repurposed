@@ -166,7 +166,7 @@ public final class JobUtil {
 	static Vec3 perchStepOff(ServerLevel level, Villager v) {
 		BlockPos feet = v.blockPosition();
 		BlockPos support = feet.below();
-		if (!level.hasChunkAt(support)) return null;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, support)) return null;
 		VoxelShape shape = level.getBlockState(support).getCollisionShape(level, support);
 		if (shape.isEmpty() || shape.max(Direction.Axis.Y) <= 1.0001) return null;
 		double top = support.getY() + shape.max(Direction.Axis.Y);
@@ -178,15 +178,15 @@ public final class JobUtil {
 			int distance = Math.max(Math.abs(dx), Math.abs(dz));
 			if (distance == 2) {
 				BlockPos mid = feet.offset(dx / 2, 0, dz / 2);
-				if (!level.hasChunkAt(mid) || !level.getBlockState(mid).getCollisionShape(level, mid).isEmpty()
+				if (!de.villagerplus.world.LoadedColumns.ready(level, mid) || !level.getBlockState(mid).getCollisionShape(level, mid).isEmpty()
 					|| !level.getBlockState(mid.above()).getCollisionShape(level, mid.above()).isEmpty()) continue;
 			}
 			BlockPos column = feet.offset(dx, 0, dz);
-			if (!level.hasChunkAt(column)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, column)) continue;
 			for (int drop = 0; drop <= 3; drop++) {
 				BlockPos stand = column.below(drop);
 				BlockPos floor = stand.below();
-				if (!level.hasChunkAt(floor)) break;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, floor)) break;
 				if (!level.getBlockState(stand).getFluidState().isEmpty()) break;
 				var floorState = level.getBlockState(floor);
 				VoxelShape floorShape = floorState.getCollisionShape(level, floor);
@@ -313,7 +313,7 @@ public final class JobUtil {
 		BlockPos base = BlockPos.containing(target);
 		for (int dy = 0; dy <= 6; dy++) {
 			BlockPos feet = base.above(dy);
-			if (!level.hasChunkAt(feet)) {
+			if (!de.villagerplus.world.LoadedColumns.ready(level, feet)) {
 				return null;
 			}
 			if (level.getBlockState(feet).getCollisionShape(level, feet).isEmpty()
@@ -383,9 +383,8 @@ public final class JobUtil {
 			for (int attempt = 0; attempt < DELIVERY_STAND_OFFSETS.length; attempt++) {
 				int[] offset = DELIVERY_STAND_OFFSETS[(start + attempt) % DELIVERY_STAND_OFFSETS.length];
 				BlockPos candidate = target.offset(offset[0], 0, offset[1]);
-				if (!c.level().hasChunkAt(candidate)) continue;
-				BlockPos surface = c.level().getHeightmapPos(
-					net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, candidate);
+				if (!de.villagerplus.world.LoadedColumns.ready(c.level(), candidate)) continue;
+				BlockPos surface = de.villagerplus.world.LoadedColumns.heightmapPos(c.level(), net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, candidate);
 				Vec3 safe = safeSpot(c.level(), Vec3.atBottomCenterOf(surface));
 				if (safe == null || safe.distanceToSqr(interactionPoint) > interactionDistance * interactionDistance) continue;
 				BlockPos stand = BlockPos.containing(safe);
@@ -401,7 +400,7 @@ public final class JobUtil {
 
 	private static boolean availableSharedStand(Ctx c, BlockPos target, BlockPos stand, Vec3 interactionPoint,
 		double interactionDistance, Map<UUID, SharedStandReservation> reservations, Set<BlockPos> occupied, UUID resident) {
-		if (!c.level().hasChunkAt(stand) || occupied.contains(stand)
+		if (!de.villagerplus.world.LoadedColumns.ready(c.level(), stand) || occupied.contains(stand)
 			|| Vec3.atBottomCenterOf(stand).distanceToSqr(interactionPoint) > interactionDistance * interactionDistance) return false;
 		Vec3 safe = safeSpot(c.level(), Vec3.atBottomCenterOf(stand));
 		if (safe == null || !BlockPos.containing(safe).equals(stand)) return false;
@@ -563,7 +562,7 @@ public final class JobUtil {
 		BlockPos best = null;
 		double bestDist = Double.MAX_VALUE;
 		for (BlockPos p : c.mem().containers) {
-			if (level.hasChunkAt(p) && level.getBlockState(p).getBlock() instanceof ChestBlock && unownedChest(level, p)) {
+			if (de.villagerplus.world.LoadedColumns.ready(level, p) && level.getBlockState(p).getBlock() instanceof ChestBlock && unownedChest(level, p)) {
 				double d = p.distSqr(v.blockPosition());
 				if (d <= 40.0 * 40.0 && d < bestDist) {
 					best = p;
@@ -578,7 +577,7 @@ public final class JobUtil {
 		int r = Config.CHEST_SEARCH_RADIUS;
 		BlockPos center = v.blockPosition();
 		for (BlockPos p : BlockPos.betweenClosed(center.offset(-r, -3, -r), center.offset(r, 4, r))) {
-			if (level.hasChunkAt(p) && level.getBlockState(p).getBlock() instanceof ChestBlock && unownedChest(level, p)) {
+			if (de.villagerplus.world.LoadedColumns.ready(level, p) && level.getBlockState(p).getBlock() instanceof ChestBlock && unownedChest(level, p)) {
 				double d = p.distSqr(center);
 				if (d < bestDist) {
 					best = p.immutable();

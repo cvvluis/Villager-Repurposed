@@ -90,7 +90,7 @@ public final class HouseLotPreparation {
 		for (BlockPos supplied : positions) {
 			if (supplied == null || !visited.add(supplied.asLong())) continue;
 			BlockPos pos = supplied.immutable();
-			if (!level.hasChunkAt(pos)) return new Scan(Status.WAITING_FOR_CHUNK, null, candidates.size());
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return new Scan(Status.WAITING_FOR_CHUNK, null, candidates.size());
 			BlockState state = level.getBlockState(pos);
 			if (state.isAir()) continue;
 			if (state.hasBlockEntity() || level.getBlockEntity(pos) != null || !state.getFluidState().isEmpty()) {
@@ -140,7 +140,7 @@ public final class HouseLotPreparation {
 			|| lotMin.getX() > lotMax.getX() || lotMin.getZ() > lotMax.getZ()) {
 			return new Corridor(Status.BLOCKED, road, List.of());
 		}
-		if (!level.hasChunkAt(road)) return new Corridor(Status.WAITING_FOR_CHUNK, road, List.of());
+		if (!de.villagerplus.world.LoadedColumns.ready(level, road)) return new Corridor(Status.WAITING_FOR_CHUNK, road, List.of());
 		if (!isSavedRoadSurface(level.getBlockState(road))) return new Corridor(Status.BLOCKED, road, List.of());
 		if (insideLotXZ(lotMin, lotMax, road)) {
 			Ground ground = corridorGround(level, road.getX(), road.getZ(), true);
@@ -148,7 +148,7 @@ public final class HouseLotPreparation {
 			if (!road.equals(ground.pos())) return new Corridor(Status.BLOCKED, road, List.of());
 			for (int dy = 1; dy <= 2; dy++) {
 				BlockPos headroom = road.above(dy);
-				if (!level.hasChunkAt(headroom)) return new Corridor(Status.WAITING_FOR_CHUNK, road, List.of());
+				if (!de.villagerplus.world.LoadedColumns.ready(level, headroom)) return new Corridor(Status.WAITING_FOR_CHUNK, road, List.of());
 				if (!level.getBlockState(headroom).isAir()) return new Corridor(Status.BLOCKED, road, List.of());
 			}
 			// A trusted road already inside the lot is the access endpoint, never a clearance target.
@@ -188,7 +188,7 @@ public final class HouseLotPreparation {
 			if (index == columns.size()) {
 				for (int dy = 1; dy <= 2; dy++) {
 					BlockPos headroom = ground.pos().above(dy);
-					if (!level.hasChunkAt(headroom)) return new Corridor(Status.WAITING_FOR_CHUNK, road, List.of());
+					if (!de.villagerplus.world.LoadedColumns.ready(level, headroom)) return new Corridor(Status.WAITING_FOR_CHUNK, road, List.of());
 					if (!level.getBlockState(headroom).isAir()) return new Corridor(Status.BLOCKED, road, List.of());
 				}
 				continue; // The saved road cell itself is never part of the clearance work mask.
@@ -197,7 +197,7 @@ public final class HouseLotPreparation {
 			for (int dy = 1; dy <= MAX_CORRIDOR_TREE_HEIGHT; dy++) {
 				BlockPos cell = ground.pos().above(dy);
 				if (cell.getY() >= level.getMaxY()) break;
-				if (!level.hasChunkAt(cell)) return new Corridor(Status.WAITING_FOR_CHUNK, road, List.of());
+				if (!de.villagerplus.world.LoadedColumns.ready(level, cell)) return new Corridor(Status.WAITING_FOR_CHUNK, road, List.of());
 				clearance.add(cell.immutable());
 			}
 		}
@@ -227,12 +227,12 @@ public final class HouseLotPreparation {
 
 	private static Ground corridorGround(ServerLevel level, int x, int z, boolean road) {
 		BlockPos column = new BlockPos(x, level.getMinY(), z);
-		if (!level.hasChunkAt(column)) return new Ground(Status.WAITING_FOR_CHUNK, null);
-		int topY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, column)) return new Ground(Status.WAITING_FOR_CHUNK, null);
+		int topY = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
 		int minY = Math.max(level.getMinY(), topY - MAX_CORRIDOR_TREE_HEIGHT);
 		for (int y = topY; y >= minY; y--) {
 			BlockPos pos = new BlockPos(x, y, z);
-			if (!level.hasChunkAt(pos)) return new Ground(Status.WAITING_FOR_CHUNK, null);
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return new Ground(Status.WAITING_FOR_CHUNK, null);
 			BlockState state = level.getBlockState(pos);
 			if (corridorSupport(level, pos, state, road)) return new Ground(Status.READY, pos.immutable());
 			if (!state.isAir() && !corridorOvergrowth(state)) return new Ground(Status.BLOCKED, pos.immutable());
@@ -332,10 +332,10 @@ public final class HouseLotPreparation {
 	public static boolean isNaturalEarthCutCandidate(ServerLevel level, BlockPos pos, BlockState state,
 		BlockPos lotMin, BlockPos lotMax) {
 		if (level == null || pos == null || lotMin == null || lotMax == null || !isLevelableNaturalEarth(state)
-			|| pos.getY() < lotMin.getY() || pos.getY() > lotMax.getY() || !level.hasChunkAt(pos)) return false;
+			|| pos.getY() < lotMin.getY() || pos.getY() > lotMax.getY() || !de.villagerplus.world.LoadedColumns.ready(level, pos)) return false;
 		BlockPos above = pos.above();
-		if (!level.hasChunkAt(above) || !level.getBlockState(above).isAir()) return false;
-		int surfaceY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, pos.getX(), pos.getZ());
+		if (!de.villagerplus.world.LoadedColumns.ready(level, above) || !level.getBlockState(above).isAir()) return false;
+		int surfaceY = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, pos.getX(), pos.getZ());
 		return surfaceY > lotMin.getY() && surfaceY - lotMin.getY() <= MAX_NATURAL_EARTH_RELIEF
 			&& pos.getY() == surfaceY - 1;
 	}
@@ -344,8 +344,8 @@ public final class HouseLotPreparation {
 	public static boolean isNaturalEarthSupport(ServerLevel level, BlockPos pos, BlockState state,
 		BlockPos lotMin, BlockPos lotMax) {
 		if (level == null || pos == null || lotMin == null || lotMax == null || !isLevelableNaturalEarth(state)
-			|| pos.getY() < lotMin.getY() || pos.getY() > lotMax.getY() || !level.hasChunkAt(pos)) return false;
-		int surfaceY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, pos.getX(), pos.getZ());
+			|| pos.getY() < lotMin.getY() || pos.getY() > lotMax.getY() || !de.villagerplus.world.LoadedColumns.ready(level, pos)) return false;
+		int surfaceY = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, pos.getX(), pos.getZ());
 		BlockPos exposed = new BlockPos(pos.getX(), surfaceY - 1, pos.getZ());
 		return exposed.getY() > pos.getY() && exposed.getY() <= lotMax.getY()
 			&& isNaturalEarthCutCandidate(level, exposed, level.getBlockState(exposed), lotMin, lotMax);
@@ -358,7 +358,7 @@ public final class HouseLotPreparation {
 			|| pos.getY() < lotMin.getY() || pos.getY() >= lotMax.getY()) return false;
 		for (int y = pos.getY() + 1; y <= Math.min(lotMax.getY(), lotMin.getY() + MAX_NATURAL_EARTH_RELIEF); y++) {
 			BlockPos above = new BlockPos(pos.getX(), y, pos.getZ());
-			if (!level.hasChunkAt(above)) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, above)) return false;
 			BlockState cover = level.getBlockState(above);
 			if (cover.hasBlockEntity() || level.getBlockEntity(above) != null || !cover.getFluidState().isEmpty()
 				|| hasPoiAt(level, above)) return false;
@@ -382,18 +382,18 @@ public final class HouseLotPreparation {
 		int depth = 0;
 		while (depth < 32 && root.getY() > level.getMinY() + 1) {
 			BlockPos below = root.below();
-			if (!level.hasChunkAt(below)) return TreeStatus.WAITING_FOR_CHUNK;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, below)) return TreeStatus.WAITING_FOR_CHUNK;
 			if (!verticalNaturalLog(level.getBlockState(below))) break;
 			root = below;
 			depth++;
 		}
 		if (depth == 32) {
 			BlockPos below = root.below();
-			if (!level.hasChunkAt(below)) return TreeStatus.WAITING_FOR_CHUNK;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, below)) return TreeStatus.WAITING_FOR_CHUNK;
 			if (verticalNaturalLog(level.getBlockState(below))) return TreeStatus.BLOCKED;
 		}
 		BlockPos soil = root.below();
-		if (!level.hasChunkAt(soil)) return TreeStatus.WAITING_FOR_CHUNK;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, soil)) return TreeStatus.WAITING_FOR_CHUNK;
 		BlockState soilState = level.getBlockState(soil);
 		if (!safeNaturalSoil(level, soil, soilState)) return TreeStatus.BLOCKED;
 
@@ -401,14 +401,14 @@ public final class HouseLotPreparation {
 		int height = 0;
 		while (height < 48 && topY < level.getMaxY() - 1) {
 			BlockPos above = new BlockPos(root.getX(), topY + 1, root.getZ());
-			if (!level.hasChunkAt(above)) return TreeStatus.WAITING_FOR_CHUNK;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, above)) return TreeStatus.WAITING_FOR_CHUNK;
 			if (!verticalNaturalLog(level.getBlockState(above))) break;
 			topY++;
 			height++;
 		}
 		if (height == 48) {
 			BlockPos above = new BlockPos(root.getX(), topY + 1, root.getZ());
-			if (!level.hasChunkAt(above)) return TreeStatus.WAITING_FOR_CHUNK;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, above)) return TreeStatus.WAITING_FOR_CHUNK;
 			if (verticalNaturalLog(level.getBlockState(above))) return TreeStatus.BLOCKED;
 		}
 		int canopyMinY = root.getY() + Math.max(1, height - 1);
@@ -435,7 +435,7 @@ public final class HouseLotPreparation {
 	}
 
 	private static boolean loadedBox(ServerLevel level, BlockPos min, BlockPos max) {
-		for (BlockPos pos : BlockPos.betweenClosed(min, max)) if (!level.hasChunkAt(pos)) return false;
+		for (BlockPos pos : BlockPos.betweenClosed(min, max)) if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return false;
 		return true;
 	}
 

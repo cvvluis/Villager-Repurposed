@@ -91,7 +91,7 @@ public final class ZoneAwareSites {
 		if (zones(ref, type).isEmpty()) return Sites.candidate(level, ref.bell(), random, min, max, referenceY);
 		List<BlockPos> choices = candidates(ref, type, random, 0, 0, 0, 0);
 		for (BlockPos p : choices) {
-			if (!level.hasChunkAt(p)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, p)) continue;
 			BlockPos candidate = surface(level, p);
 			if (Sites.villageLevel(referenceY, candidate.getY())) return candidate;
 		}
@@ -155,7 +155,7 @@ public final class ZoneAwareSites {
 		choices.sort(java.util.Comparator.comparingDouble(p -> p.distSqr(center)));
 		int checked = 0;
 		for (BlockPos choice : choices) {
-			if (!level.hasChunkAt(choice)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, choice)) continue;
 			if (checked++ >= 4096) break;
 			BlockPos anchor = surface(level, choice);
 			if (anchor != null && !Sites.villageLevel(referenceY, anchor.getY())) anchor = null;
@@ -171,7 +171,7 @@ public final class ZoneAwareSites {
 		int minX, int maxX, int minZ, int maxZ, int headroom, int attempts, boolean tolerant, Predicate<BlockPos> planFits, int referenceY) {
 		int checked = 0;
 		for (BlockPos choice : candidates(ref, type, random, minX, maxX, minZ, maxZ)) {
-			if (!level.hasChunkAt(choice)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, choice)) continue;
 			if (checked++ >= attempts) break;
 			BlockPos anchor = surface(level, choice);
 			if (anchor != null && !Sites.villageLevel(referenceY, anchor.getY())) anchor = null;
@@ -184,7 +184,7 @@ public final class ZoneAwareSites {
 	}
 
 	private static BlockPos surface(ServerLevel level, BlockPos p) {
-		return new BlockPos(p.getX(), level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, p.getX(), p.getZ()), p.getZ());
+		return new BlockPos(p.getX(), de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, p.getX(), p.getZ()), p.getZ());
 	}
 
 	private static List<BlockPos> candidates(VillageRef ref, String type, RandomSource random, int minX, int maxX, int minZ, int maxZ) {

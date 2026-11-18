@@ -134,7 +134,7 @@ public final class Wellbeing {
 
 				BlockPos p = mem.homeChest.get();
 
-				if (level.hasChunkAt(p) && level.getBlockState(p).getBlock() instanceof ChestBlock) {
+				if (de.villagerplus.world.LoadedColumns.ready(level, p) && level.getBlockState(p).getBlock() instanceof ChestBlock) {
 
 					chest = true;
 

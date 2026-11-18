@@ -15,7 +15,8 @@
   "injectors": {
     "defaultRequire": 1
   },
-  "client": [
-    "VillagerNameplateMixin"
-  ]
+	"client": [
+		"VillagerNameplateMixin",
+		"ClientFrameMixin"
+	]
 }

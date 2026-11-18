@@ -94,7 +94,7 @@ public final class StockPolicy {
 
 	private static boolean validBoard(ServerPlayer player, ServerLevel level, net.minecraft.core.BlockPos board) {
 		return !player.isSpectator() && player.blockPosition().distSqr(board) <= 24L * 24L
-			&& level.hasChunkAt(board) && level.getBlockState(board).getBlock() instanceof de.villagerplus.block.DorftafelBlock;
+			&& de.villagerplus.world.LoadedColumns.ready(level, board) && level.getBlockState(board).getBlock() instanceof de.villagerplus.block.DorftafelBlock;
 	}
 
 	public static Category category(Item item) {
@@ -341,7 +341,7 @@ public final class StockPolicy {
 	 */
 	public static boolean rejectsDirectMaterialStoreInsert(ServerLevel level, BlockPos pos, ItemStack offered) {
 		if (level == null || pos == null || offered == null || offered.isEmpty()
-			|| acceptsMaterialStoreItem(offered.getItem()) || !level.hasChunkAt(pos)) return false;
+			|| acceptsMaterialStoreItem(offered.getItem()) || !de.villagerplus.world.LoadedColumns.ready(level, pos)) return false;
 		if (foodBridgeOpen && category(offered.getItem()) == Category.FOOD) return false;
 
 		BlockState state = level.getBlockState(pos);
@@ -350,7 +350,7 @@ public final class StockPolicy {
 		boolean connectedHalfLoaded = false;
 		if (state.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
 			connectedHalf = pos.relative(ChestBlock.getConnectedDirection(state)).immutable();
-			if (level.hasChunkAt(connectedHalf)) {
+			if (de.villagerplus.world.LoadedColumns.ready(level, connectedHalf)) {
 				BlockState otherState = level.getBlockState(connectedHalf);
 				ChestType type = state.getValue(ChestBlock.TYPE);
 				if (!(otherState.getBlock() instanceof ChestBlock)

@@ -37,7 +37,7 @@ public final class Lager {
 			// Uebernahme alter Welten (0.7.0): Kisten der bekannten Lagerhaeuser einmalig suchen und merken.
 			for (BlockPos center : centers(d)) {
 				for (BlockPos p : BlockPos.betweenClosed(center.offset(-5, -1, -5), center.offset(5, 4, 5))) {
-					if (!level.hasChunkAt(p)) continue;
+					if (!de.villagerplus.world.LoadedColumns.ready(level, p)) continue;
 					var s = level.getBlockState(p);
 					if (s.getBlock() instanceof ChestBlock && s.getValue(ChestBlock.TYPE) != net.minecraft.world.level.block.state.properties.ChestType.RIGHT) {
 						d.extra.lagerChests.add(p.immutable());
@@ -47,7 +47,7 @@ public final class Lager {
 		}
 		List<BlockPos> out = new ArrayList<>();
 		for (BlockPos p : d.extra.lagerChests) {
-			if (level.hasChunkAt(p) && level.getBlockState(p).getBlock() instanceof ChestBlock) {
+			if (de.villagerplus.world.LoadedColumns.ready(level, p) && level.getBlockState(p).getBlock() instanceof ChestBlock) {
 				out.add(p);
 			}
 		}
@@ -105,13 +105,13 @@ public final class Lager {
 	}
 
 	public static Container publicContainerAt(ServerLevel level, BlockPos pos) {
-		if (!level.hasChunkAt(pos)) return null;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return null;
 		var blockEntity = level.getBlockEntity(pos);
 		if (blockEntity == null || Ownership.ownerAt(level, pos) != null) return null;
 		var state = level.getBlockState(pos);
 		if (state.getBlock() instanceof ChestBlock && state.getValue(ChestBlock.TYPE) != net.minecraft.world.level.block.state.properties.ChestType.SINGLE) {
 			BlockPos other = pos.relative(ChestBlock.getConnectedDirection(state));
-			if (!level.hasChunkAt(other)) return null;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, other)) return null;
 			var otherState = level.getBlockState(other);
 			var type = state.getValue(ChestBlock.TYPE);
 			if (!(otherState.getBlock() instanceof ChestBlock) || otherState.getValue(ChestBlock.FACING) != state.getValue(ChestBlock.FACING)
@@ -124,7 +124,7 @@ public final class Lager {
 
 	/** Public storage accepted by village carriers; private chests and either privately owned double-chest half fail closed. */
 	public static boolean publicStorageAt(ServerLevel level, BlockPos pos) {
-		if (!level.hasChunkAt(pos)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return false;
 		var state = level.getBlockState(pos);
 		boolean chest = state.getBlock() instanceof ChestBlock
 			&& state.getValue(ChestBlock.TYPE) != net.minecraft.world.level.block.state.properties.ChestType.RIGHT;

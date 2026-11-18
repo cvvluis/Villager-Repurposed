@@ -23,7 +23,7 @@ public final class Workstation {
 
 	public static BlockPos find(net.minecraft.server.level.ServerLevel level, BlockPos origin, Block block, int radius) {
 		for (BlockPos pos : BlockPos.betweenClosed(origin.offset(-radius, -2, -radius), origin.offset(radius, 4, radius))) {
-			if (level.hasChunkAt(pos) && level.getBlockState(pos).is(block)) return pos.immutable();
+			if (de.villagerplus.world.LoadedColumns.ready(level, pos) && level.getBlockState(pos).is(block)) return pos.immutable();
 		}
 		return null;
 	}
@@ -47,7 +47,7 @@ public final class Workstation {
 		BlockPos chestPos = c.village().chestPos(c.level());
 		if (chestPos == null) return false;
 		BlockPos origin = anchor == null ? chestPos : anchor.immutable();
-		if (!c.level().hasChunkAt(origin) || find(c.level(), origin, block, 8) != null) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(c.level(), origin) || find(c.level(), origin, block, 8) != null) return false;
 		Container chest = communal(c);
 		if (chest == null) return false;
 		Item item = block.asItem();
@@ -244,7 +244,7 @@ public final class Workstation {
 
 	private static boolean validAnvilSite(Ctx c, BlockPos spot, BlockState state) {
 		BlockPos floor = spot.below();
-		return c.level().hasChunkAt(spot) && c.level().hasChunkAt(spot.above()) && c.level().hasChunkAt(floor)
+		return de.villagerplus.world.LoadedColumns.ready(c.level(), spot) && de.villagerplus.world.LoadedColumns.ready(c.level(), spot.above()) && de.villagerplus.world.LoadedColumns.ready(c.level(), floor)
 			&& c.level().getBlockState(spot).isAir() && c.level().getBlockState(spot.above()).isAir()
 			&& c.level().getBlockState(floor).isFaceSturdy(c.level(), floor, Direction.UP)
 			&& state.canSurvive(c.level(), spot)
@@ -298,7 +298,7 @@ public final class Workstation {
 
 	private static BlockPos findMarkedFurnace(Ctx c, BlockPos chest) {
 		for (BlockPos pos : BlockPos.betweenClosed(chest.offset(-8, -2, -8), chest.offset(8, 4, 8))) {
-			if (!c.level().hasChunkAt(pos) || !c.level().getBlockState(pos).is(Blocks.FURNACE)
+			if (!de.villagerplus.world.LoadedColumns.ready(c.level(), pos) || !c.level().getBlockState(pos).is(Blocks.FURNACE)
 				|| !(c.level().getBlockEntity(pos) instanceof net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity furnace)
 				|| furnace.getAttached(VillagerPlus.COMMUNAL_FURNACE) == null) continue;
 			if (furnace.getAttached(VillagerPlus.SMITH_FURNACE) == null) {
@@ -373,7 +373,7 @@ public final class Workstation {
 
 	private static boolean canPlace(Ctx c, BlockPos spot) {
 		BlockPos floor = spot.below();
-		return c.level().hasChunkAt(spot) && c.level().hasChunkAt(spot.above()) && c.level().hasChunkAt(floor)
+		return de.villagerplus.world.LoadedColumns.ready(c.level(), spot) && de.villagerplus.world.LoadedColumns.ready(c.level(), spot.above()) && de.villagerplus.world.LoadedColumns.ready(c.level(), floor)
 			&& c.level().getBlockState(spot).isAir() && c.level().getBlockState(spot.above()).isAir()
 			&& c.level().getBlockState(floor).isFaceSturdy(c.level(), floor, Direction.UP)
 			&& c.level().getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class,

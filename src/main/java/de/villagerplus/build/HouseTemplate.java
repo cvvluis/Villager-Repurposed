@@ -122,15 +122,24 @@ public final class HouseTemplate {
 
 	/** Natural Badlands terracotta is only treated as house material inside a recognized generated piece. */
 	static boolean built(ServerLevel level, BlockPos p, boolean generatedPiece) {
-		BlockState s = level.getBlockState(p);
-		return !s.isAir() && s.getFluidState().isEmpty() && !s.canBeReplaced()
+		BlockState s = de.villagerplus.world.LoadedColumns.state(level, p);
+		return s != null && built(s, generatedPiece);
+	}
+
+	/** House material from a state already read out of a loaded chunk. */
+	public static boolean built(BlockState state) {
+		return built(state, false);
+	}
+
+	private static boolean built(BlockState s, boolean generatedPiece) {
+		return s != null && !s.isAir() && s.getFluidState().isEmpty() && !s.canBeReplaced()
 			&& (!VillageStyle.natural(s) || (generatedPiece && s.is(BlockTags.BADLANDS_TERRACOTTA)))
 			&& !s.is(Blocks.DIRT_PATH) && !s.is(Blocks.FARMLAND);
 	}
 
 	/** Das kleinste Jigsaw-Teil einer generierten Struktur, in dem {@code pos} liegt. */
 	private static PieceLookup pieceLookup(ServerLevel level, BlockPos pos) {
-		if (!level.hasChunkAt(pos)) return new PieceLookup(false, null);
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return new PieceLookup(false, null);
 		StructureStart start = level.structureManager().getStructureWithPieceAt(pos, holder -> true);
 		if (start == null || !start.isValid()) {
 			return new PieceLookup(false, null);
@@ -156,7 +165,7 @@ public final class HouseTemplate {
 
 	/** Use structure metadata first, then a small loaded-only flood for ordinary bed-and-door houses. */
 	public static Footprint homeSpacingFootprint(ServerLevel level, BlockPos bed) {
-		if (!level.hasChunkAt(bed) || !(level.getBlockState(bed).getBlock() instanceof BedBlock)) return null;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, bed) || !(level.getBlockState(bed).getBlock() instanceof BedBlock)) return null;
 		PieceLookup lookup = pieceLookup(level, bed);
 		// A structure start may contain no useful house piece, or its nearest piece may exceed our
 		// accepted bounds. Use it only when it converts to a bounded footprint; otherwise resolve
@@ -181,7 +190,7 @@ public final class HouseTemplate {
 		ArrayDeque<BlockPos> queue = new ArrayDeque<>();
 		for (BlockPos pos : BlockPos.betweenClosed(bed.offset(-2, -1, -2), bed.offset(2, 3, 2))) {
 			if (!inside(pos, minX, maxX, minY, maxY, minZ, maxZ)) continue;
-			if (!level.hasChunkAt(pos)) return null;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return null;
 			if (built(level, pos) && seen.add(pos.asLong())) {
 				queue.add(pos.immutable());
 			}
@@ -204,7 +213,7 @@ public final class HouseTemplate {
 				BlockPos next = pos.relative(direction);
 				if (next.getY() < bed.getY() - 1 || !inside(next, minX, maxX, minY, maxY, minZ, maxZ)
 					|| seen.contains(next.asLong())) continue;
-				if (!level.hasChunkAt(next)) return null;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, next)) return null;
 				if (!built(level, next)) continue;
 				seen.add(next.asLong());
 				queue.addLast(next);
@@ -656,7 +665,7 @@ public final class HouseTemplate {
 			BlockPos relative = mirrorPos(block.rel(), mirrored).rotate(rot);
 			BlockPos foundation = anchor.offset(relative);
 			BlockPos below = foundation.below();
-			if (!level.hasChunkAt(below) || !level.getBlockState(below).isFaceSturdy(level, below, Direction.UP)) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, below) || !level.getBlockState(below).isFaceSturdy(level, below, Direction.UP)) return false;
 		}
 		return lowest != Integer.MAX_VALUE;
 	}

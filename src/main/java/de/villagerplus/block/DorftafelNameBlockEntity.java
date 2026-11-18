@@ -28,6 +28,8 @@ public final class DorftafelNameBlockEntity extends BlockEntity {
 	private static final String RELIEF_KEY = "relief";
 	private static final int RELIEF_INTERVAL = 200;
 	private int[] relief = new int[0];
+	/** Game time before another relief pass is allowed. Stops an empty or failed scan from repeating every refresh. */
+	private long reliefNotBefore;
 
 	/** Samples for the 3D map on the large board; empty when none were computed yet. */
 	public int[] relief() {
@@ -51,16 +53,29 @@ public final class DorftafelNameBlockEntity extends BlockEntity {
 		String currentName = village == null ? "" : Network.villageName(village);
 		boolean changed = !currentName.equals(entity.villageName);
 		entity.villageName = currentName;
-		if (village != null && DorftafelBlock.widthOf(state) == 4
-			&& (entity.relief.length == 0 || Math.floorMod(serverLevel.getGameTime(), RELIEF_INTERVAL) == 0)) {
+		boolean reliefDue = village != null && DorftafelBlock.widthOf(state) == 4 && serverLevel.getGameTime() >= entity.reliefNotBefore
+			&& (entity.relief.length == 0 || de.villagerplus.village.VillageMap.terrainPending(serverLevel, village)
+				|| Math.floorMod(serverLevel.getGameTime(), RELIEF_INTERVAL) == 0);
+		if (reliefDue) {
 			try {
 				int[] fresh = sampleRelief(serverLevel, village);
 				if (!java.util.Arrays.equals(fresh, entity.relief)) {
 					entity.relief = fresh;
 					changed = true;
 				}
+				boolean pending = de.villagerplus.village.VillageMap.terrainPending(serverLevel, village);
+				boolean holes = false;
+				for (int sample : fresh) {
+					if ((sample & 15) == 11) {
+						holes = true;
+						break;
+					}
+				}
+				long wait = pending ? REFRESH_INTERVAL : holes ? RELIEF_INTERVAL / 2 : RELIEF_INTERVAL;
+				entity.reliefNotBefore = serverLevel.getGameTime() + wait;
 			} catch (RuntimeException e) {
-				// the map is decoration; a failed scan keeps the previous samples
+				// the map is decoration; a failed scan keeps the previous samples and backs off
+				entity.reliefNotBefore = serverLevel.getGameTime() + RELIEF_INTERVAL;
 			}
 		}
 		if (!changed) {
@@ -94,12 +109,13 @@ public final class DorftafelNameBlockEntity extends BlockEntity {
 				terrain[idx] = grid[0][row * grid48 + col] & 15;
 				marks[idx] = grid[1][row * grid48 + col] & 31;
 				BlockPos at = BlockPos.containing(wx, 64, wz);
-				if (terrain[idx] == 11 || !level.hasChunkAt(at)) {
+				Integer h = terrain[idx] == 11 ? null : de.villagerplus.world.LoadedColumns.height(level,
+					net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, at.getX(), at.getZ());
+				if (h == null) {
 					terrain[idx] = 11;
 					heights[idx] = Integer.MIN_VALUE;
 					continue;
 				}
-				int h = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, at.getX(), at.getZ());
 				heights[idx] = h;
 				min = Math.min(min, h);
 				max = Math.max(max, h);
