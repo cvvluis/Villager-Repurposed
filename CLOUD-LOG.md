@@ -1,414 +1,414 @@
 # CLOUD-LOG (Branch claude/village-growth-1111)
 
-Nur belegte Fakten. "In-world geprueft" = Dev-Server-Lauf; "Scratch" = reine Logik in einer Wegwerf-JVM; "kompiliert" = kein Nachweis.
+Documented facts only. "Checked in-world" = dev server run; "scratch" = pure logic in a throwaway JVM; "compiled" = no proof.
 
-## Umgebung (P0)
-- Branch von origin/codex/playtest-2026-11-11 (01db13e); Skripte, Sites.walksBackTo vorhanden.
-- JDK 25.0.5 per tools/cloud/setup-env.sh installiert (idempotent, ok). Python 3.13. 4 vCPU / 15 GB.
-- ./gradlew build: 1. Versuch scheiterte mit HTTP 429 von repo.maven.apache.org (Ratelimit, kein Hostblock); 2. Versuch BUILD SUCCESSFUL (49 s).
-- **BLOCKER: run/eula.txt fehlt** (EULA ist Sache des Nutzers, wird nicht von mir geschrieben). Damit sind alle Dev-Server-Laeufe
-  (autotest.sh, natural-run.sh) gesperrt. P0-Referenzwerte (66/140/318/30/22) konnten NICHT geprueft werden.
-- tools/cloud/*.sh gelesen: autotest.sh/setup-env.sh unter Linux plausibel (setup-env lief); autotest/natural-run ungetestet (EULA).
+## Environment (P0)
+- Branch from origin/codex/playtest-2026-11-11 (01db13e); scripts, Sites.walksBackTo present.
+- JDK 25.0.5 installed via tools/cloud/setup-env.sh (idempotent, ok). Python 3.13. 4 vCPU / 15 GB.
+- ./gradlew build: 1st attempt failed with HTTP 429 from repo.maven.apache.org (rate limit, no host block); 2nd attempt BUILD SUCCESSFUL (49 s).
+- **BLOCKER: run/eula.txt is missing** (the EULA is the user's matter, I do not write it). This blocks all dev server runs
+  (autotest.sh, natural-run.sh). The P0 reference values (66/140/318/30/22) could NOT be checked.
+- Read tools/cloud/*.sh: autotest.sh/setup-env.sh plausible under Linux (setup-env ran); autotest/natural-run untested (EULA).
 
-## P1 - Rueckholung ohne Route
-Geaendert: job/JobUtil.java (StrandWatch: noteRouteFailure/routeStrandSuspected/markRescued, Hooks in approachLong),
-job/JobManager.java (rescueStranded: neues Kriterium route, jetzt package-private), job/StrandRescueChecks.java (neue Fixture),
-dev/Checks090.java (Gruppe `strandrescue`).
-Regel: >= 3 Fehlschlaege (unreachable, Route <= 4 Knoten) in >= 600 Ticks, Luecke <= 400 Ticks, Position +-2 unveraendert; dann
-einmal Sites.walksBackTo(Position, villageReturn): nur wenn KEIN Rueckweg -> Teleport zur Dorfstrasse, Cooldown 1200 Ticks.
-Ausnahmen: Expedition (Holz), Bergleute (miningUntil+400, insideMine), Karawane (carryingFor). villageReturn wird nur im Verdachtsfall berechnet.
-Geprueft: Scratch (reine Zustandslogik) 10 Pruefungen PASS; kompiliert. NICHT in-world geprueft (EULA), Fixture `strandrescue` nicht ausgefuehrt,
-Bundles housesearch/roles/mining/miningcycle/woodcuttinggroup nicht gelaufen, kein Naturlauf.
-Naechster Schritt: nach EULA `bash tools/cloud/autotest.sh strandrescue` und housesearch.
+## P1 - Rescue Without a Route
+Changed: job/JobUtil.java (StrandWatch: noteRouteFailure/routeStrandSuspected/markRescued, hooks in approachLong),
+job/JobManager.java (rescueStranded: new criterion route, now package-private), job/StrandRescueChecks.java (new fixture),
+dev/Checks090.java (group `strandrescue`).
+Rule: >= 3 failures (unreachable, route <= 4 nodes) in >= 600 ticks, gap <= 400 ticks, position unchanged +-2; then
+once Sites.walksBackTo(position, villageReturn): only if there is NO way back -> teleport to the village street, cooldown 1200 ticks.
+Exceptions: expedition (wood), miners (miningUntil+400, insideMine), caravan (carryingFor). villageReturn is computed only in the suspected case.
+Checked: scratch (pure state logic) 10 checks PASS; compiled. NOT checked in-world (EULA), fixture `strandrescue` not executed,
+bundles housesearch/roles/mining/miningcycle/woodcuttinggroup did not run, no natural run.
+Next step: after the EULA, `bash tools/cloud/autotest.sh strandrescue` and housesearch.
 
-## P7 - Audit (strenger Maßstab: Code + registrierter In-world-Check; Lese-Agent, NICHT von mir nachgeprüft, Hinweis statt Beweis)
-### G (Agent-Bericht, Stichproben offen)
-| ID | Status | Kernbeleg | Lücke |
+## P7 - Audit (strict standard: code + registered in-world check; reading agent, NOT re-checked by me, a hint rather than proof)
+### G (agent report, spot checks open; status OK, TEIL = partial)
+| ID | Status | Core evidence | Gap |
 |---|---|---|---|
-| G01 | TEIL | HOUSE_MARGIN=12 (houseplot), JigsawHouseSpacingMixin/g01spacing, HouseYardChecks | kein Check einer generierten Siedlung; Bäume nur Setzling im Vorgarten |
-| G02 | OK | Builder.nextSpecial, milestones | DevelopmentChecks nur im Monolith-Pfad |
+| G01 | TEIL | HOUSE_MARGIN=12 (houseplot), JigsawHouseSpacingMixin/g01spacing, HouseYardChecks | no check of a generated settlement; trees only as a sapling in the front yard |
+| G02 | OK | Builder.nextSpecial, milestones | DevelopmentChecks only in the monolith path |
 | G03 | OK | StockPolicyChecks (stockpolicy) | - |
-| G04 | OK | StockPolicyChecks/FoodChecks | rohes Fleisch nicht explizit geprüft |
-| G05 | OK | StockPolicyChecks, EquipmentMaintenanceChecks | Reparaturmaterial im Zentraldepot, nicht in der Kammer |
+| G04 | OK | StockPolicyChecks/FoodChecks | raw meat not explicitly checked |
+| G05 | OK | StockPolicyChecks, EquipmentMaintenanceChecks | repair material in the central depot, not in the chamber |
 | G06 | OK | SchoolChecks (school) | - |
-| G07 | OK | KitchenFurnisherChecks | Topf/Brett optional (Fallback Barrel) |
-| G08 | OK | StationShedChecks | positiver Auslöser nicht geprüft |
-| G09 | TEIL | HouseDesignCatalog, TemplateLibraryChecks | keine CTOV-Asset-Palette; 3 Template-Familien |
+| G07 | OK | KitchenFurnisherChecks | pot/board optional (fallback barrel) |
+| G08 | OK | StationShedChecks | positive trigger not checked |
+| G09 | TEIL | HouseDesignCatalog, TemplateLibraryChecks | no CTOV asset palette; 3 template families |
 | G10 | OK | CivicCenter/Plaza/MarketPlanningChecks | - |
-| G11 | TEIL | Demolition/BuildingRelocation + Checks | nur spielerausgelöst, keine autonome Erkennung |
-| G12 | TEIL | MiningSafetyChecks | Teleport-Fallback in Mining.approachMineStep |
+| G11 | TEIL | Demolition/BuildingRelocation + checks | only player-triggered, no autonomous detection |
+| G12 | TEIL | MiningSafetyChecks | teleport fallback in Mining.approachMineStep |
 | G13 | OK | MineLifecycleChecks | - |
-| G14 | TEIL | NetworkDiscoveryChecks | geladene Nachbarn ohne Handelskontakt verlinkt; Eigenname ohne Check |
-| G15 | OK | WallConstructionChecks, developmentwall | keine Wand ab 192 Blöcken; kein Langzeit-Check |
-Hinweis: RailMetropolisChecks ohne Aufrufer; Gruppen ctov*, tafelgross, templatebuild u. a. nicht in AutoTest-Sammelarrays.
+| G14 | TEIL | NetworkDiscoveryChecks | loaded neighbors linked without trade contact; own name without a check |
+| G15 | OK | WallConstructionChecks, developmentwall | no wall from 192 blocks; no long-term check |
+Note: RailMetropolisChecks has no callers; groups ctov*, tafelgross, templatebuild and others are not in the AutoTest collection arrays.
 
-## P6 - Modpack-Vertraege (Analyse-Agent, Ids teils aus den Jars verifiziert; nichts davon in-world geprueft)
-Geaendert: fabric.mod.json `suggests` um farmersdelight, chefsdelight, morevillagers, sereneseasons, t_and_t, village_taverns erweitert (nur Metadaten).
-Ist-Stand: CompatChecks prueft nur "Namespace vorhanden". Tiefste Integration: Farmer's Delight (isModLoaded-Guards, aber direkte
-vectorwing-Imports in DelightKitchenCrafting -> Klassenladerisiko ohne Mod ungeprueft), Village Taverns (Soft-Dep via Registry, TavernChecks),
-CTOV (CtovHeadlessChecks, Lithostitched-Modifier).
-Luecken (nach Wirkung): (1) FD-Typen hinter Adapter-Klasse ziehen und Lauf ohne FD pruefen; (2) Serene Seasons: kein Saisoncode, Tags
-sereneseasons:*_crops und API SeasonHelper.getSeasonState(Level) verifiziert -> Farmer-Saisonplanung moeglich; (3) More Villagers: Jobs
-florist/oceanographer/engineer/iceman/enderian/netherian laufen als Traeger; ACHTUNG Compat.counterpart ersetzt Vanilla-Berufe durch Mod-Berufe
-gleicher Taetigkeit (z. B. hunter->butcher, miner->mason): Designentscheidung des Nutzers, bewusst NICHT geaendert; (4) Towns and Towers:
-Dorf-Tag village enthaelt towns_and_towers:village_*, Ozeandorf (Schiffe) ungetestet, kein Headless-Modus; (5) bartender (Village Taverns)
-ungemappt; (6) EMF/ETF/Fresh Animations: nur Client pruefbar (Overlay-Renderer E04RoleRenderer), Actually 3D Stuff: kein 26.2-Release.
-### J/U/A/R/E (Agent-Bericht, unverifiziert)
-| ID | Status | Luecke |
+## P6 - Modpack Contracts (analysis agent, ids partly verified from the jars; none of it checked in-world)
+Changed: fabric.mod.json `suggests` extended by farmersdelight, chefsdelight, morevillagers, sereneseasons, t_and_t, village_taverns (metadata only).
+Current state: CompatChecks only checks "namespace present". Deepest integration: Farmer's Delight (isModLoaded guards, but direct
+vectorwing imports in DelightKitchenCrafting -> class loader risk without the mod unchecked), Village Taverns (soft dependency via registry, TavernChecks),
+CTOV (CtovHeadlessChecks, Lithostitched modifier).
+Gaps (by impact): (1) move FD types behind an adapter class and check a run without FD; (2) Serene Seasons: no season code, tags
+sereneseasons:*_crops and API SeasonHelper.getSeasonState(Level) verified -> farmer season planning possible; (3) More Villagers: jobs
+florist/oceanographer/engineer/iceman/enderian/netherian run as carriers; NOTE Compat.counterpart replaces vanilla professions with mod professions
+of the same activity (e.g. hunter->butcher, miner->mason): the user's design decision, deliberately NOT changed; (4) Towns and Towers:
+village tag contains towns_and_towers:village_*, ocean village (ships) untested, no headless mode; (5) bartender (Village Taverns)
+unmapped; (6) EMF/ETF/Fresh Animations: only checkable on the client (overlay renderer E04RoleRenderer), Actually 3D Stuff: no 26.2 release.
+### J/U/A/R/E (agent report, unverified)
+| ID | Status | Gap |
 |---|---|---|
 | J01 | OK | - |
-| J02 | OK | FD/Chef's-Pfade nur im Dev-Pack |
-| J03 | TEIL | Schlachtung (hurtServer/Drops) ohne Check |
+| J02 | OK | FD/Chef's paths only in the dev pack |
+| J03 | TEIL | slaughter (hurtServer/drops) without a check |
 | J04 | OK | - |
 | J05 | OK | - |
-| J06 | OK | Kiesverbrauch durch Strasse/Schiene ungeprueft |
-| J07 | TEIL | keine Depot-Sortierung im Code; FreightLoading.work ohne Check |
+| J06 | OK | gravel consumption by road/rail unchecked |
+| J07 | TEIL | no depot sorting in the code; FreightLoading.work without a check |
 | J08 | OK | - |
 | J09 | OK | - |
-| J10 | OK | LamplighterJob selbst ungeprueft (nur Lighting.*) |
-| J11 | OK | Anwendung auf Patienten nicht bestaetigt |
-| J12 | TEIL | Lookout und Expedition.tick ohne Check |
-| U01 | TEIL | dorftafel_gross ohne 3D-Laternen/Pinnwand; Rendering ungeprueft |
-| U02 | OK | Kopf/Button nur manuell (ClientChecks) |
-| U03 | TEIL | nur ClientChecks (manuell, nicht registriert) |
-| U04 | TEIL | Zuweisen (AssignJob) ohne Server-Check; Klick manuell |
-| U05 | TEIL | Drag-and-drop nur ClientChecks |
-| U06 | OK | Reiter-UI nur manuell |
-| U07 | OK | Slider-Widgets ungeprueft |
-| U08 | OK | UI-Darstellung ungeprueft |
+| J10 | OK | LamplighterJob itself unchecked (only Lighting.*) |
+| J11 | OK | application to patients not confirmed |
+| J12 | TEIL | lookout and Expedition.tick without a check |
+| U01 | TEIL | dorftafel_gross without 3D lanterns/pinboard; rendering unchecked |
+| U02 | OK | header/button only manual (ClientChecks) |
+| U03 | TEIL | only ClientChecks (manual, not registered) |
+| U04 | TEIL | assigning (AssignJob) without a server check; click manual |
+| U05 | TEIL | drag-and-drop only ClientChecks |
+| U06 | OK | tab UI only manual |
+| U07 | OK | slider widgets unchecked |
+| U08 | OK | UI presentation unchecked |
 | A01 | OK | - |
-| A02 | OK | nur im Sammellauf |
+| A02 | OK | only in the collective run |
 | A03 | OK | - |
-| A04 | TEIL | kein Survival-/Leerlauf-Nachweis |
-| R01 | TEIL | Hebel fehlen im Code; nur Stichproben |
+| A04 | TEIL | no Survival/idle proof |
+| R01 | TEIL | levers missing in the code; only spot checks |
 | R02 | OK | - |
 | E01 | OK | - |
 | E02 | OK | - |
-| E03 | OK | Reiter-Darstellung nur manuell |
-| E04 | TEIL | Skins nur 4 Rollen; EMF/ETF/FA ungeprueft |
-Hinweis: UI-Schicht haengt an ClientChecks (nicht in Checks090/AutoTest registriert, braucht Client).
-### D/K/B (Agent-Bericht, unverifiziert)
-| ID | Status | Luecke |
+| E03 | OK | tab presentation only manual |
+| E04 | TEIL | skins only 4 roles; EMF/ETF/FA unchecked |
+Note: the UI layer depends on ClientChecks (not registered in Checks090/AutoTest, needs a client).
+### D/K/B (agent report, unverified)
+| ID | Status | Gap |
 |---|---|---|
 | D01 | OK | - |
-| D02 | OK | keine eigene Stufe "Unbekannt" in stage(), nur Namensverschleierung |
-| D03 | TEIL | Schwelle >=30 nie als Grenzfall geprueft (route=true umgeht sie); Partner-Bauer nicht bewiesen |
-| D04 | OK | nur 2 Paletten (Sand / Kies-Cobble) |
+| D02 | OK | no own stage "Unbekannt" (Unknown) in stage(), only name obfuscation |
+| D03 | TEIL | threshold >=30 never checked as a boundary case (route=true bypasses it); partner builder not proven |
+| D04 | OK | only 2 palettes (sand / gravel-cobble) |
 | D05 | OK | - |
-| D06 | OK | RailMetropolisChecks veralteter Wrapper |
-| D07 | TEIL | Roads.advanceRail laeuft im Dorf-Tick ohne Arbeiter/Swing/Sound/Partikel |
-| D08 | TEIL | Personenzug (passengerDock) ohne In-world-Check; Fracht nur Eisen belegt |
-| B01 | TEIL | Workstation nur Smith/Cook/Healer/Fletcher; Selbstbeschaffung ungeprueft |
-| B02 | TEIL | keine Aushub-Phase; kein End-to-End-Lauf aller Phasen |
-| B03 | TEIL | kein Check fuer Platzier-Sound/-Partikel/Swing |
-| B04 | TEIL | Schild-Platzierung ungeprueft; Name/Status erst per Rechtsklick |
+| D06 | OK | RailMetropolisChecks outdated wrapper |
+| D07 | TEIL | Roads.advanceRail runs in the village tick without worker/swing/sound/particles |
+| D08 | TEIL | passenger train (passengerDock) without an in-world check; freight only iron proven |
+| B01 | TEIL | Workstation only Smith/Cook/Healer/Fletcher; self-procurement unchecked |
+| B02 | TEIL | no excavation phase; no end-to-end run of all phases |
+| B03 | TEIL | no check for placement sound/particles/swing |
+| B04 | TEIL | sign placement unchecked; name/status only on right-click |
 | B05 | OK | - |
-| K01 | TEIL | CaravanTraderChecks nur ueber ClientChecks (Client), nicht in Checks090 |
+| K01 | TEIL | CaravanTraderChecks only via ClientChecks (client), not in Checks090 |
 | K02 | OK | - |
 | K03 | OK | - |
-| K04 | OK | Ueberschuss-Verkauf nur im Hauptlauf, nicht als Einzelgruppe |
+| K04 | OK | surplus sale only in the main run, not as an individual group |
 
-### Zaehlung (Widerspruch 18/62 vs. 30/62)
-Agenten-Urteil gesamt: 39 OK / 23 TEIL / 0 FEHLT (G 10 OK, D/K/B 9 OK, J/U/A/R/E 20 OK). Diese Zahl ist zu locker: sie zaehlt u. a. UI-Punkte
-(U02/U06/U07/U08/E03), die nur manuell/Client geprueft sind, sowie OK mit genannter Luecke. Streng = OK ohne genannte Luecke: **19/62**
-(G03, G06, G10, G13, D01, D05, D06, K02, K03, B05, J01, J04, J05, J08, J09, A01, A03, R02, E01), nahe der alten strengen Zahl 18/62.
-Die 30/62-Zaehlung ist damit nicht gedeckt. Einzelbelege wurden von mir nicht stichprobenartig nachgeprueft; die Zahl bleibt ein Hinweis.
-Echte Code-Luecken laut Audit: Hebel (R01), Depot-Sortierung (J07), 3D-Laternen/Pinnwand am dorftafel_gross (U01), Survival-/Leerlauf-Nachweis (A04),
-Personenzug-Check (D08), autonome Stoerbau-Erkennung (G11), Teleport-Fallback im Bergbau (G12).
+### Count (contradiction 18/62 vs. 30/62)
+Overall agent verdict: 39 OK / 23 TEIL / 0 FEHLT (= missing) (G 10 OK, D/K/B 9 OK, J/U/A/R/E 20 OK). This number is too loose: it counts, among others, UI items
+(U02/U06/U07/U08/E03) that were only checked manually/on the client, as well as OK with a named gap. Strict = OK without a named gap: **19/62**
+(G03, G06, G10, G13, D01, D05, D06, K02, K03, B05, J01, J04, J05, J08, J09, A01, A03, R02, E01), close to the old strict number 18/62.
+The 30/62 count is therefore not supported. I did not spot-check the individual evidence; the number remains a hint.
+Real code gaps according to the audit: levers (R01), depot sorting (J07), 3D lanterns/pinboard on dorftafel_gross (U01), Survival/idle proof (A04),
+passenger train check (D08), autonomous detection of disruptive buildings (G11), teleport fallback in mining (G12).
 
-## Stand / naechste Schritte
-Blocker 1: kein Push (403, Claude-GitHub-App ohne Schreibzugriff auf cvvluis/Villager-Repurposed; auch MCP create_branch 403). Commits liegen nur lokal im Branch claude/village-growth-1111.
-Blocker 2: run/eula.txt fehlt -> keine Serverlaeufe. P0-Referenzwerte, strandrescue-Gruppe, P2-P5 nur mit Server sinnvoll (P2/P3-Ablehnungsstatistik wird
-bereits geloggt: Mining.create-Log "Ablehnungen [ungeladen,Hoehe,Boden,Altmine,Bauplan,Vorschau,Eingangsplatz]", Bauplatz-Diagnose-Logs).
-Naechster Schritt nach Freigabe: `bash tools/cloud/autotest.sh housesearch`, dann `strandrescue`, dann Naturlauf `natural-run.sh vp-natural111-x 10 2400`.
+## Status / Next Steps
+Blocker 1: no push (403, Claude GitHub app without write access to cvvluis/Villager-Repurposed; MCP create_branch also 403). Commits exist only locally in branch claude/village-growth-1111.
+Blocker 2: run/eula.txt is missing -> no server runs. P0 reference values, the strandrescue group, P2-P5 only make sense with a server (the P2/P3 rejection statistics are
+already logged: Mining.create log "Ablehnungen [ungeladen,Hoehe,Boden,Altmine,Bauplan,Vorschau,Eingangsplatz]" (rejections [unloaded,height,ground,old mine,plan,preview,entrance spot]), building-site diagnosis logs).
+Next step after approval: `bash tools/cloud/autotest.sh housesearch`, then `strandrescue`, then natural run `natural-run.sh vp-natural111-x 10 2400`.
 
-## Update nach EULA (11.11. abends)
-- run/eula.txt wurde von mir auf ausdrueckliche Anweisung des Nutzers ("Beschreibt die Dateien selbst") geschrieben; Zustimmung zur Minecraft-EULA liegt damit beim Nutzer.
-- P0 (Dev-Server, Stand inkl. P1-Code, Minecraft 26.2, Java 25.0.5): housesearch PASS: builderpaths 66, houseplot 140, builderchecks 318, supply 30, planstonesupply 22 = Referenzwerte, keine Abweichung.
-- P1 in-world: `strandrescue` PASS 15 (Log: 2 Rueckholungen mit route=true aus der Grube, keine bei Bergbau-Fenster/Rampe/zu wenigen Fehlschlaegen).
-  Regression (je einzeln, je 1 Lauf): roles 112, mining 68, miningcycle 199, woodcuttinggroup 48 - alle = Referenz.
-  Noch offen fuer P1: Naturlauf (Zahl unreachable route<=4 / gestrandet), Fixture ist synthetisch.
+## Update After EULA (11.11. evening)
+- run/eula.txt was written by me on the user's explicit instruction ("Beschreibt die Dateien selbst", i.e. "Write the files yourselves"); consent to the Minecraft EULA therefore lies with the user.
+- P0 (dev server, state incl. P1 code, Minecraft 26.2, Java 25.0.5): housesearch PASS: builderpaths 66, houseplot 140, builderchecks 318, supply 30, planstonesupply 22 = reference values, no deviation.
+- P1 in-world: `strandrescue` PASS 15 (log: 2 rescues with route=true from the pit, none with mining window/ramp/too few failures).
+  Regression (each individually, 1 run each): roles 112, mining 68, miningcycle 199, woodcuttinggroup 48 - all = reference.
+  Still open for P1: natural run (count of unreachable route<=4 / stranded), the fixture is synthetic.
 
-## Natuerlicher Lauf vp-natural111-a (Seed 4242, ohne Fixtures, forceload als Spielerersatz; Stand inkl. P1-Code)
-Lauf 1: Tick 18-24236; Lauf 2 (cont1): 24243-48481. Keine Spielerpruefung.
-| Zaehler | Lauf 1 | Lauf 2 |
+## Natural Run vp-natural111-a (seed 4242, without fixtures, forceload as a player substitute; state incl. P1 code)
+Run 1: tick 18-24236; run 2 (cont1): 24243-48481. No player check.
+| Counter | Run 1 | Run 2 |
 |---|---|---|
-| Bauplan gestartet / fertiggestellt | 1 (house @166,66,-310, Tick 24018) / 0 | 1 (house @48,70,-425, Tick 48254) / 0 |
-| Hausplan-Abbruch | 0 | 1 ("kein Weg zum Bauplatz", Schritt 0, Tick 33260) |
-| Langweg unreachable gesamt / route<=4 | 5 / 0 | 8 / 2 |
-| gestrandet/zurueckgeholt | 3 (alle deep=true, route=false) | 3 (kumulativ im Zaehler; route=true nie ausgeloest) |
-| Steinbruch "kein Rueckweg" verworfen | 0 | 4 |
-| "keine Mine anlegbar" | 0 | 0 (Mine 103,67,-365 wurde angelegt, Abbau "von Hand") |
-Befunde: (1) P1-Route-Rueckholung wurde natuerlich nicht ausgeloest (route<=4 nur 2x, ueber Schwelle nie) -> Wirkung nur ueber Fixture belegt.
-(2) P3: Granary-Suche bleibt in beiden Laeufen ohne Treffer (nur "fortgesetzt"-Zeilen, keine Ablehnungsstatistik) - Agent claude/granary-site.
-(3) P4: Haus bekam nie sein Material (21 Bruchstein fehlten; 3000 Ticks Stillstand, Geruest-Fallback); Elsa verwirft Schluchten-Steinbrueche (ca. 50 Bloecke noerdlich)
-reihenweise, baut dann "von Hand" in der Mine -> Steinkette ist der Engpass - Agent claude/stone-supply. Bauplaetze liegen 68-81 Bloecke von der Glocke.
-(4) Dschungel: viele Bergleute "keine Spitzhacke" (Bedarf METAL), sonst "Bedarf verneint".
+| Build plan started / completed | 1 (house @166,66,-310, tick 24018) / 0 | 1 (house @48,70,-425, tick 48254) / 0 |
+| House plan abort | 0 | 1 ("kein Weg zum Bauplatz" (no path to the building site), step 0, tick 33260) |
+| Long path unreachable total / route<=4 | 5 / 0 | 8 / 2 |
+| stranded/rescued | 3 (all deep=true, route=false) | 3 (cumulative in the counter; route=true never triggered) |
+| Quarry "kein Rueckweg" (no way back) discarded | 0 | 4 |
+| "keine Mine anlegbar" (no mine can be created) | 0 | 0 (mine 103,67,-365 was created, mining "von Hand" (by hand)) |
+Findings: (1) P1 route rescue was not triggered naturally (route<=4 only 2x, never above the threshold) -> effect proven only via the fixture.
+(2) P3: the granary search stays without a hit in both runs (only "fortgesetzt" (continued) lines, no rejection statistics) - agent claude/granary-site.
+(3) P4: the house never got its material (21 cobblestone were missing; 3000 ticks of standstill, scaffold fallback); Elsa discards ravine quarries (about 50 blocks north)
+one after another, then builds "von Hand" in the mine -> the stone chain is the bottleneck - agent claude/stone-supply. Building sites lie 68-81 blocks from the bell.
+(4) Jungle: many miners "keine Spitzhacke" (no pickaxe) (need METAL), otherwise "Bedarf verneint" (need denied).
 
-## P4/P2 Steinkette (Agent claude/stone-supply, gemergt; Diff von mir gelesen)
-Geaendert: job/SurfaceStone.java (4 naechste Kandidaten ab Arbeiterposition, Region-Ablehnung Radius 10 fuer 24000 Ticks bei "kein Rueckweg" / 3000 bei "Weg nicht begehbar",
-3 Pruefungen je Tick, Retry 40 statt 200 Ticks, Handabbau 160->100 Ticks, Log "Stein gebrochen"), job/Mining.java (METAL ohne Spitzhacke: Werkzeugkammer/PlanStoneSupply.supplyMiningPickaxe),
-job/SurfaceStoneChecks.java (Gruppe surfacestone, neu), dev/Checks090.java.
-Messung (Agent): im Radius 64 nur 3 erreichbare freiliegende Steinzellen + 10-13 in der Schlucht (alle "kein Rueckweg"); erster Stein 650-1640 Ticks nach Planstart; Mine grub im Naturlauf nie
-(Tiefe 0); Bewohner bleiben auf dem Weg zum Mineneingang 700-1750 Ticks stehen (Ursache ungeklaert, vermutlich JobUtil.approach/Laufziel). Holz (27 Bretter, Geruest) fehlt zusaetzlich.
-Nach Merge von mir erneut gelaufen (je 1 Lauf): surfacestone 13, planstonesupply 22, strandrescue 15, mining 68, miningcycle 199. Agent-Zahlen: minelifecycle 35, woodcuttinggroup 48, roles 112.
-Naturlauf (Agent, 30x2400 Ticks): Planstart 24006, erster Stein 24716, dritter 25336, Schluchtziele verworfen 2 statt 10-13, KEIN Haus fertig -> P4 NICHT geloest. Plan-Starts schwanken stark (24k bis >48k).
+## P4/P2 Stone Chain (agent claude/stone-supply, merged; diff read by me)
+Changed: job/SurfaceStone.java (4 nearest candidates from the worker position, region rejection radius 10 for 24000 ticks on "kein Rueckweg" (no way back) / 3000 on "Weg nicht begehbar" (path not walkable),
+3 checks per tick, retry 40 instead of 200 ticks, hand mining 160->100 ticks, log "Stein gebrochen" (stone broken)), job/Mining.java (METAL without a pickaxe: tool chamber/PlanStoneSupply.supplyMiningPickaxe),
+job/SurfaceStoneChecks.java (group surfacestone, new), dev/Checks090.java.
+Measurement (agent): within radius 64 only 3 reachable exposed stone cells + 10-13 in the ravine (all "kein Rueckweg"); first stone 650-1640 ticks after plan start; the mine never dug in the natural run
+(depth 0); residents stay standing 700-1750 ticks on the way to the mine entrance (cause unclear, presumably JobUtil.approach/walk target). Wood (27 planks, scaffold) is also missing.
+Re-run by me after the merge (1 run each): surfacestone 13, planstonesupply 22, strandrescue 15, mining 68, miningcycle 199. Agent numbers: minelifecycle 35, woodcuttinggroup 48, roles 112.
+Natural run (agent, 30x2400 ticks): plan start 24006, first stone 24716, third 25336, ravine targets discarded 2 instead of 10-13, NO house finished -> P4 NOT solved. Plan starts fluctuate strongly (24k to >48k).
 
-## P3 Kornspeicher (Agent claude/granary-site, gemergt)
-Ursache (Agent, Zaehler "Sites.SCAN_REJECT"): im Taiga-Dorf scheitern ALLE Kandidaten schon in der Spaltenpruefung (Plan-Pruefung "geprueft"=0); der Entwurf braucht 13x13 mit 9 Hoehe.
-Ablehnungen im ebenen Lauf: ~52% echte Spreizung >5, ~12% nur wegen Baumstaemmen; Hanglage ist Hauptgrund. Dschungel gleich.
-Regel (nicht Fixture) geaendert: letzter-Ausweg-Pass fuer zivile Sonderbauten: nach flach/tolerant ein terrassierter Pass (3 Bloecke Relief, Anker an hoechster Spalte, tiefere Spalten per fillSupport,
-nichts abgegraben), wurzelnde Naturbaeume raeumbar (NaturalSitePreparation.inspect READY/CLEARABLE), Planbesitzer raeumt vor dem Bau, Helfer warten. Hausplatz-/12-Block-/Grubenregeln unveraendert.
-Dateien: build/Builder.java, village/Sites.java, village/VillageData.java (optionales Codec-Feld `terraced`, alte Staende laufen), build/BuilderPathChecks.java (+13 Checks, ein Zyklus-Check an die neue Laenge angepasst),
-tools/cloud/natural-run.sh (Server-Guard nur noch pro Worktree).
-Agent-Naturlaeufe: Granary-Plan startete in 5/5 Laeufen (~Tick 2400, z. B. 123,67,-349), nie fertiggestellt; 2 Abbrueche "kein Weg zum Bauplatz" (Wald). Dschungel: kein Plan.
-Nach Merge von mir (je 1 Lauf): builderpaths 79, houseplot 140, builderchecks 318, supply 30, planstonesupply 22, milestones 16, constructionsite 21, surfacestone 13, strandrescue 15.
-Offen: Fertigstellung des Kornspeichers, Dschungel, Wirkung auf Schule/Kueche/Station.
+## P3 Granary (agent claude/granary-site, merged)
+Cause (agent, counter "Sites.SCAN_REJECT"): in the taiga village ALL candidates already fail in the column check (plan check "geprueft" (checked)=0); the design needs 13x13 with 9 height.
+Rejections in the flat run: ~52% real spread >5, ~12% only because of tree trunks; slope is the main reason. Jungle the same.
+Rule (not fixture) changed: last-resort pass for civic special buildings: after flat/tolerant a terraced pass (3 blocks of relief, anchor at the highest column, lower columns via fillSupport,
+nothing dug away), rooted natural trees clearable (NaturalSitePreparation.inspect READY/CLEARABLE), plan owner clears before building, helpers wait. House plot/12-block/pit rules unchanged.
+Files: build/Builder.java, village/Sites.java, village/VillageData.java (optional codec field `terraced`, old states run), build/BuilderPathChecks.java (+13 checks, one cycle check adapted to the new length),
+tools/cloud/natural-run.sh (server guard now only per worktree).
+Agent natural runs: granary plan started in 5/5 runs (~tick 2400, e.g. 123,67,-349), never completed; 2 aborts "kein Weg zum Bauplatz" (forest). Jungle: no plan.
+After the merge by me (1 run each): builderpaths 79, houseplot 140, builderchecks 318, supply 30, planstonesupply 22, milestones 16, constructionsite 21, surfacestone 13, strandrescue 15.
+Open: completion of the granary, jungle, effect on school/kitchen/station.
 
-## Naturlauf vp-natural111-m1 (frisch, Seed 4242, 10x2400 = ~24k Ticks, gemergter Stand P1+P3+P4)
-Bauplan gestartet 2 (granary 122,67,-348 @Tick 2326; storage 84,68,-336 @2900), fertiggestellt 0, Hausplan-Abbruch 0, Langweg unreachable 12 (davon route<=4: 8), gestrandet 4 (1x deep, 3x route=true), Steinbruch-Rueckweg-verworfen 0, Mine-Fehler 0.
-P1 natuerlich ausgeloest: 3 Rueckholungen route=true (Ludwig 43, Clara 30, Luise 29 Bloecke von der Dorfkiste; Taetigkeiten Holzsuche fuer den Plan / Farmer-Saatsuche), keine bei Expedition/Bergbau.
-ABER: Ludwig (Planbesitzer des Granary) stand kurz danach wieder an derselben Stelle 165,70,-394 (route=1 unreachable zur Dorfkiste und zum Holzziel 186,69,-402) -> Granary "steht seit 3000 Ticks still".
-Die Rueckholung heilt das Symptom, nicht die Falle (Holzziel liegt ausserhalb der Rueckweg-Insel); Ziel-/Baumwahl sollte Rueckwege pruefen (wie SurfaceStone.walksBackTo) - offen.
+## Natural Run vp-natural111-m1 (fresh, seed 4242, 10x2400 = ~24k ticks, merged state P1+P3+P4)
+Build plan started 2 (granary 122,67,-348 @tick 2326; storage 84,68,-336 @2900), completed 0, house plan abort 0, long path unreachable 12 (of which route<=4: 8), stranded 4 (1x deep, 3x route=true), quarry way-back discarded 0, mine errors 0.
+P1 triggered naturally: 3 rescues route=true (Ludwig 43, Clara 30, Luise 29 blocks from the village chest; activities wood search for the plan / farmer seed search), none during expedition/mining.
+BUT: Ludwig (plan owner of the granary) stood again shortly after at the same spot 165,70,-394 (route=1 unreachable to the village chest and to the wood target 186,69,-402) -> granary "has been standing still for 3000 ticks".
+The rescue heals the symptom, not the trap (wood target lies outside the way-back island); target/tree choice should check return paths (like SurfaceStone.walksBackTo) - open.
 
-## P4b Laufstillstand / Mine (Agent claude/walk-stall, gemergt) und P4c Baumwahl (Agent claude/tree-walkback, gemergt)
-P4b Ursachen (Agent, Fixture + Messung): (1) MineMovementMixin/Mining.allowMineMovement verwarf die ganze Bewegung eines Laeufers mit Minen-Tag auf Eingangshoehe (Gravitationsanteil -0,078 -> "unter dem Eingang"),
-Natur-Beleg: 700 Ticks mv=0,00 mit gueltigem Pfad; jetzt Sperre nur noch im Stollenbereich (inMineArea); Terrassen- statt Rampenmodell (routeDeviation, Math.round).
-(2) Zaunpfosten-Falle (Kollisionshoehe 1,5, Teich-/Fischer-Pavillons, z. B. 135,68,-343): Vanilla-Pfad 1 Knoten; neu JobUtil.perchStepOff/stepOffPerch (max 2 seitlich, 3 runter).
-Gruppen (je einzeln, nach Merge von mir): minewalk 27 (neu), mining 68, miningcycle 199, minelifecycle 35, strandrescue 15, surfacestone 13, roles 112. Agent: a01behavior 20.
-Natur (Agent, Einzelketten): in 1 von 2 Ketten Mine Tiefe 7 (Erstgrabung ~20800 Ticks nach Laufstart), mit finalem Code kein Spatenstich: Bergleute pendeln, "holt Stollenmaterial" (ensureMineSupplies, Wartezeit bis 12000 Ticks) ist naechster Blocker.
-P4c: Woodcutting.findTree/Builder.selectPlanWoodTree verwerfen Baeume ohne Rueckweg (24000 Ticks Gedaechtnis, in-memory), TreeWalkbackChecks. Gruppen nach Merge (Konflikt in Checks090 von Hand geloest):
+## P4b Walk Standstill / Mine (agent claude/walk-stall, merged) and P4c Tree Choice (agent claude/tree-walkback, merged)
+P4b causes (agent, fixture + measurement): (1) MineMovementMixin/Mining.allowMineMovement discarded the whole movement of a walker with a mine tag at entrance height (gravity component -0.078 -> "below the entrance"),
+natural evidence: 700 ticks mv=0.00 with a valid path; now the lock applies only in the tunnel area (inMineArea); terrace instead of ramp model (routeDeviation, Math.round).
+(2) Fence post trap (collision height 1.5, pond/fisher pavilions, e.g. 135,68,-343): vanilla path 1 node; new JobUtil.perchStepOff/stepOffPerch (max 2 sideways, 3 down).
+Groups (each individually, after the merge by me): minewalk 27 (new), mining 68, miningcycle 199, minelifecycle 35, strandrescue 15, surfacestone 13, roles 112. Agent: a01behavior 20.
+Natural (agent, single chains): in 1 of 2 chains mine depth 7 (first digging ~20800 ticks after run start), with the final code not a single spade stroke: miners commute, "holt Stollenmaterial" (fetches tunnel material) (ensureMineSupplies, wait time up to 12000 ticks) is the next blocker.
+P4c: Woodcutting.findTree/Builder.selectPlanWoodTree discard trees without a way back (24000 ticks memory, in-memory), TreeWalkbackChecks. Groups after the merge (conflict in Checks090 resolved by hand):
 treewalkback 32, woodcuttinggroup 48, buildhaul 20, planstonesupply 22, supply 30, strandrescue 15, minewalk 27, a01behavior 20, builderchecks 318, mining 68.
-Beide Agents belegen unabhaengig: der Granary-Besitzer sass auf einem Zaunpfosten eines Teich-Pavillons (165,70,-394), Sites.walksBackTo meldet dort true (Modell laeuft ueber das Fass),
-Vanilla-Pfad 1 Knoten -> rescueStranded greift nicht; Baumregel griff im Naturlauf nie. Offen: Rettung/Modell fuer Pavillon-Fallen (Sites/JobManager), JobUtil.approachLong WALK_TARGET erst nach Langweg-Urteil,
-Farmer-Samensuche (gleicher Typ, FarmerJob), Mine "holt Stollenmaterial".
+Both agents independently document: the granary owner sat on a fence post of a pond pavilion (165,70,-394), Sites.walksBackTo reports true there (model runs over the barrel),
+vanilla path 1 node -> rescueStranded does not engage; the tree rule never engaged in the natural run. Open: rescue/model for pavilion traps (Sites/JobManager), JobUtil.approachLong WALK_TARGET only after the long-path verdict,
+farmer seed search (same type, FarmerJob), mine "holt Stollenmaterial".
 
-## Weitere Aenderungen von mir (nach den Agent-Merges)
-- JobManager.rescueStranded: echte Navigation (Builder.workPath zur Strasse: <=4 Knoten, kein kompletter Pfad) schlaegt das Block-Modell Sites.walksBackTo. strandrescue-F2: Pfosten mit komplettem Vanilla-Pfad
-  wird in Ruhe gelassen (Messung: route true/10 Knoten; meine erste Erwartung "Rettung" war falsch, Produktivcode richtig), eingemauerter Pfosten wird gerettet. Echte Pavillon-Falle (Fass-Oberseite, Modell true / Navigation 1 Knoten) NICHT als Fixture nachgebaut.
-- FarmerJob.findSeedGrass: die 3 naechsten Kandidaten brauchen einen Rueckweg (walksBackTo), Mulden-Regionen (Radius 6, +-2 Hoehe) werden 24000 Ticks gemerkt. Anlass: Theo/Martha wurden im Naturlauf m2 je 2x aus derselben Mulde (135,65,-352) geholt.
-  Fixture-Fund: erste Fassung (+-6 Hoehe) verwarf auch erreichbares Randgras -> auf +-2 verkleinert. Zahlen: strandrescue 19 (15 + F2 x2 + Saatgras x2), farmexpand 172.
-## Naturlaeufe auf dem Endstand (je frisch, Seed 4242, 2 Etappen = ~48k Ticks; Einzelwerte, kein Beleg fuer Verbesserung)
-| Lauf | Plan gestartet (Etappe 1 / 2) | fertig | gestrandet (route=true / deep) | unreachable route<=4 |
+## Further Changes by Me (after the agent merges)
+- JobManager.rescueStranded: real navigation (Builder.workPath to the street: <=4 nodes, no complete path) beats the block model Sites.walksBackTo. strandrescue-F2: a post with a complete vanilla path
+  is left alone (measurement: route true/10 nodes; my first expectation "rescue" was wrong, production code right), a walled-in post is rescued. A real pavilion trap (barrel top, model true / navigation 1 node) NOT rebuilt as a fixture.
+- FarmerJob.findSeedGrass: the 3 nearest candidates need a way back (walksBackTo), hollow regions (radius 6, +-2 height) are remembered for 24000 ticks. Reason: Theo/Martha were fetched 2x each from the same hollow (135,65,-352) in natural run m2.
+  Fixture finding: the first version (+-6 height) also discarded reachable edge grass -> reduced to +-2. Numbers: strandrescue 19 (15 + F2 x2 + seed grass x2), farmexpand 172.
+## Natural Runs on the Final State (each fresh, seed 4242, 2 stages = ~48k ticks; single values, no proof of improvement)
+| Run | Plan started (stage 1 / 2) | finished | stranded (route=true / deep) | unreachable route<=4 |
 |---|---|---|---|---|
-| m2 (vor Saatgras-Fix) | granary+storage / (Etappe 2: 0 Plaene, 12 Rueckholungen, 5x route=true) | 0 | 6 / 12 | 2 / 8 |
-| m3 (Endstand) | granary, storage, granary / storage, farm | 0 | 3 (0x route) / 7 (1x route=true) | 1 / 4 |
-Wiederholte Rueckholung derselben Personen: m2 Theo 2x, Martha 2x, Heinz 4x (Dschungel); m3 Hanna 3x (deep=true, Taiga).
-Ergebnis: P4 (fertiges Haus ohne Fixture) NICHT erreicht; in 48k Ticks nur Planstarts (granary 2349, storage 3007, farm 32418), 1 "Stein gebrochen" in m3 Etappe 2.
-Verbleibende Engpaesse (Zahlen oben und in den Agent-Abschnitten): Steinmenge/-wege, Holz/Gerüst, "holt Stollenmaterial" (Mine grub nur in 1 von 2 Agent-Ketten), wiederholte deep=true-Rueckholungen (Hanna), Dschungel ohne Granary-Plan.
+| m2 (before seed grass fix) | granary+storage / (stage 2: 0 plans, 12 rescues, 5x route=true) | 0 | 6 / 12 | 2 / 8 |
+| m3 (final state) | granary, storage, granary / storage, farm | 0 | 3 (0x route) / 7 (1x route=true) | 1 / 4 |
+Repeated rescue of the same people: m2 Theo 2x, Martha 2x, Heinz 4x (jungle); m3 Hanna 3x (deep=true, taiga).
+Result: P4 (finished house without a fixture) NOT reached; in 48k ticks only plan starts (granary 2349, storage 3007, farm 32418), 1 "Stein gebrochen" (stone broken) in m3 stage 2.
+Remaining bottlenecks (numbers above and in the agent sections): stone quantity/paths, wood/scaffold, "holt Stollenmaterial" (mine dug in only 1 of 2 agent chains), repeated deep=true rescues (Hanna), jungle without a granary plan.
 
-## P8 / D03 (12.11., ich)
-Roads.roadLinkActive(Link) ersetzt 3 inline-Bedingungen (route || relation >= 30); Verhalten unveraendert. 2 neue Checks in NetworkDiscoveryChecks (29/30-Grenze, Routen-Override, null).
-Gruppen: networkdiscovery 42 (inkl. 2 neue), roadbuild 53 (je 1 Lauf). D03 bleibt TEIL: kein Check, dass der Strassenbauer des Partnerdorfs seine Haelfte tatsaechlich baut.
+## P8 / D03 (12.11., me)
+Roads.roadLinkActive(Link) replaces 3 inline conditions (route || relation >= 30); behavior unchanged. 2 new checks in NetworkDiscoveryChecks (29/30 boundary, route override, null).
+Groups: networkdiscovery 42 (incl. 2 new), roadbuild 53 (1 run each). D03 stays TEIL: no check that the partner village's road builder actually builds its half.
 
-## P5 Schrittweise Haussuche (Agent claude/p5-housesearch, gemergt; Diff-Umfang von mir geprueft)
-Befund (Agent, Naturlauf 38 400 Ticks Dschungel-Mason-Planpruefung): Einwohner 10, Betten 17, Hausbedarf false im ganzen Lauf; nur granary (2614) und storage (7130) geplant. Pfad braucht needHouse (beds < pop oder beds==pop mit Obdachlosen)
-UND Scheitern aller Zufallspfade (ZoneAwareSites.find/findTolerant/findHouseLot, je bis 4 Entwuerfe). Auf Seed 4242 entsteht Hausbedarf erst bei Bevoelkerungswachstum (>=17 in frueheren Laeufen, Tick ~24000+).
-Aenderung: Builder.stepHouseSiteSearch/ongoingHouseSiteSearch/dropHouseSiteSearch (testbar), Cursor (Variante, Mindestradius, Phasenseed, naechster Kandidat, retryAt, lastUsedAt) in VillageData.Extra `house_site_search` (optional, Defaults; alte Saves laden),
-Neustart setzt aus dem Cursor fort (Verwurf bei geaendertem Radius/Legacy-Plan/24000 Ticks Leerlauf), Logzeilen begonnen/fortgesetzt(gedrosselt 1200)/gefunden/wiederaufgenommen; Suche selbst unveraendert (Budget 96, HOUSE_MARGIN 12).
-Dev-Hooks (nur per Umgebungsvariable, im Normalbetrieb aus): VP_FORCE_HOUSE_STEP_SEARCH=1, VP_HOUSE_SEARCH_BUDGET=n. Neue Gruppe housesitesearch (36).
-Natur (erzwungen per Hook): Taiga: begonnen/fortgesetzt/gefunden, Standort 97/66/-315 spaeter von prepareHouseLot verworfen (Luecke zwischen Standortpruefung und Lotvorbereitung); Dschungel: kein Standort bei Mindestradius 68; echter Neustart: "aus gespeichertem Cursor wiederaufgenommen (Kandidat 456)".
-Ohne Hook natuerlich NICHT ausgeloest (kein Hausbedarf) - P5-Abnahme "Check + Log im Naturlauf" nur mit Hook erfuellt.
-Nach Merge von mir (je 1 Lauf): housesitesearch 36, houseplot 140, builderchecks 318, builderpaths 79, supply 30, planstonesupply 22, milestones 16, constructionsite 21, strandrescue 19. Agent: houses 12748.
+## P5 Stepwise House Search (agent claude/p5-housesearch, merged; diff scope checked by me)
+Finding (agent, natural run 38 400 ticks jungle mason plan check): residents 10, beds 17, house need false during the entire run; only granary (2614) and storage (7130) planned. The path needs needHouse (beds < pop or beds==pop with homeless)
+AND failure of all random paths (ZoneAwareSites.find/findTolerant/findHouseLot, each up to 4 designs). On seed 4242, house need only arises with population growth (>=17 in earlier runs, tick ~24000+).
+Change: Builder.stepHouseSiteSearch/ongoingHouseSiteSearch/dropHouseSiteSearch (testable), cursor (variant, minimum radius, phase seed, next candidate, retryAt, lastUsedAt) in VillageData.Extra `house_site_search` (optional, defaults; old saves load),
+restart continues from the cursor (discarded on changed radius/legacy plan/24000 ticks idle), log lines begun/continued (throttled 1200)/found/resumed; the search itself unchanged (budget 96, HOUSE_MARGIN 12).
+Dev hooks (only via environment variable, off in normal operation): VP_FORCE_HOUSE_STEP_SEARCH=1, VP_HOUSE_SEARCH_BUDGET=n. New group housesitesearch (36).
+Natural (forced via hook): taiga: begun/continued/found, site 97/66/-315 later discarded by prepareHouseLot (gap between site check and lot preparation); jungle: no site at minimum radius 68; real restart: "aus gespeichertem Cursor wiederaufgenommen (Kandidat 456)" (resumed from stored cursor (candidate 456)).
+Without the hook NOT triggered naturally (no house need) - the P5 acceptance "check + log in the natural run" is met only with the hook.
+After the merge by me (1 run each): housesitesearch 36, houseplot 140, builderchecks 318, builderpaths 79, supply 30, planstonesupply 22, milestones 16, constructionsite 21, strandrescue 19. Agent: houses 12748.
 
-## P6 Laufzeit-Checks (CompatChecks.runStrict, Gruppe compat = 41 Checks, 1 Lauf, Dev-Pack mit allen Mods ausser Actually 3D Stuff)
-Neu: professionMapping (alle Mod-Berufe mit Compat.jobKey; erwartete Berufe von morevillagers/village_taverns muessen registriert sein) und seasonTags (Serene-Seasons-Block-Tags muessen aufloesbar sein).
-Gemessenes Mapping Compat.jobKey: morevillagers:explorer->cartographer, hunter->butcher, miner->mason, woodworker->fletcher; porter (ohne Tag/Schluesselwort): enderian, engineer, florist, iceman, netherian, oceanographer,
-village_taverns:bartender, chefsdelight:chef/cook (Koch wird in JobManager.jobFor separat zu COOK, nicht ueber jobKey). Serene Seasons Tags (Members): spring 19, summer 28, autumn 20, winter 11, year_round 8.
-Nicht geaendert: Mapping (Designentscheidung des Nutzers), kein Saison-Verhalten im Farmer. Weiter offen: FD-Adapter (Klassenladerisiko ohne Mod), T&T-Headless, EMF/ETF nur Client.
+## P6 Runtime Checks (CompatChecks.runStrict, group compat = 41 checks, 1 run, dev pack with all mods except Actually 3D Stuff)
+New: professionMapping (all mod professions with Compat.jobKey; expected professions of morevillagers/village_taverns must be registered) and seasonTags (Serene Seasons block tags must be resolvable).
+Measured mapping Compat.jobKey: morevillagers:explorer->cartographer, hunter->butcher, miner->mason, woodworker->fletcher; porter (without tag/keyword): enderian, engineer, florist, iceman, netherian, oceanographer,
+village_taverns:bartender, chefsdelight:chef/cook (the cook is mapped separately to COOK in JobManager.jobFor, not via jobKey). Serene Seasons tags (members): spring 19, summer 28, autumn 20, winter 11, year_round 8.
+Not changed: mapping (the user's design decision), no season behavior in the farmer. Still open: FD adapter (class loader risk without the mod), T&T headless, EMF/ETF client only.
 
-## P2/P4d Mine-Kit (Agent claude/mine-supplies, gemergt)
-Ursache (Agent, Naturlauf base2, Taiga): das Mine-Kit verlangte pro Abschnitt 1 Eiche-Brett als Gehweg, auch fuer Abschnitte ohne Stuetzen/Fackel; Fichtendorf kann es nicht herstellen -> Rudolf WAITING ab Tick 33138 (req f/p/w/t=0/0/1/0).
-Nach dem 12000-Tick-Fallback lief ensureMineSupplies weiter (Seiteneffekt: Stollen verlassen, Depotweg) gegen den Arbeitsbefehl -> Jakob pendelte ab Tick 51677 am Eingang. Zeitlinie base2: erster Handbruch 27347, erster gegrabener Block 49827, Tiefe 3 bei 51637, dann Stillstand bis >=72600.
-Aenderung (Mining.java, MineKitChecks.java, Checks090): Gehweg blockiert nie (nur Stuetzen/Balken/Fackeln), ein Depotbesuch deckt bis 6 Abschnitte voraus ab (nur was vollstaendig im Depot liegt), Fallback pro Abschnitt ohne Nachschubweg. Neue Gruppe minekit (9).
-Nach Merge von mir (je 1 Lauf): minekit 9, mining 68, miningcycle 199, minelifecycle 35, minewalk 27, surfacestone 13, planstonesupply 22, strandrescue 19, roles 112. (Agent: mining einmal fehlgeschlagen, danach 3/3 gruen - bekannter Flake.)
-Natur: kein belastbarer Vorher/Nachher-Beleg (ungeforcet: kein Steinbedarf/keine Mine in 30 Sprints; erzwungen: Handgrabung dominiert). Offen: Fackelabschnitte ohne Kohle warten bis 12000 Ticks.
-## Vorbestehender Fehler: Gruppe gravelcycle
-FAIL "the next lit section crafts and carries a torch from real public charcoal and stick stock without advancing e..." - verifiziert von mir: identische Meldung auf dem urspruenglichen Stand 01db13e (eigener Worktree, 1 Lauf) und nach allen Merges. NICHT durch diese Nacht verursacht, nicht behoben, Ursache nicht untersucht.
-## gravelcycle repariert (Agent, von mir nachgelaufen)
-Ursache (Agent, belegt): Mining.lightSection(i) = i>0 && i%6==3 (seit faca3ca); die Fixture in GravelQuarryChecks nutzte noch Abschnitt 12 (und 4/12/20 beim "alternating"-Check). Produktivcode richtig, nur Fixture-Indizes auf 9 bzw. 3/9/15 angepasst.
-Von mir nach dem Merge: gravelcycle 20 (vorher FAIL, auch auf 01db13e), mining 3 von 3 Laeufen 68 (Agent sah im eigenen Worktree 2 von 5 Fehlschlaege "three live work-lane leases ... visible=0"; bei mir nicht reproduziert, Flake-Rate unklar).
+## P2/P4d Mine Kit (agent claude/mine-supplies, merged)
+Cause (agent, natural run base2, taiga): the mine kit demanded 1 oak plank per section as a walkway, even for sections without supports/torch; a spruce village cannot craft it -> Rudolf WAITING from tick 33138 (req f/p/w/t=0/0/1/0).
+After the 12000-tick fallback, ensureMineSupplies kept running (side effect: leaving the tunnel, depot trip) against the work order -> Jakob commuted at the entrance from tick 51677. Timeline base2: first hand break 27347, first dug block 49827, depth 3 at 51637, then standstill until >=72600.
+Change (Mining.java, MineKitChecks.java, Checks090): the walkway never blocks (only supports/beams/torches), one depot visit covers up to 6 sections ahead (only what lies completely in the depot), fallback per section without a resupply path. New group minekit (9).
+After the merge by me (1 run each): minekit 9, mining 68, miningcycle 199, minelifecycle 35, minewalk 27, surfacestone 13, planstonesupply 22, strandrescue 19, roles 112. (Agent: mining failed once, afterwards 3/3 green - known flake.)
+Natural: no reliable before/after evidence (unforced: no stone need/no mine in 30 sprints; forced: hand digging dominates). Open: torch sections without charcoal wait up to 12000 ticks.
+## Pre-existing Failure: Group gravelcycle
+FAIL "the next lit section crafts and carries a torch from real public charcoal and stick stock without advancing e..." - verified by me: identical message on the original state 01db13e (own worktree, 1 run) and after all merges. NOT caused by this night, not fixed, cause not investigated.
+## gravelcycle Repaired (agent, re-run by me)
+Cause (agent, documented): Mining.lightSection(i) = i>0 && i%6==3 (since faca3ca); the fixture in GravelQuarryChecks still used section 12 (and 4/12/20 in the "alternating" check). Production code right, only fixture indices adapted to 9 or 3/9/15.
+By me after the merge: gravelcycle 20 (before FAIL, also on 01db13e), mining 3 of 3 runs 68 (the agent saw 2 of 5 failures "three live work-lane leases ... visible=0" in its own worktree; not reproduced by me, flake rate unclear).
 
-## Naturlauf vp-natural111-m4 (frisch, Seed 4242, 2 Etappen ~48k Ticks, voller Merge-Stand inkl. P5, Mine-Kit, Seed-Rueckweg; Einzellauf)
-Etappe 1: Plan gestartet 2 (granary 122,67,-342 @2335, storage 187,70,-431 @3011), fertig 0, gestrandet 7 (route=true 3, deep 4), unreachable route<=4: 7. Etappe 2: Plan 1 (granary @24986), fertig 0, gestrandet 0, unreachable<=4: 8, Steinbruch-Rueckweg verworfen 1, "keine Mine anlegbar" 1, "Stein gebrochen" 3, Tiefe>0: 0.
-Granary 1 stand 3183 Ticks still (Besitzerin Hilde @110,65,-394 'faellt einen Baum'; fehlt: crafting_table, deepslate_bricks x18, scaffolding x7, Kiste Bruchstein/Stein/Ziegel/Kohle 0), wechselte auf Ersatzpalette, Schritt 0 abgebrochen
-("kein Weg zum Bauplatz ... no free reachable stand after 3 probes", worker 110,65,-391) -> naechster granary-Plan @24986. Hilde steht im Teich-/Pavillonbereich (vgl. P4c-Fallen bei 105,65,-393).
-Baumwahl "streng": 154 von 154 Staemmen "im Dorf/Gebaeude" (Dorfgrenzen umfassen den ganzen Suchbereich) - die Fallback-Kette locker/erweitert greift, Hilde faellt Baeume: kein Holzdefekt, aber die Palette (deepslate_bricks x18) ist im Taiga-Dorf kaum beschaffbar.
-Weiterhin: kein Haus/Bau fertig in 48k Ticks.
+## Natural Run vp-natural111-m4 (fresh, seed 4242, 2 stages ~48k ticks, full merge state incl. P5, mine kit, seed way-back; single run)
+Stage 1: plan started 2 (granary 122,67,-342 @2335, storage 187,70,-431 @3011), finished 0, stranded 7 (route=true 3, deep 4), unreachable route<=4: 7. Stage 2: plan 1 (granary @24986), finished 0, stranded 0, unreachable<=4: 8, quarry way-back discarded 1, "keine Mine anlegbar" (no mine can be created) 1, "Stein gebrochen" (stone broken) 3, depth>0: 0.
+Granary 1 stood still for 3183 ticks (owner Hilde @110,65,-394 'faellt einen Baum' (fells a tree); missing: crafting_table, deepslate_bricks x18, scaffolding x7, chest cobblestone/stone/bricks/charcoal 0), switched to the substitute palette, step 0 aborted
+("kein Weg zum Bauplatz ... no free reachable stand after 3 probes", worker 110,65,-391) -> next granary plan @24986. Hilde stands in the pond/pavilion area (cf. P4c traps at 105,65,-393).
+Tree choice "strict": 154 of 154 trunks "in village/building" (village bounds cover the entire search area) - the fallback chain loose/extended engages, Hilde fells trees: no wood defect, but the palette (deepslate_bricks x18) is hardly procurable in the taiga village.
+Still: no house/building finished in 48k ticks.
 
-## P4e Palette beim Planstart (Agent claude/plan-palette, gemergt)
-Ursache (Agent, Naturlauf palbase): Palette.detect liest die CTOV-Haeuser (Waende light_blue/lime_terracotta, Sockel deepslate_bricks, Fenster white_stained_glass_pane) - alle vier Rollen laut Supply.obtainable nicht beschaffbar; Plan startet mit der rohen Palette,
-Beschaffbarkeitspruefung (Supply.obtainablePalette) nur nach Karawanenbesuch oder nach 3000 Ticks Stillstand. Erste 3148 Ticks (Start 2385, Fallback ~5533): Wunschliste unveraendert (crafting_table 1, deepslate_bricks 18, scaffolding 4, spruce_planks 30), Geruest (Bambus/Schnur) nicht herstellbar,
-Holz: Baum 85 Bloecke entfernt unerreichbar. Zweitplan storage stand 14614 Ticks still.
-Aenderung: Builder.detectForPlan ersetzt unbeschaffbare Rollen beim Planstart (Supply.lookAlike: deepslate_bricks->stone_bricks, cobbled_deepslate->cobblestone, bricks->stone_bricks ...; Terrakotta -> Biompalette), ohne Schmelzmoeglichkeit Steinziegel->Bruchstein,
-Variantenbit 2 (Ersatzpalette), Geruest sofort verworfen wenn weder Vorrat noch Rezept (waiveUncraftableScaffolding). Dateien: build/Supply.java, Palette.java, Builder.java, PaletteFallbackChecks.java (Gruppe palettefallback 21), Checks090.
-Nach Merge von mir (je 1 Lauf): palettefallback 21, builderchecks 318, supply 30, planstonesupply 22, builderpaths 79, houseplot 140, milestones 16, constructionsite 21, housesitesearch 36, strandrescue 19. Agent: houses 12748.
-Natur (Agent, Einzellaeufe): palfix2 Wunschliste sofort cobblestone 18 + spruce_planks 30; erster Stein 2097 Ticks nach Planstart (Zweitplan); KEIN Block gesetzt in allen Laeufen; spruce_planks 30 blieb ~17000 Ticks offen (Baeume unerreichbar). Offen: Holzbeschaffung, Terrakotta-Optik -> Bruchstein.
+## P4e Palette at Plan Start (agent claude/plan-palette, merged)
+Cause (agent, natural run palbase): Palette.detect reads the CTOV houses (walls light_blue/lime_terracotta, base deepslate_bricks, windows white_stained_glass_pane) - all four roles not procurable according to Supply.obtainable; the plan starts with the raw palette,
+procurability check (Supply.obtainablePalette) only after a caravan visit or after 3000 ticks of standstill. First 3148 ticks (start 2385, fallback ~5533): wish list unchanged (crafting_table 1, deepslate_bricks 18, scaffolding 4, spruce_planks 30), scaffold (bamboo/string) not craftable,
+wood: tree 85 blocks away unreachable. Second plan storage stood still for 14614 ticks.
+Change: Builder.detectForPlan replaces unprocurable roles at plan start (Supply.lookAlike: deepslate_bricks->stone_bricks, cobbled_deepslate->cobblestone, bricks->stone_bricks ...; terracotta -> biome palette), without a smelting option stone bricks->cobblestone,
+variant bit 2 (substitute palette), scaffold discarded immediately if there is neither stock nor recipe (waiveUncraftableScaffolding). Files: build/Supply.java, Palette.java, Builder.java, PaletteFallbackChecks.java (group palettefallback 21), Checks090.
+After the merge by me (1 run each): palettefallback 21, builderchecks 318, supply 30, planstonesupply 22, builderpaths 79, houseplot 140, milestones 16, constructionsite 21, housesitesearch 36, strandrescue 19. Agent: houses 12748.
+Natural (agent, single runs): palfix2 wish list immediately cobblestone 18 + spruce_planks 30; first stone 2097 ticks after plan start (second plan); NO block placed in all runs; spruce_planks 30 stayed open ~17000 ticks (trees unreachable). Open: wood procurement, terracotta look -> cobblestone.
 
-## Rueckhol-Schleifen (Agent claude/rescue-loops, gemergt; von mir nach Merge nachgelaufen)
-Ursache (Agent, Naturlaeufe loop1-4, Diagnose-Logs entfernt): nicht die Aufgabenziele, sondern die Regel `deep` (Y < tiefster Anker - 8) in JobManager.rescueStranded: Rueckholung beim ersten Blick auf Bewohner, die nur auf einer legitimen Geländestufe stehen
-(Dschungel: Terrassen y 85-89, Bett y 94; 7 von 8 Dschungel-Rueckholungen mit Ziel=-: Idle-Stroll/Pause/Gather). Danach fuehrt dieselbe Aktivitaet wieder hinunter. Echte Falle: Taiga-Schlucht 151,56,-365 (Faelle 5-8 Bloecke).
-Beobachtungslauf ohne Rueckholung: Tief-Episoden von 9 bis 2350 Ticks (Ausreisser 4399 Viktor), Bewohner kamen selbst hoch; walksBackTo allein zu streng (Martha/Heinz model=false, kamen trotzdem hoch).
-Fix (JobManager, nur Regel): Karenzzeit 3600 Ticks ununterbrochene Tiefe (Luecke <600), Aufgabenziel-Ausnahme mit gecachtem Rueckweg, Sturz >3,5 Bloecke in 600 Ticks ueberspringt die Karenz; Log nennt jetzt Position VOR dem Teleport, Tiefendauer, Aktivitaet. Route-Rescue/far/Expedition/Fischer unveraendert.
-Gruppen (von mir, je 1 Lauf nach Merge): deepstrand 17 (neu), strandrescue 19, roles 112, mining 68, a01behavior 20, farmexpand 172, woodcuttinggroup 48, buildhaul 20, miningcycle 199.
-Natur (Agent, je 1 Lauf/Etappe): vorher Etappe1 3 deep, Etappe2 3 deep (Jakob 3x ueber 3 Etappen); nachher Etappe1 1 (route), Etappe2 4 (1 deep, 3 route); kein Bewohner 2x gerettet. Kosten: echter Grubenfall ohne erkannten Sturz wartet jetzt bis 3600 Ticks (Rosa/Lotte).
-Offen: Sturz-Abkuerzung natuerlich nie ausgeloest (nur Fixture); mehr route=true-Faelle im Endlauf ungeklaert; echte Falle Dschungel-Terrasse 1505-1509,87,-361 (Builder "unreachable route=52").
+## Rescue Loops (agent claude/rescue-loops, merged; re-run by me after the merge)
+Cause (agent, natural runs loop1-4, diagnostic logs removed): not the task targets, but the rule `deep` (Y < lowest anchor - 8) in JobManager.rescueStranded: rescue at the first look at residents who are only standing on a legitimate terrain step
+(jungle: terraces y 85-89, bed y 94; 7 of 8 jungle rescues with target=-: idle stroll/pause/gather). Afterwards the same activity leads down again. Real trap: taiga ravine 151,56,-365 (falls of 5-8 blocks).
+Observation run without rescue: deep episodes from 9 to 2350 ticks (outlier 4399 Viktor), residents came up by themselves; walksBackTo alone too strict (Martha/Heinz model=false, came up anyway).
+Fix (JobManager, rule only): grace period 3600 ticks of uninterrupted depth (gap <600), task-target exception with cached way back, fall >3.5 blocks within 600 ticks skips the grace period; the log now names the position BEFORE the teleport, depth duration, activity. Route rescue/far/expedition/fisher unchanged.
+Groups (by me, 1 run each after the merge): deepstrand 17 (new), strandrescue 19, roles 112, mining 68, a01behavior 20, farmexpand 172, woodcuttinggroup 48, buildhaul 20, miningcycle 199.
+Natural (agent, 1 run/stage each): before stage 1 3 deep, stage 2 3 deep (Jakob 3x over 3 stages); after stage 1 1 (route), stage 2 4 (1 deep, 3 route); no resident rescued 2x. Cost: a real pit case without a detected fall now waits up to 3600 ticks (Rosa/Lotte).
+Open: fall shortcut never triggered naturally (only fixture); more route=true cases in the final run unexplained; real trap jungle terrace 1505-1509,87,-361 (builder "unreachable route=52").
 
-## Naturlauf vp-natural111-m5 (voller Merge-Stand inkl. plan-palette + rescue-loops; Etappe 1 durch fremden Server-Kill ausgefallen, Etappe "cont1" lief ab Tick 16 bis 24324 = ein 24k-Lauf)
-Plan gestartet 3 (granary @2316 bei 118,67,-349, storage @2799, granary @8886 bei 115,67,-341; alle "startet mit beschaffbarer Palette", Wunschliste sofort cobblestone#18 + spruce_planks#30, Geruest sofort verworfen), fertig 0.
-granary 1: "Schritt 0 (baut) - Ergebnis false" -> "Schritt 0 wird abgebrochen (Bauplatz nicht erreicht) Stand 118,67,-358" binnen ~400 Ticks; granary 2 aehnlich -> Agent claude/granary-site (Aufgabe: Erreichbarkeit des terrassierten Bauplatzes).
-gestrandet 2 (beide Matthias, route=true, 136,68,-343 bzw. 159,67,-357, Aktivitaet 'wartet auf einen freien Pausenplatz'): Pavillon-Fleck (135,68,-343) bleibt; unreachable gesamt 3 (<=4: 2) - niedrigster Wert aller Laeufe (Einzellauf, kein Beleg). Steinbruch 'Stein gebrochen' 3, keine Mine/Tiefe>0.
+## Natural Run vp-natural111-m5 (full merge state incl. plan-palette + rescue-loops; stage 1 lost to a foreign server kill, stage "cont1" ran from tick 16 to 24324 = one 24k run)
+Plan started 3 (granary @2316 at 118,67,-349, storage @2799, granary @8886 at 115,67,-341; all "startet mit beschaffbarer Palette" (starts with procurable palette), wish list immediately cobblestone#18 + spruce_planks#30, scaffold discarded immediately), finished 0.
+granary 1: "Schritt 0 (baut) - Ergebnis false" (step 0 (building) - result false) -> "Schritt 0 wird abgebrochen (Bauplatz nicht erreicht) Stand 118,67,-358" (step 0 is aborted (building site not reached)) within ~400 ticks; granary 2 similar -> agent claude/granary-site (task: reachability of the terraced building site).
+stranded 2 (both Matthias, route=true, 136,68,-343 and 159,67,-357, activity 'wartet auf einen freien Pausenplatz' (waits for a free break spot)): pavilion spot (135,68,-343) remains; unreachable total 3 (<=4: 2) - lowest value of all runs (single run, no proof). Quarry 'Stein gebrochen' (stone broken) 3, no mine/depth>0.
 
-## P8 / B04 Hausschild (ich)
-Neu: village/HousingSignChecks.java (Gruppe housesign, 7 Checks: Bett->Zuhause/Tuer, Schild in Tuerwandebene neben der oberen Tuerhaelfte, Farmer-Symbol 1 + 3 Sterne, signText "1:1:3", gemeinsames Haus-Symbol 12 bei zwei Bewohnern, genau 1 Schild).
-Produktivfehler gefunden (nicht nur Check): hatte ein neu einziehender Mitbewohner die kleinere UUID, wurde er Pfleger des gemeinsamen Schilds, kannte es aber nicht (signPos leer) und setzte ein zweites Schild; das alte blieb mit falschem Symbol. 2 von 5 Fixture-Laeufen fielen durch.
-Fix: Housing.updateSign uebernimmt vor placeSign das Schild eines Mitbewohners (signPos + Block ist Dorfschild). updateSign dafuer paketsichtbar. Danach housesign 8 von 8 Laeufen PASS 7; roles 112.
-Lueckenhinweis: im Fixture meldet level.canSeeSky auf BEIDEN Seiten der Wand true; "Schild aussen" ist deshalb NICHT bewiesen (Produktivlogik nimmt bei zwei freien Seiten die zuletzt gepruefte). B04 bleibt TEIL (Name/Status stehen erst per Rechtsklick auf dem Schild).
+## P8 / B04 House Sign (me)
+New: village/HousingSignChecks.java (group housesign, 7 checks: bed->home/door, sign in the door wall plane next to the upper door half, farmer symbol 1 + 3 stars, signText "1:1:3", shared house symbol 12 with two residents, exactly 1 sign).
+Production error found (not just a check): if a newly moving-in housemate had the smaller UUID, he became the keeper of the shared sign but did not know it (signPos empty) and placed a second sign; the old one stayed with the wrong symbol. 2 of 5 fixture runs failed.
+Fix: Housing.updateSign takes over a housemate's sign before placeSign (signPos + block is a village sign). updateSign made package-visible for this. Afterwards housesign 8 of 8 runs PASS 7; roles 112.
+Gap note: in the fixture level.canSeeSky reports true on BOTH sides of the wall; "sign outside" is therefore NOT proven (production logic takes the last checked one when two sides are free). B04 stays TEIL (name/status appear only on right-click on the sign).
 
-## P3 Folge: Granary-Abbruch bei Schritt 0 (Agent claude/granary-site, gemergt)
-Ursache (Agent, Abbruchzeilen im Naturlauf belegt): nicht Bauplatz/Baeume, sondern die Zeitueberwachung des Besitzers in continuePlan (1200 Ticks ohne Annaeherung -> rejectPlot + abort, Platz samt geraeumter Baeume verworfen).
-(1) veraltete Wegverfolgung nach Abwesenheit (Material holen/anderer Job): bester Abstand 6,0 gespeichert, Arbeiter bei 22; 50,1 vs 55,5; 30,6 vs 58,5 -> las sich als 1200 Ticks ohne Fortschritt.
-(2) Besitzer kommt von seinem Standort nicht los: 159,68,-357 (Kuechengebaeude, Pfad 1 Knoten) und 137,67,-343 (eingezaeuntes Becken; Pfad nodes=42 erreichbar, Besitzer bewegt sich trotzdem nicht - Ursache ungeklaert, auch storage betroffen).
-Fix (Builder.java): noteStandVisit setzt nach >200 Ticks Abwesenheit Abstands-/Routen-/Fehlerzaehler zurueck, eigener Fortschrittsstempel fuer Schritt-0-Abbruch; handOverStuckOwner (bei Schritt 0 nicht am Stand + Sites.walksBackTo vom Plan zur Strasse -> Besitzer pausiert 2400 Ticks, naechster Bewohner uebernimmt, max 3 Uebergaben/Plan, Platz bleibt); Diagnose Standdiagnose/Abbruchzeile mit 11x11-Karte.
-Gruppen (von mir nach Merge, je 1 Lauf): builderpaths 86 (79 + 7 neue standAbsence-Fixtures), builderchecks 318, houseplot 140, supply 30, planstonesupply 22, milestones 16, constructionsite 21, housesitesearch 36, palettefallback 21, strandrescue 19, deepstrand 17, housesign 7.
-Natur (Agent): mit Absenz-Reset kein Abbruch, Plaene bis Schritt 119/437 bzw. 127/443 (bezahlte Bloecke gesetzt = erste gesetzte Bloecke ueberhaupt); mit Uebergabe 0 Granary-Abbrueche, Otto uebernimmt (Schritt 137/442). Fertiggestellt 0 - ab Schritt ~119 wartet der Plan auf cobblestone/spruce_planks.
-Offen: warum Bewohner im Zaunbecken/Kuechengebaeude feststecken (umgangen, nicht behoben); Wirkung auf Haeuser/Dschungel ungetestet.
+## P3 Follow-up: Granary Abort at Step 0 (agent claude/granary-site, merged)
+Cause (agent, abort lines documented in the natural run): not building site/trees, but the owner's time monitoring in continuePlan (1200 ticks without approach -> rejectPlot + abort, site including cleared trees discarded).
+(1) stale path tracking after absence (fetching material/another job): best distance 6.0 stored, worker at 22; 50.1 vs 55.5; 30.6 vs 58.5 -> read as 1200 ticks without progress.
+(2) the owner cannot get away from his location: 159,68,-357 (kitchen building, path 1 node) and 137,67,-343 (fenced basin; path nodes=42 reachable, the owner still does not move - cause unclear, storage also affected).
+Fix (Builder.java): noteStandVisit resets distance/route/error counters after >200 ticks of absence, own progress stamp for the step-0 abort; handOverStuckOwner (at step 0 not at the stand + Sites.walksBackTo from the plan to the street -> owner pauses 2400 ticks, next resident takes over, max 3 handovers/plan, site stays); diagnosis stand diagnosis/abort line with 11x11 map.
+Groups (by me after the merge, 1 run each): builderpaths 86 (79 + 7 new standAbsence fixtures), builderchecks 318, houseplot 140, supply 30, planstonesupply 22, milestones 16, constructionsite 21, housesitesearch 36, palettefallback 21, strandrescue 19, deepstrand 17, housesign 7.
+Natural (agent): with absence reset no abort, plans up to step 119/437 and 127/443 (paid blocks placed = first placed blocks at all); with handover 0 granary aborts, Otto takes over (step 137/442). Completed 0 - from step ~119 the plan waits for cobblestone/spruce_planks.
+Open: why residents get stuck in the fence basin/kitchen building (bypassed, not fixed); effect on houses/jungle untested.
 
-## Naturlauf vp-natural111-m6 (voller Stand inkl. granary-site-Folge, 2 Etappen = 48 437 Ticks, Einzellauf)
-Etappe 1: Plaene gestartet 3 (granary 86,68,-339 @2363; storage 167,66,-312 @2632 und 195,65,-363 @5922), fertig 0, gestrandet 1, unreachable<=4: 2.
-Etappe 2: kein neuer Plan; Planstand granary 119/441, storage 75/266 (erste gesetzte Bloecke in einem Naturlauf); Mine Eingang 104,67,-375 gegraben bis Tiefe 11 (Heinz/Elsa, "von Hand"); gestrandet 1; unreachable 21 (<=4: 3); Steinbruch-Rueckweg verworfen 2.
-Engpass jetzt: Bruchstein. granary "steht seit 15611 Ticks still ... Kiste Bruchstein/Stein/Ziegel/Kohle=0/0/0/22, fehlt cobblestone x18"; storage fehlt cobblestone x20 + spruce_log/planks. Gegrabener Stein erreicht den Plan nicht -> Agent claude/mine-supplies (Frage: wohin geht der Stein?).
+## Natural Run vp-natural111-m6 (full state incl. granary-site follow-up, 2 stages = 48 437 ticks, single run)
+Stage 1: plans started 3 (granary 86,68,-339 @2363; storage 167,66,-312 @2632 and 195,65,-363 @5922), finished 0, stranded 1, unreachable<=4: 2.
+Stage 2: no new plan; plan state granary 119/441, storage 75/266 (first placed blocks in a natural run); mine entrance 104,67,-375 dug to depth 11 (Heinz/Elsa, "von Hand" (by hand)); stranded 1; unreachable 21 (<=4: 3); quarry way-back discarded 2.
+Bottleneck now: cobblestone. granary "steht seit 15611 Ticks still ... Kiste Bruchstein/Stein/Ziegel/Kohle=0/0/0/22, fehlt cobblestone x18" (has been standing still for 15611 ticks ... chest cobblestone/stone/brick/charcoal=0/0/0/22, missing cobblestone x18); storage is missing cobblestone x20 + spruce_log/planks. Dug stone does not reach the plan -> agent claude/mine-supplies (question: where does the stone go?).
 
-## P6 Abschaltung ohne Farmer's Delight / Chef's Delight (ich, Naturlauf in Wegwerf-Worktree)
-Aufbau: Worktree mit build.gradle `compileOnly` statt `implementation` fuer farmers-delight-refabricated und chefs-delight (Mod-Liste: 64 Mods, 0 Treffer fuer farmersdelight/chefsdelight; ctov, morevillagers, village_taverns, villagerplus geladen).
-Ergebnis: Server startet, frische Welt Seed 4242, 24 271 Ticks (10x2400) ohne Spieler: 0x NoClassDefFoundError/ClassNotFoundException/NoSuchMethodError, 0 ERROR/Exception-Zeilen (gefiltert wie natural-run.sh), Plaene gestartet 2, gestrandet 0.
-Einschraenkung: Klassen laden lazy; Koch-/Kuechenpfade (DelightKitchenCrafting, CookJob mit Kochtopf) wurden in 24k Ticks nicht gezielt ausgeloest -> "mod fehlt" ist fuer das Dorfleben belegt, NICHT fuer den kompletten FD-Kochfluss. Worktree und Welt danach geloescht, nichts committet ausser diesem Eintrag.
-P6 Towns and Towers: CompatChecks.villageStructures (Gruppe compat jetzt 42 Checks): 26 towns_and_towers-Strukturen in #minecraft:village (Registry-Nachweis, kein Weltlauf; kein Test dass die Bell-/Palettenerkennung in einem T&T-Dorf funktioniert).
+## P6 Shutdown Without Farmer's Delight / Chef's Delight (me, natural run in a throwaway worktree)
+Setup: worktree with build.gradle `compileOnly` instead of `implementation` for farmers-delight-refabricated and chefs-delight (mod list: 64 mods, 0 hits for farmersdelight/chefsdelight; ctov, morevillagers, village_taverns, villagerplus loaded).
+Result: server starts, fresh world seed 4242, 24 271 ticks (10x2400) without a player: 0x NoClassDefFoundError/ClassNotFoundException/NoSuchMethodError, 0 ERROR/Exception lines (filtered as in natural-run.sh), plans started 2, stranded 0.
+Limitation: classes load lazily; cook/kitchen paths (DelightKitchenCrafting, CookJob with cooking pot) were not deliberately triggered in 24k ticks -> "mod missing" is proven for village life, NOT for the complete FD cooking flow. Worktree and world deleted afterwards, nothing committed except this entry.
+P6 Towns and Towers: CompatChecks.villageStructures (group compat now 42 checks): 26 towns_and_towers structures in #minecraft:village (registry proof, no world run; no test that bell/palette detection works in a T&T village).
 
-## Wo bleibt der gegrabene Stein? (Agent claude/mine-supplies, gemergt; Gruppen von mir nachgelaufen)
-Korrektur zu m6: "Tiefe 11" war die GEPLANTE Tiefe; Heinz erreichte die Mine nicht (admissionBlocked, Rueckholung, "auf den Wegpunkt gesetzt", Pendeln zwischen Mine/Lager/Holz) - Heinz-Ablauf vom Agent NICHT einzeln nachgestellt.
-Gemessen (Agent, Trace, Naturlauf stone4 ohne Fix): 98 Bruchstein gegraben (Tiefe 0-14), nur 38 in der oeffentlichen Kiste (Hauler holten sie binnen 2-150 Ticks); Bergmann Benno trug ab Tick 30543 28-55 Bruchstein und lieferte 22000 Ticks nichts ab:
-MasonJob.mine liefert erst ab 64 Items, Planbesitzer-Pfad im Builder ab 12 (PLAN_STONE_BUFFER, haengt an supplyMissing). Zweiter Befund: Deadlock "wartet auf Bruchstein fuer eine sichere Minenterrasse" (Lueckenreparatur braucht 1 Bruchstein, Builder-Pfad lieferte alle 12 ab, keep=0): mind. 3300 Ticks.
-Fix (Mining.java, PlanStoneSupply.java, MineKitChecks, Checks090): Lieferung nach Plan-Bedarf (>=12 oder ganzer Fehlbetrag; im Stollen requestCapacityReturn), 2 Bruchstein Reserve (COBBLE_RESERVE), patchFloor nimmt Bruchstein, sonst echtes gegrabenes Gestein/Erde aus dem Inventar. Neue minekit-Checks (17).
-Gruppen von mir nach Merge: minekit 17, mining 68, miningcycle 199, minelifecycle 35, minewalk 27, surfacestone 13, planstonesupply 22, strandrescue 19, roles 112, gravelcycle 20, builderpaths 86.
-Natur (Agent, fix2, 30 Sprints): 54 Bruchstein geliefert, Hauler holten jeweils binnen 150 Ticks; Plan bleibt trotzdem bei Schritt 0 (Besitzer Theo "kommt nicht zum Stand (kein Fortschritt zum Stand 121,67,-334)", Uebergabe 1/3, 2/3) - Builder-Ablauf, Streuung gross (in m6 kam derselbe Plan bis Schritt 119).
-Offen: Fehlbetrag-Log zeigt weiter cobblestone x48 trotz Lieferung (Verbuchung an der Baustelle unklar); Builder-Besitzerpfad liefert mit keep=0; lange Pausen der Bergleute (15000-22000 Ticks).
+## Where Does the Dug Stone Go? (agent claude/mine-supplies, merged; groups re-run by me)
+Correction to m6: "depth 11" was the PLANNED depth; Heinz did not reach the mine (admissionBlocked, rescue, "auf den Wegpunkt gesetzt" (placed on the waypoint), commuting between mine/storage/wood) - Heinz's sequence was NOT individually reproduced by the agent.
+Measured (agent, trace, natural run stone4 without fix): 98 cobblestone dug (depth 0-14), only 38 in the public chest (haulers fetched them within 2-150 ticks); miner Benno carried 28-55 cobblestone from tick 30543 and delivered nothing for 22000 ticks:
+MasonJob.mine delivers only from 64 items, the plan-owner path in the builder from 12 (PLAN_STONE_BUFFER, depends on supplyMissing). Second finding: deadlock "wartet auf Bruchstein fuer eine sichere Minenterrasse" (waits for cobblestone for a safe mine terrace) (gap repair needs 1 cobblestone, builder path delivered all 12, keep=0): at least 3300 ticks.
+Fix (Mining.java, PlanStoneSupply.java, MineKitChecks, Checks090): delivery by plan need (>=12 or the whole shortfall; in the tunnel requestCapacityReturn), 2 cobblestone reserve (COBBLE_RESERVE), patchFloor takes cobblestone, otherwise real dug rock/earth from the inventory. New minekit checks (17).
+Groups by me after the merge: minekit 17, mining 68, miningcycle 199, minelifecycle 35, minewalk 27, surfacestone 13, planstonesupply 22, strandrescue 19, roles 112, gravelcycle 20, builderpaths 86.
+Natural (agent, fix2, 30 sprints): 54 cobblestone delivered, haulers fetched each within 150 ticks; the plan still stays at step 0 (owner Theo "kommt nicht zum Stand (kein Fortschritt zum Stand 121,67,-334)" (does not reach the stand (no progress to the stand 121,67,-334)), handover 1/3, 2/3) - builder flow, large scatter (in m6 the same plan reached step 119).
+Open: the shortfall log still shows cobblestone x48 despite delivery (booking at the building site unclear); builder owner path delivers with keep=0; long pauses of the miners (15000-22000 ticks).
 
-## Naturlauf vp-natural111-m7 (Endstand aller Merges, 2 Etappen = 48 386 Ticks, Einzellauf)
-Plaene gestartet 2 (granary 120,67,-348 @2324; storage 84,68,-335 @2862), fertig 0, Hausplan-Abbruch 0; Etappe 1: gestrandet 2, unreachable 12 (<=4: 5); Etappe 2: gestrandet 1, unreachable 8 (<=4: 1). "Stein gebrochen" 3 (Etappe 1) / 0 (Etappe 2).
-Planstand bleibt ueber >24 000 Ticks bei granary 119/437 und storage 75/266 -> reproduzierbares Plateau wie m6: Bruchstein (granary x18, storage x20) und Bretter kommen nicht an.
+## Natural Run vp-natural111-m7 (final state of all merges, 2 stages = 48 386 ticks, single run)
+Plans started 2 (granary 120,67,-348 @2324; storage 84,68,-335 @2862), finished 0, house plan abort 0; stage 1: stranded 2, unreachable 12 (<=4: 5); stage 2: stranded 1, unreachable 8 (<=4: 1). "Stein gebrochen" (stone broken) 3 (stage 1) / 0 (stage 2).
+Plan state stays at granary 119/437 and storage 75/266 for >24 000 ticks -> reproducible plateau like m6: cobblestone (granary x18, storage x20) and planks do not arrive.
 
-## Gesamtstand zum Abschluss dieser Sitzung (13.11.)
-Gemergt in claude/village-growth-1111: P1 Rueckholung (route) + Navigation-vor-Modell, Steinbruch (nearest-first, Regionen), Mine-Bewegungssperre/Terrassenmodell/Pfosten-Absetzen, Mine-Kit + Lieferung nach Bedarf, Baumwahl mit Rueckweg, Kornspeicher-Pass (terrassiert) + Absenz-Reset + Besitzer-Uebergabe,
-Palette beim Planstart, Saatgras-Rueckweg, Tief-Rueckholung mit Karenz, P5 Haussuche (Cursor, Log, Dev-Hooks), D03-Praedikat + Checks, B04 Hausschild (Duplikat-Fix), gravelcycle-Fixture, P6 Laufzeit-Checks (Mapping, Serene-Seasons-Tags, T&T-Strukturen), Abschaltung ohne FD/CD (Naturlauf).
-Neue/erweiterte Pruefgruppen: strandrescue 19, surfacestone 13, minewalk 27, minekit 17, treewalkback 32, deepstrand 17, housesitesearch 36, palettefallback 21, housesign 7, compat 42, builderpaths 86, networkdiscovery 42.
-Ergebnis Naturlaeufe (Seed 4242, ohne Spieler): Plaene starten frueh (granary ~Tick 2300), erste Bloecke werden gesetzt, aber in 48k Ticks wurde KEIN Bau fertig; verbleibender Engpass = Bruchstein/Holz-Versorgung der Plaene (nur ~3 erreichbare Oberflaechensteinzellen, Mine liefert langsam, lange Pausen), Verbuchung des Fehlbetrags an der Baustelle unklar.
-Nicht geprueft: Client/Optik, Vollpack, Spielerbetrieb, Dschungel-Granary, Haeuser ohne Hook (kein Hausbedarf auf Seed 4242 in 48k Ticks), FD-Kochfluss ohne Mod.
-Push: durchgehend 403 (Claude-GitHub-App ohne Schreibzugriff) - alles nur lokal.
+## Overall State at the End of This Session (13.11.)
+Merged into claude/village-growth-1111: P1 rescue (route) + navigation-before-model, quarry (nearest-first, regions), mine movement lock/terrace model/post step-off, mine kit + delivery by need, tree choice with way back, granary pass (terraced) + absence reset + owner handover,
+palette at plan start, seed grass way back, deep rescue with grace period, P5 house search (cursor, log, dev hooks), D03 predicate + checks, B04 house sign (duplicate fix), gravelcycle fixture, P6 runtime checks (mapping, Serene Seasons tags, T&T structures), shutdown without FD/CD (natural run).
+New/extended check groups: strandrescue 19, surfacestone 13, minewalk 27, minekit 17, treewalkback 32, deepstrand 17, housesitesearch 36, palettefallback 21, housesign 7, compat 42, builderpaths 86, networkdiscovery 42.
+Result of natural runs (seed 4242, without a player): plans start early (granary ~tick 2300), first blocks are placed, but in 48k ticks NO building was finished; remaining bottleneck = cobblestone/wood supply for the plans (only ~3 reachable surface stone cells, mine delivers slowly, long pauses), booking of the shortfall at the building site unclear.
+Not checked: client/look, full pack, player operation, jungle granary, houses without hook (no house need on seed 4242 in 48k ticks), FD cooking flow without the mod.
+Push: consistently 403 (Claude GitHub app without write access) - everything only local.
 
-## P6 Serene Seasons (Agent claude/season-compat, gemergt) + Starter-Ausnahme (ich)
-Agent: compat/SeasonCompat.java (MethodHandles erst nach isModLoaded("sereneseasons"), kein Klassen-Hard-Dependency; ohne Mod/ausgeschaltete Jahreszeiten "keine Einschraenkung"; API per javap verifiziert; nutzt die Mod-Regel ModFertility.isCropFertile, Fallback Registry-Tags + Tropen-Flag; Dev-Override fuer Checks),
-FarmerJob (seasonalSeed, fieldsDormant, CROP-Schritt-Gate, Builder-Kompaktstarter, Winter-Angeln statt Idle), Gruppe seasonfarm (SeasonFarmChecks), compat 44. Agent-Zahlen (je 1 Lauf): seasonfarm 63, compat 44, farmexpand 172, a01behavior 20, roles 112.
-Natur (Agent): ohne Serene Seasons (compileOnly, Wegwerf-Worktree) 24 229 Ticks ohne NoClassDefFoundError/ClassNotFoundException/NoSuchMethodError, seasonfarm dort 41; mit Serene Seasons 10x2400 Ticks ohne NoClassDefFoundError (API aufgeloest, tropical=true, mod fertility rule=true).
-Befund des Agents: neue Serene-Seasons-Welten starten spaet im Winter (Default starting_sub_season=12, 8 Tage je Unterjahreszeit): ohne Ausnahme haette das erste Feld bis ~32 Spieltage (~768 000 Ticks) gewartet.
-Meine Aenderung: Starter-Ausnahme (FarmerJob.seasonalSeed + CROP-Gate): hat das Dorf noch kein Feld (farms==0), wird bei vorhandenen 8 Weizensamen auch ausser Saison Weizen gesaet (die Mod laesst Ausser-Saison-Kulturen im Default langsam wachsen, nicht gar nicht); bevorzugt wird weiter eine Kultur in Saison. Weitere Felder bleiben streng.
-Fixture angepasst (Designaenderung, nicht Fehlerkorrektur): "first field ... only sown in season" -> Weizen in jeder Jahreszeit; Winter-Warten nur noch ohne Weizensamen / fuer weitere Felder. seasonfarm 65. Nach der Aenderung von mir: farmexpand/compat/a01behavior/roles s. u.
-Nicht geprueft: echte Jahreszeitwechsel im Langlauf; ob der Bauer im Winter wirklich angelt; temperierter Fall gegen die echte Mod-Regel (nur Tag-Matrix); Gewaechshausglas; Builder-eigene FARM-Plaene.
+## P6 Serene Seasons (agent claude/season-compat, merged) + Starter Exception (me)
+Agent: compat/SeasonCompat.java (MethodHandles only after isModLoaded("sereneseasons"), no class hard dependency; without the mod/with seasons switched off "no restriction"; API verified with javap; uses the mod rule ModFertility.isCropFertile, fallback registry tags + tropics flag; dev override for checks),
+FarmerJob (seasonalSeed, fieldsDormant, CROP step gate, builder compact starter, winter fishing instead of idle), group seasonfarm (SeasonFarmChecks), compat 44. Agent numbers (1 run each): seasonfarm 63, compat 44, farmexpand 172, a01behavior 20, roles 112.
+Natural (agent): without Serene Seasons (compileOnly, throwaway worktree) 24 229 ticks without NoClassDefFoundError/ClassNotFoundException/NoSuchMethodError, seasonfarm there 41; with Serene Seasons 10x2400 ticks without NoClassDefFoundError (API resolved, tropical=true, mod fertility rule=true).
+Agent finding: new Serene Seasons worlds start late in winter (default starting_sub_season=12, 8 days per sub-season): without an exception the first field would have waited until ~32 game days (~768 000 ticks).
+My change: starter exception (FarmerJob.seasonalSeed + CROP gate): if the village has no field yet (farms==0), wheat is sown even out of season when 8 wheat seeds are available (the mod lets out-of-season crops grow slowly by default rather than not at all); a crop in season is still preferred. Further fields stay strict.
+Fixture adapted (design change, not error correction): "first field ... only sown in season" -> wheat in every season; winter waiting only without wheat seeds / for further fields. seasonfarm 65. After my change: farmexpand/compat/a01behavior/roles see below.
+Not checked: real season changes in a long run; whether the farmer really fishes in winter; temperate case against the real mod rule (only tag matrix); greenhouse glass; builder's own FARM plans.
 
-## P8 Audit-Luecken (Agent claude/audit-checks, gemergt; Gruppen von mir nach Merge, je 1 Lauf)
-Neue Gruppen (synthetische Fixtures): freightload 16 (J07 Traeger belaedt Gueterlore aus echten Inventaren, Erhaltung, private Kisten unberuehrt), expedition 27 (J12 Zustandsmaschine, Mindestbesatzung 6, isAway, Heimkehr, Beute in oeffentlicher Kiste, Gefallene ohne Beute),
-butcherslaughter 13 (J03 Auswahl/Schlag/Drops im Inventar, Lieferung ins Kornspeicherlager), a04idle 7 (A04 Leerlauf: Umbesetzung nach >4000 Ticks, Dorftrottel/Erfahrene nie, eigene erreichbare Pausenplaetze Ring 4-12), a04lease 2, lamplighter 9 (J10 Eintritt ueber primary/secondary setzt genau 1 Fackel aus oeffentlichem Bestand).
-Regression nach Merge: a04survival 5, minetickets 20, roles 112, a01behavior 20, buildhaul 20, housesign 7, strandrescue 19, seasonfarm 65.
-Produktionsfehler gefunden und behoben: village/Anchor.java - die Einwohner-Lease VILLAGER_WORK hatte Radius 0 (Chunk-Level 33: geladen, aber nicht entity-ticking); ohne Spieler tickten Einwohner nie (belegt im Fixture ueber 200 Ticks). Jetzt Radius 2. Hinweis: MINE_WORK hat vermutlich dasselbe Problem (Radius 0), nicht angefasst.
-Meine Naturlaeufe mit forceload (entity-ticking) konnten diesen Fehler nicht zeigen. Kosten der groesseren Lease (mehr geladene Chunks) nicht gemessen.
-Produktionsfehler NICHT behoben (Funktionsentwurf): J03 Craft.run liest nur die Dorfkiste, die zentrale Materialkiste lehnt Nahrung ab (Mixin), Rohfleisch geht ins Nahrungslager -> das nachmittaegliche Garen des Metzgers findet nie Rohfleisch (ohne Kornspeicher behaelt er es und versucht es alle 2400 Ticks erneut).
+## P8 Audit Gaps (agent claude/audit-checks, merged; groups by me after the merge, 1 run each)
+New groups (synthetic fixtures): freightload 16 (J07 carrier loads a freight minecart from real inventories, preservation, private chests untouched), expedition 27 (J12 state machine, minimum crew 6, isAway, return home, loot in public chest, fallen without loot),
+butcherslaughter 13 (J03 selection/strike/drops in inventory, delivery into the granary storage), a04idle 7 (A04 idle: reassignment after >4000 ticks, village fool/experienced never, own reachable break spots ring 4-12), a04lease 2, lamplighter 9 (J10 entry via primary/secondary places exactly 1 torch from public stock).
+Regression after the merge: a04survival 5, minetickets 20, roles 112, a01behavior 20, buildhaul 20, housesign 7, strandrescue 19, seasonfarm 65.
+Production error found and fixed: village/Anchor.java - the resident lease VILLAGER_WORK had radius 0 (chunk level 33: loaded, but not entity-ticking); without a player, residents never ticked (documented in the fixture over 200 ticks). Now radius 2. Note: MINE_WORK presumably has the same problem (radius 0), not touched.
+My natural runs with forceload (entity-ticking) could not show this error. Cost of the larger lease (more loaded chunks) not measured.
+Production error NOT fixed (functional design): J03 Craft.run reads only the village chest, the central material chest rejects food (mixin), raw meat goes to the food storage -> the butcher's afternoon cooking never finds raw meat (without a granary he keeps it and retries every 2400 ticks).
 
-## J03 Metzger raeuchert aus dem Kornspeicher (Agent claude/butcher-cooking, gemergt) und mealcycle repariert (ich)
-Agent: ButcherJob.secondary ruft nach Craft.run SmithSmelting.cookMeat (neues Worker.BUTCHER): Rohfleisch/Rohfisch nur aus dem Kornspeicher in den markierten Kuechen-Raeucherofen, Brennstoff nur aus oeffentlichem Bestand (ohne Brennstoff kein Batch), Ablage ueber StockPolicy.insertVillage zurueck in den Kornspeicher, nur bei Platz. Gruppe butchercooking 16 (3 Laeufe stabil; Negativkontrolle: ohne ButcherJob-Aenderung faellt der Check durch).
-Von mir nach Merge (je 1 Lauf): butchercooking 16, butcherslaughter 13, butcher 14, cookdelight 26, stockpolicy 58, smithsmelting 12, roles 112. Ungeprueft: Naturlauf mit echter Kueche/Raeucherofen; zwei Metzger oder Koch am selben Ofen; Altwelt-Rohfleisch in der Dorfkiste koennte beim Zurueckschreiben (setItem + Mixin) verloren gehen (nicht belegt).
-mealcycle: FAIL auch auf dem Ursprungsstand 01db13e (von mir verifiziert, eigener Worktree). Ursache (Fixture, Produktivcode richtig): (1) Routine.stopDeliveryApproachIfNeeded loescht das Laufziel nur, wenn JobState.target (bisheriger Lieferstand) nahe der Gemeinschaftskiste liegt - das Fixture setzte target per clearTarget() auf null;
-(2) die Lieferung nutzt verteilte Standplaetze (JobUtil.sharedStandSpot) und wird uebersprungen, wenn rund um die Kiste kein tragender freier Stand existiert - das Fixture hatte dort keinen Boden, die "abgebrochene Route" begann nie (idleUntil blieb 0).
-Fixture-Korrektur (HouseholdMealChecks): routine.target = Lieferstand; kleiner Boden (9x9) um die Kiste. Danach mealcycle PASS 10 (2 Laeufe).
-## P4 Bruchsteinwirtschaft (Agent claude/stone-economy; Worktree /tmp/wt-stone2, Ports 25566/25576)
-Messung (temporaerer Trace, entfernt; Naturlaeufe Seed 4242, je 48k Ticks, ein Tag hat nur 7000 Arbeitsticks = 29 %, 48k Ticks sind also nur zwei volle Arbeitstage):
-- Baseline-Laeufe (base2/base3/fixa, Stand vor den Aenderungen): Bruchstein aus dem Dorf 3 (nur Oberflaeche, von Hand 3 Steine in ~750 Ticks), aus der Mine 0-3 Abschnitte; Planstand granary 119/441, storage 75/266 konstant; Kiste Bruchstein 0.
-- Wer arbeitet am Stein: nur die Plan-Eigentuemer (supplyMissing) und die Maurer in MasonJob.mine; im Taiga-Dorf sind das 2 Maurer (Beruf miner/mason), beide zugleich Besitzer eines Bauplans (granary + storage). Tag 1 geht fuer Baugrundraeumung (Besitzer ~3500 Ticks) und das Heranschaffen des Materials der ersten 119 Schritte (~1900 Ticks) drauf; erster Steinbezug erst ~Tick 8200 (Oberflaechenstein, 3 Steine), Minengang erst am Tagesende. Beide Maurer holen Holz/Bretter zuerst nur wenn kein Baum frei ist; "wartet auf passendes Bauholz" 900-2600 Ticks pro Tag (naechster Engpass: Holz).
-- Hauptverlust 1 (Mine-Kit): mit Spitzhacke (die der Besitzer fuer den Bruchstein-Wunsch fertigt) gilt das Kit; Abschnitt 2 (Stuetzen) und 3 (Fackel, keine Kohle im Dorf) warteten je 12000 Ticks (Spielzeit, ~1,7 Arbeitstage!), das Basteln der Stuetzen aus Dorfplanken (konkurriert mit dem Plan um Fichtenbretter) kostete 4800 Ticks eines Arbeitstags. Messung: Tiefe 3 von Tick ~4800 bis ~25000 (base2), 3 Abschnitte in 48k (base3). Von Hand (keine Spitzhacke) gibt es kein Kit.
-- Hauptverlust 2 (Laufwege): Maurer stehen 600-3300 Ticks auf "geht zur Mine" ohne sich zu bewegen (Tuerrahmen des eigenen Hauses 98,70,-411; Terrasse y 74-75 ueber der Mine mit path=false zu allen Arbeitsplaetzen; Pavillon 135,68,-343). Der Weg-Cache (Builder-Haulziel 94,70,-411 gegen Mine-Waypoint) wurde nicht weiter aufgeloest.
-- Hauptverlust 3: Mine wird wegen "Hohlraum unter dem Stollen" (Schlucht/Hoehle) bei Abschnitt 5-9 geschlossen (2 von 6 Laeufen); Neuanlage scheiterte danach 16-20 Mal ("kein Eingang gefunden", Altminen-Sperre 24 Bloecke + Bauplaene).
-- Kein Pickaxe-Problem im Stollen: ein Abschnitt (3x3x3) wird ohnehin mit 24 Ticks Pause gegraben, von Hand oder mit Spitzhacke gleich; 100 Ticks/Block gilt nur fuer den Oberflaechensteinbruch (3 erreichbare Zellen).
-Aenderungen (Mining.java, MineKitChecks, StoneEconomyChecks, Checks090):
-1. Kit-Grenze in Arbeitszeit: Aufwand (Wege, Basteln, Warten) pro Abschnitt max 1800 Ticks (Schritt pro Aufruf max 400, Nachte zaehlen nicht), danach 12000 Ticks Auszeit fuer weitere Abschnitte (keine erneute Kit-Wartezeit je Abschnitt). Stuetzen/Fackeln werden weiter verwendet, wenn das Lager sie hat; es bleibt eine Abwaegung gegen Beleuchtung/Stuetzen ohne Vorrat (nicht natuerlich bewertet).
-2. Weg-zur-Mine-Wachhund: kein Naeherkommen in 600 Ticks ab 8 Bloecken Abstand -> Bewohner auf die Dorfstrasse (villageReturn), nach 3 Wiederholungen Gang fuer 1200 Ticks aufgegeben.
-3. Freie Arbeitsplaetze ohne Weg (workSlot -1 mit freiem sicheren Stand): nach 900 Ticks auf die Dorfstrasse.
-4. Mine-Neuanlage sucht nach jedem Fehlschlag weiter draussen (Ring 24 -> bis 48 Bloecke).
-Natur nachher (final, je 48k Ticks, Bruchstein aus Mine+Oberflaeche): fin1 45 (storage 75->99), fin2 5 (Mine bei Abschnitt 5 wegen Hohlraum geschlossen, Neuanlage scheiterte; Vorversion ohne Punkt 4), fin3 27 (granary 119->140), fin4 21 (granary 119->137), Zwischenstaende fixb 29 (granary 131, storage 89), fixc 39 (granary 149). Vorher 3 je Lauf. Kein Bau fertig (Holz/Bretter und weiterer Stein fehlen: granary braucht >100 Bruchstein).
+## J03 Butcher Smokes From the Granary (agent claude/butcher-cooking, merged) and mealcycle Repaired (me)
+Agent: ButcherJob.secondary calls SmithSmelting.cookMeat (new Worker.BUTCHER) after Craft.run: raw meat/raw fish only from the granary into the marked kitchen smoker, fuel only from public stock (no batch without fuel), deposit via StockPolicy.insertVillage back into the granary, only if there is room. Group butchercooking 16 (3 runs stable; negative control: without the ButcherJob change the check fails).
+By me after the merge (1 run each): butchercooking 16, butcherslaughter 13, butcher 14, cookdelight 26, stockpolicy 58, smithsmelting 12, roles 112. Unchecked: natural run with a real kitchen/smoker; two butchers or a cook at the same furnace; legacy-world raw meat in the village chest could get lost on write-back (setItem + mixin) (not proven).
+mealcycle: FAIL also on the original state 01db13e (verified by me, own worktree). Cause (fixture, production code right): (1) Routine.stopDeliveryApproachIfNeeded clears the walk target only if JobState.target (previous delivery stand) is near the community chest - the fixture set target to null via clearTarget();
+(2) the delivery uses distributed standing spots (JobUtil.sharedStandSpot) and is skipped if there is no load-bearing free stand around the chest - the fixture had no ground there, the "aborted route" never began (idleUntil stayed 0).
+Fixture correction (HouseholdMealChecks): routine.target = delivery stand; small ground (9x9) around the chest. Afterwards mealcycle PASS 10 (2 runs).
+## P4 Cobblestone Economy (agent claude/stone-economy; worktree /tmp/wt-stone2, ports 25566/25576)
+Measurement (temporary trace, removed; natural runs seed 4242, 48k ticks each, a day has only 7000 work ticks = 29 %, so 48k ticks are only two full work days):
+- Baseline runs (base2/base3/fixa, state before the changes): cobblestone from the village 3 (surface only, by hand 3 stones in ~750 ticks), from the mine 0-3 sections; plan state granary 119/441, storage 75/266 constant; chest cobblestone 0.
+- Who works on stone: only the plan owners (supplyMissing) and the masons in MasonJob.mine; in the taiga village that is 2 masons (profession miner/mason), both at the same time owners of a build plan (granary + storage). Day 1 goes to site clearing (owner ~3500 ticks) and hauling the material of the first 119 steps (~1900 ticks); first stone supply only ~tick 8200 (surface stone, 3 stones), mine tunnel only at the end of the day. Both masons fetch wood/planks first only if no tree is free; "wartet auf passendes Bauholz" (waits for suitable building timber) 900-2600 ticks per day (next bottleneck: wood).
+- Main loss 1 (mine kit): with a pickaxe (which the owner crafts for the cobblestone wish) the kit applies; section 2 (supports) and 3 (torch, no charcoal in the village) each waited 12000 ticks (game time, ~1.7 work days!), crafting the supports from village planks (competes with the plan for spruce planks) cost 4800 ticks of a work day. Measurement: depth 3 from tick ~4800 to ~25000 (base2), 3 sections in 48k (base3). By hand (no pickaxe) there is no kit.
+- Main loss 2 (walking paths): masons stand 600-3300 ticks on "geht zur Mine" (goes to the mine) without moving (door frame of their own house 98,70,-411; terrace y 74-75 above the mine with path=false to all work places; pavilion 135,68,-343). The path cache (builder haul target 94,70,-411 versus mine waypoint) was not resolved further.
+- Main loss 3: the mine is closed because of "Hohlraum unter dem Stollen" (cavity below the tunnel) (ravine/cave) at section 5-9 (2 of 6 runs); re-creation then failed 16-20 times ("kein Eingang gefunden" (no entrance found), old-mine lock 24 blocks + build plans).
+- No pickaxe problem in the tunnel: a section (3x3x3) is dug with a 24-tick pause anyway, the same by hand or with a pickaxe; 100 ticks/block applies only to the surface quarry (3 reachable cells).
+Changes (Mining.java, MineKitChecks, StoneEconomyChecks, Checks090):
+1. Kit limit in work time: effort (paths, crafting, waiting) per section max 1800 ticks (step per call max 400, nights do not count), afterwards 12000 ticks timeout for further sections (no renewed kit waiting time per section). Supports/torches are still used if the storage has them; it remains a trade-off against lighting/supports without stock (not evaluated naturally).
+2. Walk-to-mine watchdog: no approach within 600 ticks from 8 blocks distance -> resident to the village street (villageReturn), after 3 repetitions the walk is abandoned for 1200 ticks.
+3. Free work places without a path (workSlot -1 with a free safe stand): after 900 ticks to the village street.
+4. Mine re-creation searches further out after every failure (ring 24 -> up to 48 blocks).
+Natural afterwards (final, 48k ticks each, cobblestone from mine+surface): fin1 45 (storage 75->99), fin2 5 (mine closed at section 5 because of a cavity, re-creation failed; earlier version without item 4), fin3 27 (granary 119->140), fin4 21 (granary 119->137), intermediate states fixb 29 (granary 131, storage 89), fixc 39 (granary 149). Before 3 per run. No building finished (wood/planks and further stone missing: granary needs >100 cobblestone).
 
-## P4 Bruchsteinwirtschaft: Zusammenfassung des Agent-Berichts (claude/stone-economy, gemergt; Gruppen von mir nach Merge, je 1 Lauf)
-Gemessen (Agent): 48k Ticks = nur 2 Arbeitstage zu je ~7000 Arbeitsticks; im Taiga-Dorf nur 2 Maurer, beide zugleich Planbesitzer (granary, storage); Tag 1: Bauplatzraeumung ~3500 Ticks + Material fuer Schritte 0-119 ~1900 Ticks, erster Oberflaechenstein ~Tick 8200;
-groesster Hebel Mine-Kit: Stuetzen (Abschnitt 2) und Fackel (Abschnitt 3, keine Kohle im Dorf) warteten je 12000 Ticks (~1,7 Arbeitstage); Basteln der Stuetzen bis 4800 Ticks, konkurriert mit dem Plan um Fichtenbretter; Maurer standen 600-3300 Ticks auf "geht zur Mine" (Haustuer 98,70,-411: Builder-Haulziel und Mine-Waypoint ueberschreiben sich; Terrasse y74/75 mit path=false);
-Mine schloss in 2 von 6 Laeufen wegen "Hohlraum unter dem Stollen", Neuanlage scheiterte 16-20x; Spitzhacke im Stollen kein Hebel (24 Ticks je Abschnittsbruch), die 100 Ticks/Block gelten nur fuer den Oberflaechensteinbruch.
-Aenderung: Kit-Aufwand je Abschnitt auf 1800 Arbeitsticks begrenzt (max 400 je Aufruf, Naechte zaehlen nicht), danach 12000 Ticks Auszeit; Weg-Waechter (ab 8 Bloecken 600 Ticks ohne Annaeherung -> Dorfstrasse, 3 Wiederholungen -> Gang 1200 Ticks aufgegeben); Lane-Waechter (900 Ticks freie Plaetze ohne Weg); Minen-Neuanlage weiter draussen (Ring 24 bis 48).
-ENTSCHEIDUNG FUER DEN NUTZER: die kuerzere Kit-Grenze laesst Abschnitte nach der Auszeit ohne Stuetzen/Fackeln graben, wenn das Lager sie nicht hat (vorher nach 12000 Ticks Wartezeit, jetzt nach 1800 Arbeitsticks Aufwand); Sicherheit gegen Tempo nicht natuerlich bewertet.
-Gruppen nach Merge: stoneeconomy 9 (neu), minekit 19, mining 68, miningcycle 199, minelifecycle 35, minewalk 27, surfacestone 13, planstonesupply 22, strandrescue 19, roles 112, gravelcycle 20, builderpaths 86, mealcycle 10. (gravelcycle fiel bei Kit-Grenze 900 durch, bei 1800 gruen: wenig Spielraum.)
-Natur (Agent, je 48k Ticks, Seed 4242): vorher 3 Oberflaechensteine, 0-3 Mine-Abschnitte; nachher Stein gebrochen 27 (fin3), 21 (fin4) bzw. 45/5/29/39 in Zwischenstaenden (Streuung 5-45); Planstand granary 119->140/137, storage 75->99; KEIN Bau fertig (Granary braucht weit ueber 100 Bruchstein); naechster Engpass Holz/Bretter (Maurer warten 900-2600 Ticks/Tag auf Bauholz).
+## P4 Cobblestone Economy: Summary of the Agent Report (claude/stone-economy, merged; groups by me after the merge, 1 run each)
+Measured (agent): 48k ticks = only 2 work days of ~7000 work ticks each; in the taiga village only 2 masons, both at the same time plan owners (granary, storage); day 1: site clearing ~3500 ticks + material for steps 0-119 ~1900 ticks, first surface stone ~tick 8200;
+biggest lever mine kit: supports (section 2) and torch (section 3, no charcoal in the village) each waited 12000 ticks (~1.7 work days); crafting the supports up to 4800 ticks, competes with the plan for spruce planks; masons stood 600-3300 ticks on "geht zur Mine" (goes to the mine) (house door 98,70,-411: builder haul target and mine waypoint overwrite each other; terrace y74/75 with path=false);
+the mine closed in 2 of 6 runs because of "Hohlraum unter dem Stollen" (cavity below the tunnel), re-creation failed 16-20x; a pickaxe in the tunnel is no lever (24 ticks per section break), the 100 ticks/block apply only to the surface quarry.
+Change: kit effort per section limited to 1800 work ticks (max 400 per call, nights do not count), afterwards 12000 ticks timeout; path guard (from 8 blocks 600 ticks without approach -> village street, 3 repetitions -> walk abandoned 1200 ticks); lane guard (900 ticks free places without a path); mine re-creation further out (ring 24 to 48).
+DECISION FOR THE USER: the shorter kit limit lets sections be dug without supports/torches after the timeout if the storage does not have them (before after 12000 ticks of waiting time, now after 1800 work ticks of effort); safety versus speed not evaluated naturally.
+Groups after the merge: stoneeconomy 9 (new), minekit 19, mining 68, miningcycle 199, minelifecycle 35, minewalk 27, surfacestone 13, planstonesupply 22, strandrescue 19, roles 112, gravelcycle 20, builderpaths 86, mealcycle 10. (gravelcycle failed at kit limit 900, green at 1800: little margin.)
+Natural (agent, 48k ticks each, seed 4242): before 3 surface stones, 0-3 mine sections; afterwards stone broken 27 (fin3), 21 (fin4) or 45/5/29/39 in intermediate states (scatter 5-45); plan state granary 119->140/137, storage 75->99; NO building finished (granary needs far more than 100 cobblestone); next bottleneck wood/planks (masons wait 900-2600 ticks/day for building timber).
 
-## Playtest-Jar (13.11., Stand 12ff26a)
-build/libs/villagers-repurposed-0.9.0.jar (5 333 369 Bytes), SHA-256 e5c3da298ea929519d2c67cb5b9eaa3d599b403f656cd9b534f351ed63c32c9a; gebaut mit ./gradlew build (BUILD SUCCESSFUL) nach dem 43-Gruppen-Endlauf (alle PASS, einzeln gezaehlt, siehe oben).
-Enthaelt weiterhin die dev/*Checks-Klassen (laufen nur im Dev-Server). Nicht im Client/Vollpack erprobt. Natuerlicher Endlauf m8 (48k Ticks): kein Bau fertig (granary 119/437, storage 75/266).
+## Playtest Jar (13.11., state 12ff26a)
+build/libs/villagers-repurposed-0.9.0.jar (5 333 369 bytes), SHA-256 e5c3da298ea929519d2c67cb5b9eaa3d599b403f656cd9b534f351ed63c32c9a; built with ./gradlew build (BUILD SUCCESSFUL) after the 43-group final run (all PASS, counted individually, see above).
+Still contains the dev/*Checks classes (run only in the dev server). Not tried in the client/full pack. Natural final run m8 (48k ticks): no building finished (granary 119/437, storage 75/266).
 
 ## Version 0.10.0 (13.11.)
-gradle.properties mod_version 0.9.0 -> 0.10.0 (Jar-Name, fabric.mod.json "version" und Dateiname leiten sich davon ab); README "Neu in 0.10.0" ergaenzt, FEATURES.md Ueberschrift. Alte Dokumente (SPEC.md, PLAN.md, tools/*090*.py) bewusst unveraendert (historisch).
-Jar: build/libs/villagers-repurposed-0.10.0.jar, SHA-256 f093eee054ddf384abb0d3d9bb5621a543b64e2c4f0b4d009f596b2058ca265d (Stand dieses Commits; Code entspricht dem 43-Gruppen-Endlauf, nur Version/Doku geaendert).
+gradle.properties mod_version 0.9.0 -> 0.10.0 (jar name, fabric.mod.json "version" and file name derive from it); README "Neu in 0.10.0" (New in 0.10.0) added, FEATURES.md heading. Old documents (SPEC.md, PLAN.md, tools/*090*.py) deliberately unchanged (historical).
+Jar: build/libs/villagers-repurposed-0.10.0.jar, SHA-256 f093eee054ddf384abb0d3d9bb5621a543b64e2c4f0b4d009f596b2058ca265d (state of this commit; code corresponds to the 43-group final run, only version/docs changed).
 
-## Naturlauf vp-natural111-m9 (Stand 80acc73 inkl. Holzversorgung, 2 Etappen = ~48k Ticks, Einzellauf)
-Plaene 2 (granary, storage), fertig 0; Planstand granary 119/440, storage 75/266 (konstant). Wunschliste jetzt NUR noch "cobblestone x48" (Kiste 0) - Holz/Bretter fehlen nicht mehr (vorher spruce_log x13, spruce_planks x15..30): Wirkung der Holzversorgung im Naturlauf sichtbar, aber Einzellauf.
-Stein gebrochen 2 / 1 (Oberflaeche, von Hand). Etappe 1: "keine Mine anlegbar (create leer)", Ablehnungen [ungeladen,Hoehe,Boden,Altmine,Bauplan,Vorschau,Eingangsplatz]=[0,10,52,0,9,91,38], nicht abbaubar: dirt_path 10, spruce_trapdoor 6, pumpkin 6, cobbled_deepslate 5, deepslate_bricks 4 (Dorfobjekte im Stollenbereich); Etappe 2: Mine angelegt, Bergleute "Lauf MOVING" 15x, "kam nicht weiter und wurde darauf gesetzt" 2x.
-Wood-Supply-Branch (Agent, Bericht durch Container-Neustart verloren; Commit 460c36a von mir geprueft/gemergt): woodsupply 15, woodcuttinggroup 48, treewalkback 32, buildhaul 20, a01behavior 20, roles 112, farmexpand 172, planstonesupply 22, supply 30, strandrescue 19, cookdelight 26, roadclear 27, mining 68 (je 1 Lauf nach Merge). Kompromiss: obere Stammteile starten bei Rissstufe 6 (nur der Stammfuss zeigt alle 10 Stufen), Faellpause 16->8 Ticks.
+## Natural Run vp-natural111-m9 (state 80acc73 incl. wood supply, 2 stages = ~48k ticks, single run)
+Plans 2 (granary, storage), finished 0; plan state granary 119/440, storage 75/266 (constant). Wish list now ONLY "cobblestone x48" (chest 0) - wood/planks are no longer missing (before spruce_log x13, spruce_planks x15..30): effect of the wood supply visible in the natural run, but single run.
+Stone broken 2 / 1 (surface, by hand). Stage 1: "keine Mine anlegbar (create leer)" (no mine can be created (create empty)), rejections [ungeladen,Hoehe,Boden,Altmine,Bauplan,Vorschau,Eingangsplatz]=[0,10,52,0,9,91,38] ([unloaded,height,ground,old mine,plan,preview,entrance spot]), not minable: dirt_path 10, spruce_trapdoor 6, pumpkin 6, cobbled_deepslate 5, deepslate_bricks 4 (village objects in the tunnel area); stage 2: mine created, miners "Lauf MOVING" (run MOVING) 15x, "kam nicht weiter und wurde darauf gesetzt" (got no further and was placed there) 2x.
+Wood-supply branch (agent, report lost through a container restart; commit 460c36a checked/merged by me): woodsupply 15, woodcuttinggroup 48, treewalkback 32, buildhaul 20, a01behavior 20, roles 112, farmexpand 172, planstonesupply 22, supply 30, strandrescue 19, cookdelight 26, roadclear 27, mining 68 (1 run each after the merge). Compromise: upper trunk parts start at crack stage 6 (only the trunk base shows all 10 stages), felling pause 16->8 ticks.
 
-## Erstes fertiges Bauwerk (Agent claude/first-building, gemergt): Ziel NICHT erreicht
-Blockerkette (Agent, 12 Naturlaeufe, Seed 4242, 2x24k Ticks, n=1 je Variante): Taiga ~16-21 Bewohner, 2 Maurer, ~7000 Arbeitsticks/Tag -> 48k Ticks = 2 Tage. granary 437-442 Schritte (132 frei), Gesamtbedarf 306 Bloecke (cobblestone 101, Staemme 61, Bretter 44, Treppen 92, Glasscheiben 8, Tuer 1); storage 266 Schritte (81 frei), 185 Items (cobblestone 42, Staemme 54, Bretter 24, Treppen 54).
-granary: Cursor 0/437 ueber 22-29k Ticks (Besitzer kommt nicht zum Stand) oder 119-131/437, ab 119 fehlen cobblestone x18 + Bretter x30 (nach Holz->Stein-Wechsel x48), Dorfkiste 0-3 Bruchstein. storage: 75-121/266, fehlt cobblestone x20-48. farm (41 Schritte, nur Zaeune+Tor): startet erst am Ende von Arbeitstag 2 (8 Weizensamen), Besitzer wechselte einmal den Beruf.
-Verworfen: Brunnen als billigster Plan (5x5 mit Dach, "Kein Bauplatz fuer 'well'"). Beleg ohne Aenderung: Maurer ohne eigenen Plan werden durch holdForSpecial festgehalten (build() meldet beschaeftigt, mine()/workshop() laufen nie).
-Aenderung (FarmerJob, Builder, JobState): Gras erneut pruefen wenn keine Samen fielen, Weitsuche Radius 80 (max alle 600 Ticks), gesammelte Samenlieferung (ab 2 Stueck / 300 Ticks / Feld komplett), Besitzer craftet Zaun+Tor aus echten Chestbestaenden. Gruppe firstbuilding 12.
-Gruppen (von mir nach Merge, je 1 Lauf): firstbuilding 12, farmexpand 172, builderchecks 318, builderpaths 86, supply 30, planstonesupply 22, strandrescue 19, roles 112, seasonfarm 65, woodsupply 15, a01behavior 20.
-Natur (Agent): Samen bis Tick ~6000: 2-4 (farm4-6) gegenueber 1-2 bis Tick 24k im Ausgangsstand (n=1); letzter Lauf fin1: granary 131/437, storage 121/266 nach 48k Ticks, 0 fertig. Zaun-Craften im Naturlauf nie ausgeloest (unbelegt). Offene Hebel: Maurer ohne Plan nicht festhalten, Wege-Stalls der Bauer-Sammler, kleinerer Erstplan/weniger Steinbedarf, Starter-Schwelle 8 Samen.
+## First Finished Building (agent claude/first-building, merged): Goal NOT Reached
+Blocker chain (agent, 12 natural runs, seed 4242, 2x24k ticks, n=1 per variant): taiga ~16-21 residents, 2 masons, ~7000 work ticks/day -> 48k ticks = 2 days. granary 437-442 steps (132 free), total need 306 blocks (cobblestone 101, logs 61, planks 44, stairs 92, glass panes 8, door 1); storage 266 steps (81 free), 185 items (cobblestone 42, logs 54, planks 24, stairs 54).
+granary: cursor 0/437 over 22-29k ticks (owner does not reach the stand) or 119-131/437, from 119 missing cobblestone x18 + planks x30 (after the wood->stone switch x48), village chest 0-3 cobblestone. storage: 75-121/266, missing cobblestone x20-48. farm (41 steps, only fences+gate): starts only at the end of work day 2 (8 wheat seeds), owner changed profession once.
+Discarded: well as the cheapest plan (5x5 with roof, "Kein Bauplatz fuer 'well'" (no building site for 'well')). Evidence without change: masons without their own plan are held by holdForSpecial (build() reports busy, mine()/workshop() never run).
+Change (FarmerJob, Builder, JobState): re-check grass if no seeds dropped, wide search radius 80 (at most every 600 ticks), collected seed delivery (from 2 pieces / 300 ticks / field complete), owner crafts fence+gate from real chest stocks. Group firstbuilding 12.
+Groups (by me after the merge, 1 run each): firstbuilding 12, farmexpand 172, builderchecks 318, builderpaths 86, supply 30, planstonesupply 22, strandrescue 19, roles 112, seasonfarm 65, woodsupply 15, a01behavior 20.
+Natural (agent): seeds until tick ~6000: 2-4 (farm4-6) versus 1-2 until tick 24k in the baseline state (n=1); last run fin1: granary 131/437, storage 121/266 after 48k ticks, 0 finished. Fence crafting never triggered in the natural run (unproven). Open levers: do not hold masons without a plan, path stalls of the farmer collectors, smaller first plan/less stone need, starter threshold 8 seeds.
 
-## Mehr Haende auf Bruchstein (Agent claude/stone-hands; Worktree /tmp/wt-hands)
-Messung (temporaerer Trace alle 400 Ticks je Dorf, entfernt): Taiga-Dorf, 48k Ticks, Stand a1e62e8: Beide Maurer standen im Arbeitsfenster ohne Steinarbeit (Leerlauf, Pausenplatz, Warten am Baustellendepot, "geht zur Dorfstrasse und sucht einen Baustand" = holdForSpecial); 11-17 weitere Erwachsene (Jaeger, Forscher, Floristen, Hirten, Schmiede, Traeger) meldeten "hat gerade nichts zu tun"; Dorfkiste Bruchstein dauerhaft 0.
-Aenderung: StoneHands (leerlaufende Bewohner helfen nach dem eigenen Job am Bruchstein, max 1 je 16 Fehlbetrag, 3 Hoechstens, nur freie Mine-Staende, Kit-Pflicht auch ohne Spitzhacke, Rueckgabe jeder Last), Bedarf ueber ALLE aktiven Plaene (PlanStoneSupply.villageCobbleShortage), Maurer ohne Mine brechen Oberflaechenstein, holdForSpecial haelt keinen planlosen Maurer mehr, wenn der Meilenstein schon laeuft, zeitweiser Zusatzmaurer in Staffing.reassignIdle (nur mit Mine und Fehlbetrag, Quote des Spielers unveraendert).
-Natur (Seed 4242, je 48k Ticks, Taiga): vorher (n=2) Bruchstein aufgenommen 2 / 23, Stein-Arbeits-Snapshots 1 / 24 von ~2070; nachher (n=6 inkl. Zwischenstaende) aufgenommen 132 / 148 / 110 / 60 / 15 / 86, Snapshots 34 / 48 / 43 / 46 / 61 / 30. Planstand granary vorher 119-122/437, nachher 119-241/441 (Streuung gross, haengt an Planbesitzer-Weg). Dschungeldorf: nie Stein (keine Mine, kein Oberflaechenstein).
+## More Hands on Cobblestone (agent claude/stone-hands; worktree /tmp/wt-hands)
+Measurement (temporary trace every 400 ticks per village, removed): taiga village, 48k ticks, state a1e62e8: both masons stood in the work window without stone work (idle, break spot, waiting at the building-site depot, "geht zur Dorfstrasse und sucht einen Baustand" (goes to the village street and looks for a building stand) = holdForSpecial); 11-17 further adults (hunters, explorers, florists, shepherds, smiths, carriers) reported "hat gerade nichts zu tun" (has nothing to do right now); village chest cobblestone permanently 0.
+Change: StoneHands (idle residents help with cobblestone after their own job, max 1 per 16 shortfall, 3 at most, only free mine stands, kit obligation even without a pickaxe, return of every load), need across ALL active plans (PlanStoneSupply.villageCobbleShortage), masons without a mine break surface stone, holdForSpecial no longer holds a planless mason if the milestone is already running, temporary extra mason in Staffing.reassignIdle (only with a mine and shortfall, player's quota unchanged).
+Natural (seed 4242, 48k ticks each, taiga): before (n=2) cobblestone picked up 2 / 23, stone-work snapshots 1 / 24 of ~2070; afterwards (n=6 incl. intermediate states) picked up 132 / 148 / 110 / 60 / 15 / 86, snapshots 34 / 48 / 43 / 46 / 61 / 30. Plan state granary before 119-122/437, afterwards 119-241/441 (large scatter, depends on the plan owner's path). Jungle village: never stone (no mine, no surface stone).
 
-## Stone-Hands (Agent claude/stone-hands, gemergt; Gruppen von mir nach Merge) und Naturlaeufe m10/m11 (n=2, je 48k Ticks)
-Agent-Befund: beide Maurer standen im Arbeitsfenster ohne Steinarbeit (Leerlauf, Pausenplatz, Warten am Baustellendepot, holdForSpecial), bis 11-17 weitere Erwachsene "hat gerade nichts zu tun"; Steinbedarf eines zweiten Plans war fuer andere unsichtbar (Mining.needed las nur die Primaersicht); Dschungel: kein Stein.
-Aenderung: job/StoneHands (Leerlauf >=200 Ticks -> hilft am Stein; je 16 fehlende Bruchstein eine Hand, max 3; Hand nur bei freiem Mine-Stand; Kit-Regeln), PlanStoneSupply.villageCobbleShortage (alle aktiven Plaene), MasonJob (Oberflaechenstein ohne Mine), holdForSpecial haelt planlosen Maurer nicht mehr fest, Staffing: temporaerer Zusatzmaurer (nur wenn Quote des Spielers > 0 %, Slider unveraendert), JobManager bietet StoneHands als letzte Aufgabe.
-Agent-Messung: Steinarbeit-Messpunkte vorher 1/24 (n=2) -> nachher 34/48/43/46/61/30 (n=6); Bruchstein aufgenommen 2/23 -> 132/148/110/60/15/86 (grob). Gruppen nach Merge (von mir): stonehands 32, mining 68, miningcycle 199, minelifecycle 35, minewalk 27, minekit 19, stoneeconomy 9, surfacestone 13, planstonesupply 22, builderchecks 318, roles 112, u07quota 27, a01behavior 20, strandrescue 19, firstbuilding 12, woodsupply 15, seasonfarm 65.
-Meine Laeufe (Stand 4056c01): m10: granary 118,67,-349 @2582, Planstand 122 -> 170/441, storage @9361; Stein gebrochen 3/0, StoneHands-Logzeilen 11/12, Mine bis Tiefe 9; Wunschliste am Ende: cobblestone x9, spruce_log x8, spruce_planks x4. m11: granary 125,67,-348 @1819, Planstand 119 -> 191/439, storage @5971; Stein gebrochen 0/2, StoneHands 25/17, Mine bis Tiefe 17; Wunschliste am Ende nur noch spruce_door x1 + spruce_log x29.
-=> Erstmals Planfortschritt ueber Schritt ~120 hinaus in beiden Laeufen (vorher in 10 Laeufen konstant 119/75). Noch KEIN Bau fertig (Granary ~306 Bloecke Gesamtbedarf). In m10 Etappe 2: "keine Mine anlegbar" 10x.
+## Stone-Hands (agent claude/stone-hands, merged; groups by me after the merge) and Natural Runs m10/m11 (n=2, 48k ticks each)
+Agent finding: both masons stood in the work window without stone work (idle, break spot, waiting at the building-site depot, holdForSpecial), up to 11-17 further adults "hat gerade nichts zu tun" (has nothing to do right now); the stone need of a second plan was invisible to others (Mining.needed read only the primary view); jungle: no stone.
+Change: job/StoneHands (idle >=200 ticks -> helps with stone; one hand per 16 missing cobblestone, max 3; hand only with a free mine stand; kit rules), PlanStoneSupply.villageCobbleShortage (all active plans), MasonJob (surface stone without a mine), holdForSpecial no longer holds a planless mason, Staffing: temporary extra mason (only if the player's quota > 0 %, slider unchanged), JobManager offers StoneHands as the last task.
+Agent measurement: stone-work measuring points before 1/24 (n=2) -> afterwards 34/48/43/46/61/30 (n=6); cobblestone picked up 2/23 -> 132/148/110/60/15/86 (rough). Groups after the merge (by me): stonehands 32, mining 68, miningcycle 199, minelifecycle 35, minewalk 27, minekit 19, stoneeconomy 9, surfacestone 13, planstonesupply 22, builderchecks 318, roles 112, u07quota 27, a01behavior 20, strandrescue 19, firstbuilding 12, woodsupply 15, seasonfarm 65.
+My runs (state 4056c01): m10: granary 118,67,-349 @2582, plan state 122 -> 170/441, storage @9361; stone broken 3/0, StoneHands log lines 11/12, mine to depth 9; wish list at the end: cobblestone x9, spruce_log x8, spruce_planks x4. m11: granary 125,67,-348 @1819, plan state 119 -> 191/439, storage @5971; stone broken 0/2, StoneHands 25/17, mine to depth 17; wish list at the end only spruce_door x1 + spruce_log x29.
+=> For the first time plan progress beyond step ~120 in both runs (before constant 119/75 in 10 runs). Still NO building finished (granary ~306 blocks total need). In m10 stage 2: "keine Mine anlegbar" (no mine can be created) 10x.
 
-## m11 verlaengert (Stand 4056c01, 5 Etappen = ~145 000 Ticks, ein Dorf, Einzellauf)
-Planstand granary 125,67,-348: 119 (24k) -> 191 (48k) -> 227 (72k) -> 269/439 (97k), danach in Etappe 4/5 konstant; storage 195,65,-363: 75 -> 174 (72k) -> 176/266, danach konstant. Etappe 4/5: 0 gebrochene Steine; Wunschliste granary: cobblestone x28 + cobblestone_stairs x20; Hausplan 55,67,-332 @124301 (Hausbedarf entsteht erst jetzt; fehlt cobblestone x48 / spruce_planks x25).
-Neues Glied der Kette: Planbesitzer "ist hungrig und arbeitet langsam" (Etappe 5, ab ~120k Ticks): in 145k Ticks nie ein Feldplan ("Bauplan farm": 0 Zeilen), Nahrung der generierten CTOV-Felder erschoepft. Hunger bremst Arbeitstempo (Wellbeing.workQuarters). Noch KEIN Bau fertig.
-Reproduktionsstand fuer Agents: Welt-Kopie /tmp/claude-0/worlds/m11-hunger (Tick ~145k, Dorf 15 Einwohner, hungrig).
+## m11 Extended (state 4056c01, 5 stages = ~145 000 ticks, one village, single run)
+Plan state granary 125,67,-348: 119 (24k) -> 191 (48k) -> 227 (72k) -> 269/439 (97k), afterwards constant in stage 4/5; storage 195,65,-363: 75 -> 174 (72k) -> 176/266, afterwards constant. Stage 4/5: 0 broken stones; wish list granary: cobblestone x28 + cobblestone_stairs x20; house plan 55,67,-332 @124301 (house need only arises now; missing cobblestone x48 / spruce_planks x25).
+New link in the chain: plan owner "ist hungrig und arbeitet langsam" (is hungry and works slowly) (stage 5, from ~120k ticks): in 145k ticks never a field plan ("Bauplan farm": 0 lines), food of the generated CTOV fields exhausted. Hunger slows work pace (Wellbeing.workQuarters). Still NO building finished.
+Reproduction state for agents: world copy /tmp/claude-0/worlds/m11-hunger (tick ~145k, village 15 residents, hungry).
 
-## Nahrungskette gemergt (claude/food-chain, 46dbcbe)
-Ursachen (aus Agent-Bericht, Hungerzustand m11): Bauern fanden das CTOV-Feld nicht (Suchradius 9, Feld ~57 Bloecke entfernt), Essen liess sich ohne Kornspeicher nirgends ablegen (Materialkisten lehnen Nahrung ab), nicht startbares Gehege blockierte den Feldplan (prioritizeInitialPen).
-Aenderung: dorfweite Ernte, Gehege-Prioritaet nur wenn startbar, gedeckelte Nahrungsbruecke (insertFoodBridge), Angel-Fallback, Mittagsportion bei Knappheit an Hungrige, Diagnose /vpfood.
-Eigener Lauf nach dem Merge (je 1 Lauf, einzeln): foodchain 17, farmexpand 172, seasonfarm 65, firstbuilding 12, cookdelight 26, mealcycle 10, butchercooking 16, stockpolicy 58, roles 112, a01behavior 20, builderchecks 318, builderpaths 86 - alle PASS.
-Natuerliche Belege (Agent, n=2 je 48 000 Ticks): Hungrige 3 -> 0/1; Feldplan startet weiterhin nicht (Zaunholz fehlt, "no fence kit").
-Offen / naechster Schritt: kleine Holzreserve (~8-9 Staemme) fuer das Startfeld in der Dorfkiste halten, solange farms==0 und Nahrungsmangel (Woodcutting/Builder). Farmer "Ernst" steht im Hungerzustand dauerhaft auf y=316, Ursache ungeklaert. Vollpack und Client ungetestet.
+## Food Chain Merged (claude/food-chain, 46dbcbe)
+Causes (from the agent report, hunger state m11): farmers did not find the CTOV field (search radius 9, field ~57 blocks away), food could not be deposited anywhere without a granary (material chests reject food), a non-startable pen blocked the field plan (prioritizeInitialPen).
+Change: village-wide harvest, pen priority only if startable, capped food bridge (insertFoodBridge), fishing fallback, midday portion for the hungry in case of scarcity, diagnosis /vpfood.
+Own run after the merge (1 run each, individually): foodchain 17, farmexpand 172, seasonfarm 65, firstbuilding 12, cookdelight 26, mealcycle 10, butchercooking 16, stockpolicy 58, roles 112, a01behavior 20, builderchecks 318, builderpaths 86 - all PASS.
+Natural evidence (agent, n=2 of 48 000 ticks each): hungry 3 -> 0/1; the field plan still does not start (fence wood missing, "no fence kit").
+Open / next step: keep a small wood reserve (~8-9 logs) for the starter field in the village chest as long as farms==0 and food shortage (Woodcutting/Builder). Farmer "Ernst" stands permanently at y=316 in the hunger state, cause unclear. Full pack and client untested.
 
-## Strenge Nachzaehlung der 62 Punkte (15.11., HEAD be6768a + Fix butcherslaughter)
-Methode: 3 Lese-Agenten (G / D,B,K,R / J,U,A,E) lasen Produktivcode UND Check-Koerper je ID und urteilten A (Code + Check, Wortlaut voll abgedeckt), B (Luecke im Wortlaut), C (nur Client/manuell), D (Code fehlt). Ich liess alle 128 Einzelgruppen auf HEAD laufen und las 3 A-Checks (A03WeatherChecks, HealerCareChecks, MarketLifecycleChecks) gegen: echte Verhaltens-Assertions.
-Ergebnis: **A 17, B 35, C 10, D 0** (Summe 62). Natuerlich bewiesen (Dorf ohne Fixture): **0**.
-A: G02 G03 G04 G06 G07 G13 D01 D02 D06 B05 K02 K04 J03 J04 A02 A03 E01. K02/K04 stuetzen sich teils auf den Hauptlauf (/vptest090 run, braucht Dev-Client, in der Cloud nie gelaufen): strikt ohne diese beiden 15.
-J11 vom Agenten A, von mir auf B gesetzt, weil HealerCareChecks (Gruppe healer) rot ist.
-C (nur Client): K01 U01-U07 E03 E04 (U02/U04-U07/E03: Server-Teil belegt).
-Frueher gemeldet 19/62 (Lese-Agent, ungeprueft) und 13/62 (docs-Audit 30.10.): beide nicht vergleichbar, hier neu und strenger.
-Rote Gruppen auf HEAD (je 2 Laeufe, reproduzierbar; 9 davon auch auf d7d4044 = vor Nahrungskette, also nicht vom Merge): healer, caravanr02, caravanroad, charcoal, craftrecipes, g02 (Check "stand": bounded construction search 59 Bloecke), projectvisibility (readablePause=false), roadbridge, wallconstruction (Kosten 57 statt erwartet, Stock 192/135). Ursachen NICHT untersucht. Restart-Paare (roadbridgeverify, roadclearprepare/verify, woodcutprepare/verify) schlagen als Einzelgruppe erwartungsgemaess fehl (brauchen Prepare+Neustart+Verify).
-Ein Fehler kam vom Merge: butcherslaughter erwartete "Zentralkiste lehnt Rohfleisch ohne Kornspeicher ab"; die neue Nahrungsbruecke nimmt es bewusst (bis 48/12 je Einwohner). Check angepasst (Erhaltung + Bruecke nimmt alle 10), Gruppe 14 PASS.
-Leere Gruppen (0 Checks, vermutlich nur Hauptlauf/Client): board, plaza, toast, trader. Nicht einzeln gelaufen: ctov (braucht CTOV-Welt), headless, verify, performance.
-Naechster Schritt: die 9 roten Gruppen auf Ursache pruefen (Fixture-Rot oder echter Produktivfehler), dann B-Punkte mit kleinstem Rest zu A machen (siehe Master-Prompt).
+## Strict Recount of the 62 Items (15.11., HEAD be6768a + fix butcherslaughter)
+Method: 3 reading agents (G / D,B,K,R / J,U,A,E) read production code AND check bodies per ID and judged A (code + check, wording fully covered), B (gap in the wording), C (client/manual only), D (code missing). I ran all 128 individual groups on HEAD and read 3 A checks (A03WeatherChecks, HealerCareChecks, MarketLifecycleChecks) against it: real behavior assertions.
+Result: **A 17, B 35, C 10, D 0** (sum 62). Naturally proven (village without a fixture): **0**.
+A: G02 G03 G04 G06 G07 G13 D01 D02 D06 B05 K02 K04 J03 J04 A02 A03 E01. K02/K04 rely partly on the main run (/vptest090 run, needs a dev client, never run in the cloud): strictly without these two 15.
+J11 judged A by the agent, set to B by me because HealerCareChecks (group healer) is red.
+C (client only): K01 U01-U07 E03 E04 (U02/U04-U07/E03: server part proven).
+Earlier reported 19/62 (reading agent, unchecked) and 13/62 (docs audit 30.10.): both not comparable, new and stricter here.
+Red groups on HEAD (2 runs each, reproducible; 9 of them also on d7d4044 = before the food chain, so not from the merge): healer, caravanr02, caravanroad, charcoal, craftrecipes, g02 (check "stand": bounded construction search 59 blocks), projectvisibility (readablePause=false), roadbridge, wallconstruction (cost 57 instead of expected, stock 192/135). Causes NOT investigated. Restart pairs (roadbridgeverify, roadclearprepare/verify, woodcutprepare/verify) fail as a single group as expected (they need prepare+restart+verify).
+One failure came from the merge: butcherslaughter expected "central chest rejects raw meat without a granary"; the new food bridge deliberately accepts it (up to 48/12 per resident). Check adapted (preservation + bridge takes all 10), group 14 PASS.
+Empty groups (0 checks, presumably main run/client only): board, plaza, toast, trader. Not run individually: ctov (needs a CTOV world), headless, verify, performance.
+Next step: check the 9 red groups for the cause (fixture red or real production error), then turn the B items with the smallest remainder into A (see master prompt).
 
-## Lag im Modpack: Dorf-Ladebudget (0.10.2)
-Siehe AI-HANDOFF.md (Lauf 16.11.2026). Gruppen: anchorbudget 6, a04lease 2, a04survival 5, minetickets 20, a04idle 7, roles 112, builderchecks 318, a01behavior 20. Nicht gemessen: echte Tickzeit im Modpack.
+## Lag in the Modpack: Village Loading Budget (0.10.2)
+See AI-HANDOFF.md (run 16.11.2026). Groups: anchorbudget 6, a04lease 2, a04survival 5, minetickets 20, a04idle 7, roles 112, builderchecks 318, a01behavior 20. Not measured: real tick time in the modpack.
