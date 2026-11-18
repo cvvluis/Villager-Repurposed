@@ -289,17 +289,20 @@ public final class CaravanR02Checks {
 
 		// Keep exactly one main-chest slot open; the unrelated warehouse remains available.
 			box.setItem(1, new ItemStack(Items.STONE, 64));
-			// This case verifies freight accounting with both entities at valid depot
-			// stands; caravandelivery covers the real approach walk independently.
-			setup.donkey().setPos(at.east(5).getX() + 0.5, at.getY(), at.east(5).getZ() + 0.5);
-			setup.porter().setPos(at.east(4).getX() + 0.5, at.getY(), at.east(4).getZ() + 0.5);
+			// The porter deliberately leads the donkey to the depot side opposite its approach
+			// (Caravan.reachableDepotPorterStand), so a static porter beside the chest cannot
+			// complete the cycle: both entities walk the corridor like the later cases below.
+			setup.donkey().setPos(at.east(9).getX() + 0.5, at.getY(), at.east(9).getZ() + 0.5);
+			setup.porter().setPos(at.east(7).getX() + 0.5, at.getY(), at.east(7).getZ() + 0.5);
 			var memory = setup.porter().getAttachedOrCreate(VillagerPlus.MEMORY);
 			var jobState = JobManager.state(setup.porter());
 			jobState.cooldownUntil = 0;
 			long now = level.getGameTime() + 30_000;
 			Caravan.porterDelivery(new Ctx(level, setup.porter(), jobState, memory, ref, now));
 			int deliveredFirstCall = JobUtil.count(box, stack -> stack.is(Items.BRICKS));
-			for (int tick = 1; tick < 100 && JobUtil.count(box, stack -> stack.is(Items.BRICKS)) < 12; tick++) {
+			for (int tick = 1; tick < 2400 && JobUtil.count(box, stack -> stack.is(Items.BRICKS)) < 12; tick++) {
+				setup.porter().tick();
+				setup.donkey().tick();
 				Caravan.porterDelivery(new Ctx(level, setup.porter(), jobState, memory, ref, now + tick));
 			}
 			int delivered = JobUtil.count(box, stack -> stack.is(Items.BRICKS));
@@ -866,7 +869,9 @@ public final class CaravanR02Checks {
 			state.roadKey = state.routeDimension + state.routeBell.asLong();
 			state.roadCursor = 3;
 			spawnFollowDonkey(level, origin.west(3).north(2), ref, trader, state, spawned, Items.OAK_PLANKS);
-			spawnFollowDonkey(level, origin.west(3).south(2), ref, trader, state, spawned, Items.BRICKS);
+			// Two rows below the wall end: the vanilla route of a donkey flush with the wall end grazes the obsidian
+			// corner by 0.2 block, which Caravan.donkeyPathFailureReason rejects on purpose (every candidate).
+			spawnFollowDonkey(level, origin.west(3).south(4), ref, trader, state, spawned, Items.BRICKS);
 			Caravan.registerActiveStateForChecks(state);
 			// Keep the trader's own active route on the near side. The obsidian barrier is
 			// reserved for the pack-animal approach assertions below; forcing the merchant
@@ -899,7 +904,17 @@ public final class CaravanR02Checks {
 				&& pathAvoidsWall(secondPath, wallX, origin.getZ() - 2, origin.getZ() + 2)
 				&& first.position().equals(firstBefore) && second.position().equals(secondBefore)
 				&& count(first, Items.OAK_PLANKS) == 7 && count(second, Items.BRICKS) == 7,
-				"two freight donkeys get separate validated paths around a solid boundary without teleporting or changing cargo");
+				"two freight donkeys get separate validated paths around a solid boundary without teleporting or changing cargo"
+					+ " [targets=" + firstTarget + "/" + secondTarget + ", traderMoving=" + trader.getNavigation().isInProgress()
+					+ ", routeBell=" + (state.routeBell != null) + ", cursor=" + state.roadCursor
+					+ ", overlap=" + (firstTarget != null && secondTarget != null
+						&& CaravanSites.bounds(first, firstTarget).intersects(CaravanSites.bounds(second, secondTarget)))
+					+ ", firstFailure=" + Caravan.donkeyPathFailureReason(level, first, firstPath, firstTarget)
+					+ ", secondFailure=" + Caravan.donkeyPathFailureReason(level, second, secondPath, secondTarget)
+					+ ", firstWallSafe=" + pathAvoidsWall(firstPath, wallX, origin.getZ() - 2, origin.getZ() + 2)
+					+ ", secondWallSafe=" + pathAvoidsWall(secondPath, wallX, origin.getZ() - 2, origin.getZ() + 2)
+					+ ", moved=" + !(first.position().equals(firstBefore) && second.position().equals(secondBefore))
+					+ ", cargo=" + count(first, Items.OAK_PLANKS) + "/" + count(second, Items.BRICKS) + "]");
 			int checks = 1;
 			Caravan.guideDepartingDonkeys(level, state, trader, guidanceAt + 20L);
 			var firstPathAfterRefresh = first.getNavigation().getPath();
@@ -938,9 +953,17 @@ public final class CaravanR02Checks {
 				&& !Caravan.packAnimalsCanKeepUp(level, state, trader);
 			Caravan.resumePackDonkeyAfterLoad(level, first);
 			Caravan.guideDepartingDonkeys(level, state, trader, guidanceAt + 40L);
-			check(heldForUnload && state.departurePathReady && Caravan.packAnimalsCanKeepUp(level, state, trader)
+			// The donkeys stand 15 blocks behind the trader across the wall, so packAnimalsCanKeepUp is
+			// false by design (four-block wait distance; caravansites covers the physical catch-up).
+			// Resuming means the route is guided again: the reloaded donkey walks and the departure is path-ready.
+			check(heldForUnload && state.departurePathReady && first.getNavigation().isInProgress()
 				&& count(first, Items.OAK_PLANKS) == 7 && state.routeBell.equals(origin.west(80)) && state.roadCursor == 3,
-				"a reloaded pack donkey resumes the saved caravan route with its freight intact"); checks++;
+				"a reloaded pack donkey resumes the saved caravan route with its freight intact [held=" + heldForUnload
+					+ ", ready=" + state.departurePathReady + ", keepUp=" + Caravan.packAnimalsCanKeepUp(level, state, trader)
+					+ ", cargo=" + count(first, Items.OAK_PLANKS) + ", routeBell=" + state.routeBell + ", cursor=" + state.roadCursor
+					+ ", firstPos=" + first.blockPosition() + ", secondPos=" + second.blockPosition()
+					+ ", trader=" + trader.blockPosition() + ", firstNav=" + first.getNavigation().isInProgress()
+					+ ", secondNav=" + second.getNavigation().isInProgress() + "]"); checks++;
 			return checks;
 		} finally {
 			if (state != null) Caravan.removeActiveStateForChecks(state.trader);

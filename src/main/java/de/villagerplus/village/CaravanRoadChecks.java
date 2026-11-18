@@ -149,7 +149,9 @@ public final class CaravanRoadChecks {
 			if (departureDonkey == null) throw new IllegalStateException("Could not spawn caravan departure donkey fixture");
 			// A command-spawned fixture has not received its first physics tick; vanilla ground navigation requires support state.
 			departureDonkey.setOnGround(true);
-			Caravan.State departureState = new Caravan.State(dummy, level, a, departureDonkey.blockPosition(), 0);
+			// The caravan origin is the bell; a donkey standing on its own spawn point is inside the two-block
+			// trader lane and, by design (safeHomeArrivalCell), not yet arrived. It waits in the 2-to-4-block ring.
+			Caravan.State departureState = new Caravan.State(dummy, level, a, source, 0);
 			departureState.llamas.add(departureDonkey.getUUID());
 			departureDonkey.addTag("vp_caravan");
 			departureDonkey.addTag("vp_caravan_bell:" + source.asLong());
