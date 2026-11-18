@@ -2,7 +2,9 @@ package de.villagerplus.job;
 
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -422,34 +424,70 @@ public final class RecipeCrafting {
 	}
 
 	private static List<ItemStack> assign(Container chest, List<Ingredient> ingredients) {
+		return assign(ContainerIndex.snapshot(chest), ingredients);
+	}
+
+	private static List<ItemStack> assign(final ContainerIndex index, final List<Ingredient> ingredients) {
 		List<Integer> order = new ArrayList<>();
 		for (int i = 0; i < ingredients.size(); i++) order.add(i);
-		order.sort(java.util.Comparator.comparingInt(index -> matchingStacks(chest, ingredients.get(index))));
+		order.sort(java.util.Comparator.comparingInt(i -> index.matchingStacks(ingredients.get(i))));
 		List<ItemStack> chosen = new ArrayList<>(java.util.Collections.nCopies(ingredients.size(), ItemStack.EMPTY));
-		int[] reserved = new int[chest.getContainerSize()];
-		return assignAt(chest, ingredients, order, 0, reserved, chosen) ? chosen : null;
+		int[] reserved = new int[index.size()];
+		return assignAt(index, ingredients, order, 0, reserved, chosen) ? chosen : null;
 	}
 
-	private static int matchingStacks(Container chest, Ingredient ingredient) {
-		int count = 0;
-		for (int i = 0; i < chest.getContainerSize(); i++) if (!chest.getItem(i).isEmpty() && ingredient.test(chest.getItem(i))) count++;
-		return count;
-	}
-
-	private static boolean assignAt(Container chest, List<Ingredient> ingredients, List<Integer> order,
-			int depth, int[] reserved, List<ItemStack> chosen) {
+	private static boolean assignAt(final ContainerIndex index, final List<Ingredient> ingredients, final List<Integer> order,
+			final int depth, final int[] reserved, final List<ItemStack> chosen) {
 		if (depth == order.size()) return true;
-		int index = order.get(depth);
-		Ingredient ingredient = ingredients.get(index);
-		for (int slot = 0; slot < chest.getContainerSize(); slot++) {
-			ItemStack stack = chest.getItem(slot);
+		int indexPos = order.get(depth);
+		Ingredient ingredient = ingredients.get(indexPos);
+		for (int slot = 0; slot < index.size(); slot++) {
+			ItemStack stack = index.getItem(slot);
 			if (stack.isEmpty() || !ingredient.test(stack) || stack.getCount() <= reserved[slot]) continue;
 			reserved[slot]++;
-			chosen.set(index, stack.copyWithCount(1));
-			if (assignAt(chest, ingredients, order, depth + 1, reserved, chosen)) return true;
+			chosen.set(indexPos, stack.copyWithCount(1));
+			if (assignAt(index, ingredients, order, depth + 1, reserved, chosen)) return true;
 			reserved[slot]--;
 		}
 		return false;
+	}
+
+	/**
+	 * One slot walk per {@link #assign} / {@link #inputFor} call; ingredient match counts are cached for that snapshot.
+	 */
+	static final class ContainerIndex {
+		private final ItemStack[] slots;
+		private final Map<Ingredient, Integer> matchCounts = new HashMap<>();
+
+		private ContainerIndex(final ItemStack[] slots) {
+			this.slots = slots;
+		}
+
+		static ContainerIndex snapshot(final Container chest) {
+			int size = chest.getContainerSize();
+			ItemStack[] slots = new ItemStack[size];
+			for (int slot = 0; slot < size; slot++) {
+				ItemStack stack = chest.getItem(slot);
+				slots[slot] = stack.isEmpty() ? ItemStack.EMPTY : stack;
+			}
+			return new ContainerIndex(slots);
+		}
+
+		int size() {
+			return slots.length;
+		}
+
+		ItemStack getItem(final int slot) {
+			return slots[slot];
+		}
+
+		int matchingStacks(final Ingredient ingredient) {
+			return matchCounts.computeIfAbsent(ingredient, ing -> {
+				int count = 0;
+				for (ItemStack stack : slots) if (!stack.isEmpty() && ing.test(stack)) count++;
+				return count;
+			});
+		}
 	}
 
 	private static int count(Container chest, Predicate<ItemStack> filter) {

@@ -2,6 +2,15 @@
 
 Alle genannten Versionen gelten für Fabric, Minecraft 26.2 und Java 25. Die JAR heißt `villagers-repurposed-<version>.jar`.
 
+## 0.10.9
+
+Leistung: ein Modell pro Rollen-Villager statt doppeltem Geometrie-Pass; Bauplan-Spitzhacken-Checks nicht mehr jeden Tick bei unverändertem Dorflager.
+
+- **Rollen-Skins:** Basis `villager.png` und Rollen-Overlay werden beim Client-Ressourcen-Reload zu einer dynamischen Textur zusammengelegt. Berufs- und Biom-Layer entfallen für Rollen-Erwachsene; der alte `RoleSkinLayer` entfällt. Rolle wird einmal in `extractRenderState` ermittelt.
+- **Rezepte:** `RecipeCrafting.assign` nutzt einen einmaligen Kisten-Snapshot pro Aufruf. `PlanStoneSupply` cacht negative Spitzhacken-Craft-Checks etwa 4 Sekunden pro Dorf, solange sich das Inventar nicht ändert.
+
+`gradle build` ist auf diesem Stand durchgelaufen. Nicht im Modpack geprüft.
+
 ## 0.10.8
 
 Dorfkarte und Relief erzeugen keine Chunks mehr. Das ist der Fix für das Einfrieren beim Betreten eines Dorfs im großen Modpack.

@@ -5,7 +5,9 @@ import de.villagerplus.village.Specials;
 import de.villagerplus.village.VillageData;
 import de.villagerplus.village.VillageRef;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.ItemTags;
@@ -23,6 +25,12 @@ import net.minecraft.world.level.block.entity.HopperBlockEntity;
 /** Plan-only quantities for the loaded-recipe cobblestone to cracked-brick chain. */
 public final class PlanStoneSupply {
 	private PlanStoneSupply() { }
+
+	/** Skip repeated full recipe scans while stock is unchanged and crafting still fails. */
+	private static final long PICKAXE_PROBE_TTL = 80L;
+	private static final Map<Long, PickaxeCraftProbe> PICKAXE_CRAFT_PROBES = new HashMap<>();
+
+	private record PickaxeCraftProbe(long signature, long validUntil, boolean craftable) { }
 
 	/** True only when missing downstream inputs can usefully be supplied from the real mine. */
 	public static boolean needsCobble(ServerLevel level, VillageData data, Container stock) {
@@ -118,7 +126,7 @@ public final class PlanStoneSupply {
 			return true;
 		}
 
-		if (craftPlanPickaxe(c.level(), stock, c.v().getInventory())) {
+		if (tryCraftPlanPickaxe(c.level(), stock, c.v().getInventory(), c.village().bell().asLong(), c.now())) {
 			c.setActivity("fertigt eine Spitzhacke aus Dorfmaterial für den Bauplan");
 			c.st().cooldownUntil = c.now() + 80;
 			c.mem().jobsDone++;
@@ -126,6 +134,36 @@ public final class PlanStoneSupply {
 			return true;
 		}
 		return false;
+	}
+
+	static boolean tryCraftPlanPickaxe(final ServerLevel level, final Container stock, final Container inventory,
+			final long villageBell, final long now) {
+		long signature = containerSignature(stock, inventory);
+		PickaxeCraftProbe cached = PICKAXE_CRAFT_PROBES.get(villageBell);
+		if (cached != null && cached.signature() == signature && now < cached.validUntil() && !cached.craftable()) {
+			return false;
+		}
+		boolean crafted = craftPlanPickaxe(level, stock, inventory);
+		PICKAXE_CRAFT_PROBES.put(villageBell, new PickaxeCraftProbe(signature, now + PICKAXE_PROBE_TTL, crafted));
+		return crafted;
+	}
+
+	private static long containerSignature(final Container first, final Container second) {
+		long signature = 17L;
+		signature = signature * 31L + signature(first);
+		return signature * 31L + signature(second);
+	}
+
+	private static long signature(final Container container) {
+		long value = container.getContainerSize();
+		for (int slot = 0; slot < container.getContainerSize(); slot++) {
+			ItemStack stack = container.getItem(slot);
+			if (stack.isEmpty()) continue;
+			value = value * 31L + slot;
+			value = value * 31L + net.minecraft.core.registries.BuiltInRegistries.ITEM.getId(stack.getItem());
+			value = value * 31L + stack.getCount();
+		}
+		return value;
 	}
 
 	/** A real loaded wooden/stone pickaxe recipe, paid from the worker's carried items and public village stock. */
