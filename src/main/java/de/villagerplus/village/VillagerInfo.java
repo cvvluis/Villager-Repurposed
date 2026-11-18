@@ -221,7 +221,7 @@ public final class VillagerInfo {
 	private static List<String> privateChestLines(ServerLevel level, UUID villagerId, VillagerMemory memory) {
 		if (memory.homeChest.isEmpty()) return List.of("Privattruhe|nicht gefunden|-1");
 		var pos = memory.homeChest.get();
-		if (!level.hasChunkAt(pos)) return List.of("Privattruhe|nicht geladen|-1");
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return List.of("Privattruhe|nicht geladen|-1");
 		if (!(level.getBlockState(pos).getBlock() instanceof net.minecraft.world.level.block.ChestBlock)
 			|| !de.villagerplus.village.Ownership.isOwnedBy(level, pos, villagerId)) {
 			return List.of("Privattruhe|keine nachweislich eigene Kiste|-1");
@@ -229,7 +229,7 @@ public final class VillagerInfo {
 		var state = level.getBlockState(pos);
 		if (state.getValue(net.minecraft.world.level.block.ChestBlock.TYPE) != net.minecraft.world.level.block.state.properties.ChestType.SINGLE) {
 			var otherPos = pos.relative(net.minecraft.world.level.block.ChestBlock.getConnectedDirection(state));
-			if (!level.hasChunkAt(otherPos)
+			if (!de.villagerplus.world.LoadedColumns.ready(level, otherPos)
 				|| !(level.getBlockState(otherPos).getBlock() instanceof net.minecraft.world.level.block.ChestBlock)
 				|| !de.villagerplus.village.Ownership.isOwnedBy(level, otherPos, villagerId)) {
 				return List.of("Privattruhe|nicht vollständig als eigenes Doppelkistenpaar bestätigt|-1");

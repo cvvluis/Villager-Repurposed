@@ -46,7 +46,7 @@ public final class PenExpansion {
 		List<BlockPos> fenceCells, BlockPos annexGate) { }
 
 	public static boolean overCapacity(ServerLevel level, BlockPos pen) {
-		if (level == null || pen == null || !level.hasChunkAt(pen)) return false;
+		if (level == null || pen == null || !de.villagerplus.world.LoadedColumns.ready(level, pen)) return false;
 		AABB area = area(level, pen);
 		List<Animal> herd = level.getEntitiesOfClass(Animal.class, area, Animal::isAlive);
 		return overCapacity(level, pen, herd, List.of());
@@ -55,7 +55,7 @@ public final class PenExpansion {
 	static boolean overCapacity(ServerLevel level, VillageRef ref) {
 		if (level == null || ref == null || ref.data().extra.pen.isEmpty()) return false;
 		BlockPos pen = ref.data().extra.pen.get();
-		if (!level.hasChunkAt(pen)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pen)) return false;
 		return overCapacity(level, ref.data().extra.pen.get(),
 			level.getEntitiesOfClass(Animal.class, area(level, ref.data().extra.pen.get()), Animal::isAlive), validPastures(ref));
 	}
@@ -86,7 +86,7 @@ public final class PenExpansion {
 	static boolean dueAtCapacity(ServerLevel level, VillageRef ref) {
 		if (level == null || ref == null || ref.data().extra.pen.isEmpty()) return false;
 		BlockPos pen = ref.data().extra.pen.get();
-		if (!level.hasChunkAt(pen) || isExpanded(level, pen, validPastures(ref))) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pen) || isExpanded(level, pen, validPastures(ref))) return false;
 		Layout layout = layout(level, pen);
 		if (layout == null || !pastureCoversAnnex(pen, layout, validPastures(ref))
 			|| !usableAnnexInterior(level, pen, layout)) return false;
@@ -133,11 +133,11 @@ public final class PenExpansion {
 		Layout layout = layout(level, pen);
 		if (layout == null || !pastureCoversAnnex(pen, layout, pastures) || !usableAnnexInterior(level, pen, layout)) return false;
 		for (BlockPos pos : layout.fenceCells()) {
-			if (!level.hasChunkAt(pos) || !level.getBlockState(pos).is(BlockTags.FENCES)
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !level.getBlockState(pos).is(BlockTags.FENCES)
 				|| level.getBlockEntity(pos) != null || !supportedFloor(level, pos)) return false;
 		}
 		BlockPos gatePos = layout.annexGate();
-		if (!level.hasChunkAt(gatePos) || level.getBlockEntity(gatePos) != null || !supportedFloor(level, gatePos)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, gatePos) || level.getBlockEntity(gatePos) != null || !supportedFloor(level, gatePos)) return false;
 		BlockState gate = level.getBlockState(gatePos);
 		return gate.getBlock() == layout.baseGate().getBlock()
 			&& gate.getBlock() instanceof FenceGateBlock
@@ -147,7 +147,7 @@ public final class PenExpansion {
 	/** Managed query bounds include a partial annex so restart retries still see any real animals already there. */
 	static AABB area(ServerLevel level, BlockPos pen) {
 		AABB base = new AABB(pen).inflate(5, 3, 5);
-		if (level == null || pen == null || !level.hasChunkAt(pen)) return base;
+		if (level == null || pen == null || !de.villagerplus.world.LoadedColumns.ready(level, pen)) return base;
 		Layout layout = layout(level, pen);
 		if (layout == null || !hasAnnexFootprint(level, layout)) return base;
 		double minX = base.minX, minY = base.minY, minZ = base.minZ;
@@ -167,7 +167,7 @@ public final class PenExpansion {
 	static boolean contains(ServerLevel level, BlockPos pen, Entity entity) {
 		if (entity == null) return false;
 		if (new AABB(pen).inflate(3.0, 2.0, 3.0).contains(entity.position())) return true;
-		if (level == null || !level.hasChunkAt(pen)) return false;
+		if (level == null || !de.villagerplus.world.LoadedColumns.ready(level, pen)) return false;
 		Layout layout = layout(level, pen);
 		if (layout == null || !isExpanded(level, pen, List.of())) return false;
 		AABB annex = annexInterior(pen, layout);
@@ -175,7 +175,7 @@ public final class PenExpansion {
 	}
 
 	static boolean inAnnex(ServerLevel level, BlockPos pen, Entity entity) {
-		if (level == null || entity == null || !level.hasChunkAt(pen)) return false;
+		if (level == null || entity == null || !de.villagerplus.world.LoadedColumns.ready(level, pen)) return false;
 		Layout layout = layout(level, pen);
 		return layout != null && isExpanded(level, pen, List.of()) && annexInterior(pen, layout).contains(entity.position());
 	}
@@ -196,7 +196,7 @@ public final class PenExpansion {
 	}
 
 	static Gate herdingGate(ServerLevel level, BlockPos pen, List<ZonePolicy.Zone> pastures) {
-		if (level == null || pen == null || !level.hasChunkAt(pen)) return null;
+		if (level == null || pen == null || !de.villagerplus.world.LoadedColumns.ready(level, pen)) return null;
 		Layout layout = layout(level, pen);
 		if (layout == null) return null;
 		if (isExpanded(level, pen, pastures)) return new Gate(layout.annexGate(), layout.outward());
@@ -206,7 +206,7 @@ public final class PenExpansion {
 
 	static List<BlockPos> feedStands(ServerLevel level, BlockPos pen) {
 		List<BlockPos> stands = new ArrayList<>(List.of(pen.north(5), pen.south(5), pen.east(5), pen.west(5)));
-		if (level == null || pen == null || !level.hasChunkAt(pen)) return List.copyOf(stands);
+		if (level == null || pen == null || !de.villagerplus.world.LoadedColumns.ready(level, pen)) return List.copyOf(stands);
 		Layout layout = layout(level, pen);
 		if (layout == null || !isExpanded(level, pen, List.of())) return List.copyOf(stands);
 		stands.add(layout.annexGate().relative(layout.outward()));
@@ -297,7 +297,7 @@ public final class PenExpansion {
 	}
 
 	static List<BlockPos> plan(ServerLevel level, BlockPos pen) {
-		if (level == null || pen == null || !level.hasChunkAt(pen)) return List.of();
+		if (level == null || pen == null || !de.villagerplus.world.LoadedColumns.ready(level, pen)) return List.of();
 		Layout layout = layout(level, pen);
 		if (layout == null) return List.of();
 		List<BlockPos> missing = missingFenceCells(level, layout, null);
@@ -327,14 +327,14 @@ public final class PenExpansion {
 
 	private static boolean missingGate(ServerLevel level, Layout layout) {
 		BlockPos pos = layout.annexGate();
-		if (!level.hasChunkAt(pos)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return false;
 		BlockState state = level.getBlockState(pos);
 		return state.isAir();
 	}
 
 	private static boolean validGateSite(ServerLevel level, Layout layout, Entity ignoredEntity) {
 		BlockPos pos = layout.annexGate();
-		if (!level.hasChunkAt(pos) || !supportedFloor(level, pos) || level.getBlockEntity(pos) != null) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !supportedFloor(level, pos) || level.getBlockEntity(pos) != null) return false;
 		BlockState state = level.getBlockState(pos);
 		if (state.getBlock() == layout.baseGate().getBlock() && state.getBlock() instanceof FenceGateBlock
 			&& state.getValue(FenceGateBlock.FACING) == layout.outward()) return true;
@@ -344,7 +344,7 @@ public final class PenExpansion {
 	private static List<BlockPos> missingFenceCells(ServerLevel level, Layout layout, Entity ignoredEntity) {
 		List<BlockPos> missing = new ArrayList<>();
 		for (BlockPos pos : layout.fenceCells()) {
-			if (!level.hasChunkAt(pos) || !supportedFloor(level, pos) || level.getBlockEntity(pos) != null) return null;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !supportedFloor(level, pos) || level.getBlockEntity(pos) != null) return null;
 			BlockState state = level.getBlockState(pos);
 			if (state.is(BlockTags.FENCES)) continue;
 			if (!state.isAir() || !safeFenceCell(level, pos, ignoredEntity)) return null;
@@ -354,12 +354,12 @@ public final class PenExpansion {
 	}
 
 	private static Layout layout(ServerLevel level, BlockPos pen) {
-		if (level == null || pen == null || !level.hasChunkAt(pen)) return null;
+		if (level == null || pen == null || !de.villagerplus.world.LoadedColumns.ready(level, pen)) return null;
 		Direction entrance = null;
 		BlockState baseGate = null;
 		for (Direction outward : List.of(Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST)) {
 			BlockPos gate = pen.relative(outward, 4);
-			if (!level.hasChunkAt(gate)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, gate)) continue;
 			BlockState state = level.getBlockState(gate);
 			if (state.getBlock() instanceof FenceGateBlock && state.getValue(FenceGateBlock.FACING) == outward) {
 				entrance = outward;
@@ -401,10 +401,10 @@ public final class PenExpansion {
 	}
 
 	private static boolean hasAnnexFootprint(ServerLevel level, Layout layout) {
-		if (level.hasChunkAt(layout.annexGate())
+		if (de.villagerplus.world.LoadedColumns.ready(level, layout.annexGate())
 			&& level.getBlockState(layout.annexGate()).getBlock() instanceof FenceGateBlock) return true;
 		for (BlockPos pos : layout.fenceCells()) {
-			if (level.hasChunkAt(pos) && level.getBlockState(pos).is(BlockTags.FENCES)) return true;
+			if (de.villagerplus.world.LoadedColumns.ready(level, pos) && level.getBlockState(pos).is(BlockTags.FENCES)) return true;
 		}
 		return false;
 	}
@@ -415,7 +415,7 @@ public final class PenExpansion {
 			for (int across = -1; across <= 1; across++) {
 				BlockPos cell = offset(pen, layout.outward(), layout.lateral(), along, across);
 				BlockPos head = cell.above();
-				if (!level.hasChunkAt(cell) || !level.hasChunkAt(head) || !supportedFloor(level, cell)) return false;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, cell) || !de.villagerplus.world.LoadedColumns.ready(level, head) || !supportedFloor(level, cell)) return false;
 				BlockState state = level.getBlockState(cell);
 				if (!state.getCollisionShape(level, cell).isEmpty()
 					|| !level.getBlockState(head).getCollisionShape(level, head).isEmpty()) return false;
@@ -438,19 +438,19 @@ public final class PenExpansion {
 
 	private static boolean supportedFloor(ServerLevel level, BlockPos cell) {
 		BlockPos floor = cell.below();
-		return level.hasChunkAt(floor) && level.getBlockState(floor).isFaceSturdy(level, floor, Direction.UP);
+		return de.villagerplus.world.LoadedColumns.ready(level, floor) && level.getBlockState(floor).isFaceSturdy(level, floor, Direction.UP);
 	}
 
 	private static boolean safeWorkStand(ServerLevel level, BlockPos stand, Entity ignoredEntity) {
 		BlockPos floor = stand.below();
-		if (!level.hasChunkAt(stand) || !level.getBlockState(stand).isAir() || level.getBlockEntity(stand) != null
-			|| !level.hasChunkAt(floor) || !level.getBlockState(floor).isFaceSturdy(level, floor, Direction.UP)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, stand) || !level.getBlockState(stand).isAir() || level.getBlockEntity(stand) != null
+			|| !de.villagerplus.world.LoadedColumns.ready(level, floor) || !level.getBlockState(floor).isFaceSturdy(level, floor, Direction.UP)) return false;
 		return level.getEntitiesOfClass(Entity.class, new AABB(stand), entity -> entity != ignoredEntity
 			&& entity.isAlive() && !entity.isSpectator()).isEmpty();
 	}
 
 	private static boolean safeFenceCell(ServerLevel level, BlockPos cell, Entity ignoredEntity) {
-		if (!level.hasChunkAt(cell) || !level.getBlockState(cell).isAir() || level.getBlockEntity(cell) != null) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, cell) || !level.getBlockState(cell).isAir() || level.getBlockEntity(cell) != null) return false;
 		return level.getEntitiesOfClass(Entity.class, new AABB(cell), entity -> entity != ignoredEntity
 			&& entityOccupiesFenceCell(cell, entity)).isEmpty();
 	}
@@ -468,7 +468,7 @@ public final class PenExpansion {
 
 	private static void rollback(ServerLevel level, Map<BlockPos, BlockState> changed, Container chest, List<ItemStack> stock) {
 		changed.forEach((pos, state) -> {
-			if (level.hasChunkAt(pos)) level.setBlock(pos, state, 3);
+			if (de.villagerplus.world.LoadedColumns.ready(level, pos)) level.setBlock(pos, state, 3);
 		});
 		for (int slot = 0; slot < Math.min(chest.getContainerSize(), stock.size()); slot++) chest.setItem(slot, stock.get(slot).copy());
 		chest.setChanged();
@@ -476,7 +476,7 @@ public final class PenExpansion {
 
 	private static Container communal(Ctx c) {
 		BlockPos pos = c.village().chestPos(c.level());
-		if (pos == null || !c.level().hasChunkAt(pos)) return null;
+		if (pos == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), pos)) return null;
 		var entity = c.level().getBlockEntity(pos);
 		if (entity == null || entity.getAttached(VillagerPlus.OWNER) != null) return null;
 		return c.village().chest(c.level());

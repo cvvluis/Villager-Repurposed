@@ -89,8 +89,8 @@ public final class Expedition {
 		double angle = Math.floorMod(seed * 31L + index * 23L, 360L) * Math.PI / 180.0;
 		for (int dist = EXIT_DISTANCE; dist >= 16; dist -= 14) {
 			BlockPos col = bell.offset((int) Math.round(Math.cos(angle) * dist), 0, (int) Math.round(Math.sin(angle) * dist));
-			if (level.hasChunkAt(col)) {
-				return level.getHeightmapPos(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, col);
+			if (de.villagerplus.world.LoadedColumns.ready(level, col)) {
+				return de.villagerplus.world.LoadedColumns.heightmapPos(level, net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, col);
 			}
 		}
 		return bell;
@@ -109,7 +109,7 @@ public final class Expedition {
 			}
 			Entity e = level.getEntity(entry.getKey());
 			if (!(e instanceof Villager v) || !v.isAlive()) {
-				if (e == null && now < w.deadline() && !level.hasChunkAt(w.target())) {
+				if (e == null && now < w.deadline() && !de.villagerplus.world.LoadedColumns.ready(level, w.target())) {
 					continue;
 				}
 				it.remove();

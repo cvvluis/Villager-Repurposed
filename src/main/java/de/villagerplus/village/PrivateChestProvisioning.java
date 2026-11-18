@@ -59,7 +59,7 @@ public final class PrivateChestProvisioning {
 			// or being reassigned. Once a valid anchor returns, rememberExisting either reuses it or moves
 			// it into that home's proven interior. Never let an unverified pointer survive this branch.
 			BlockPos remembered = memory.homeChest.orElse(null);
-			if (remembered != null && level.hasChunkAt(remembered)
+			if (remembered != null && de.villagerplus.world.LoadedColumns.ready(level, remembered)
 				&& (!(level.getBlockState(remembered).getBlock() instanceof ChestBlock)
 					|| !Ownership.isOwnedBy(level, remembered, villager.getUUID()))) {
 				memory.homeChest = Optional.empty();
@@ -70,7 +70,7 @@ public final class PrivateChestProvisioning {
 		// Unlike a transient JobState timer, this attachment survives entity unload/save.
 		setPending(villager, true);
 		BlockPos door = memory.homeDoor.orElse(null);
-		if (!level.hasChunkAt(bed) || (door != null && !level.hasChunkAt(door))) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, bed) || (door != null && !de.villagerplus.world.LoadedColumns.ready(level, door))) return false;
 		if (!(level.getBlockState(bed).getBlock() instanceof BedBlock)
 			|| (door != null && (!(level.getBlockState(door).getBlock() instanceof DoorBlock)
 				|| level.getBlockState(door).getValue(DoorBlock.HALF) != net.minecraft.world.level.block.state.properties.DoubleBlockHalf.LOWER))) {
@@ -179,7 +179,7 @@ public final class PrivateChestProvisioning {
 		if (remembered != null) {
 			// Without a loaded source we cannot distinguish a real owner chest from a stale position.
 			// Keep the pointer so the persisted request can retry rather than pay for a duplicate.
-			if (!level.hasChunkAt(remembered)) return ExistingChest.INCOMPLETE_SCAN;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, remembered)) return ExistingChest.INCOMPLETE_SCAN;
 			if (level.getBlockState(remembered).getBlock() instanceof ChestBlock
 				&& Ownership.isOwnedBy(level, remembered, owner)) {
 				if (nearCurrentHome(remembered, currentBed)
@@ -201,7 +201,7 @@ public final class PrivateChestProvisioning {
 		List<BlockPos> ownedChests = new ArrayList<>();
 		for (BlockPos pos : BlockPos.betweenClosed(currentBed.offset(-HOME_INTERIOR_SCAN_RADIUS, -1, -HOME_INTERIOR_SCAN_RADIUS),
 				currentBed.offset(HOME_INTERIOR_SCAN_RADIUS, 2, HOME_INTERIOR_SCAN_RADIUS))) {
-			if (level.hasChunkAt(pos) && level.getBlockState(pos).getBlock() instanceof ChestBlock
+			if (de.villagerplus.world.LoadedColumns.ready(level, pos) && level.getBlockState(pos).getBlock() instanceof ChestBlock
 				&& nearCurrentHome(pos, currentBed)
 				&& Ownership.isOwnedBy(level, pos, owner)) {
 				ownedChests.add(pos.immutable());
@@ -402,10 +402,10 @@ public final class PrivateChestProvisioning {
 
 	private static boolean validPlacement(ServerLevel level, BlockPos pos, BlockPos bed, BlockPos door, HomeInterior interior) {
 		BlockPos above = pos.above(), below = pos.below();
-		if (!level.hasChunkAt(pos) || !level.hasChunkAt(above) || !level.hasChunkAt(below)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !de.villagerplus.world.LoadedColumns.ready(level, above) || !de.villagerplus.world.LoadedColumns.ready(level, below)) return false;
 		for (Direction direction : Direction.Plane.HORIZONTAL) {
 			BlockPos neighbor = pos.relative(direction);
-			if (!level.hasChunkAt(neighbor) || level.getBlockState(neighbor).getBlock() instanceof ChestBlock) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, neighbor) || level.getBlockState(neighbor).getBlock() instanceof ChestBlock) return false;
 		}
 		if (!level.getBlockState(pos).isAir() || !level.getBlockState(above).isAir() || occupied(level, pos)) return false;
 		if (level.getBlockEntity(pos) != null || level.getBlockEntity(below) != null) return false;
@@ -451,7 +451,7 @@ public final class PrivateChestProvisioning {
 	private static boolean verifiedHomeDoor(ServerLevel level, BlockPos door, HouseTemplate.Footprint footprint) {
 		if (door == null) return true;
 		if (footprint == null || !withinHomeFootprint(door, footprint) || !withinHomeFootprint(door.above(), footprint)
-			|| !level.hasChunkAt(door.above())) return false;
+			|| !de.villagerplus.world.LoadedColumns.ready(level, door.above())) return false;
 		BlockState lower = level.getBlockState(door), upper = level.getBlockState(door.above());
 		if (!(lower.getBlock() instanceof DoorBlock) || lower.getValue(DoorBlock.HALF)
 				!= net.minecraft.world.level.block.state.properties.DoubleBlockHalf.LOWER
@@ -473,7 +473,7 @@ public final class PrivateChestProvisioning {
 
 	private static boolean onHomeSideOfDoor(ServerLevel level, BlockPos pos, BlockPos bed, BlockPos door) {
 		if (door == null) return true;
-		if (!level.hasChunkAt(door) || !(level.getBlockState(door).getBlock() instanceof DoorBlock)
+		if (!de.villagerplus.world.LoadedColumns.ready(level, door) || !(level.getBlockState(door).getBlock() instanceof DoorBlock)
 			|| level.getBlockState(door).getValue(DoorBlock.HALF)
 				!= net.minecraft.world.level.block.state.properties.DoubleBlockHalf.LOWER) return false;
 		if (door != null) {
@@ -492,7 +492,7 @@ public final class PrivateChestProvisioning {
 			// neighboring building must not turn a roofed porch/eave into an interior cell.
 			for (int distance = 1; distance <= MAX_HOME_WALL_RAY && !boundary; distance++) {
 				BlockPos wall = pos.relative(direction, distance);
-				if (!level.hasChunkAt(wall)) return false;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, wall)) return false;
 				for (int height = 0; height <= 1 && !boundary; height++) {
 					BlockPos part = wall.above(height);
 					BlockState state = level.getBlockState(part);
@@ -509,7 +509,7 @@ public final class PrivateChestProvisioning {
 	/** A saved chest is valid only when its position is adjacent to the proven room component. */
 	static boolean validOwnedHomeChest(ServerLevel level, BlockPos pos, BlockPos bed, BlockPos door, UUID owner) {
 		ChestBlockEntity chest = ownedSingleChest(level, pos, owner);
-		if (chest == null || pos.getY() != bed.getY() || !level.hasChunkAt(pos.above()) || !level.hasChunkAt(pos.below())
+		if (chest == null || pos.getY() != bed.getY() || !de.villagerplus.world.LoadedColumns.ready(level, pos.above()) || !de.villagerplus.world.LoadedColumns.ready(level, pos.below())
 			|| !level.getBlockState(pos.above()).isAir()
 			|| !level.getBlockState(pos.below()).isFaceSturdy(level, pos.below(), Direction.UP)
 			|| level.getBlockEntity(pos.above()) != null || level.getBlockEntity(pos.below()) != null || occupied(level, pos)) return false;
@@ -528,7 +528,7 @@ public final class PrivateChestProvisioning {
 
 	/** Accepts only an owner-marked, single, unopened chest with no deferred loot or adjacent half. */
 	private static ChestBlockEntity ownedSingleChest(ServerLevel level, BlockPos pos, UUID owner) {
-		if (pos == null || !level.hasChunkAt(pos)) return null;
+		if (pos == null || !de.villagerplus.world.LoadedColumns.ready(level, pos)) return null;
 		BlockState state = level.getBlockState(pos);
 		if (!(state.getBlock() instanceof ChestBlock)
 			|| state.getValue(ChestBlock.TYPE) != net.minecraft.world.level.block.state.properties.ChestType.SINGLE
@@ -538,14 +538,14 @@ public final class PrivateChestProvisioning {
 			|| chest.getContainerSize() != 27 || ChestBlockEntity.getOpenCount(level, pos) != 0) return null;
 		for (Direction direction : Direction.Plane.HORIZONTAL) {
 			BlockPos neighbor = pos.relative(direction);
-			if (!level.hasChunkAt(neighbor) || level.getBlockState(neighbor).getBlock() instanceof ChestBlock) return null;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, neighbor) || level.getBlockState(neighbor).getBlock() instanceof ChestBlock) return null;
 		}
 		return chest;
 	}
 
 	/** The chest must share a roofed, walkable interior with the resident's bed, not just nearby walls/eaves. */
 	static boolean connectedInterior(ServerLevel level, BlockPos bed, BlockPos chest) {
-		if (!level.hasChunkAt(bed) || bed.getY() != chest.getY() || !(level.getBlockState(bed).getBlock() instanceof BedBlock)
+		if (!de.villagerplus.world.LoadedColumns.ready(level, bed) || bed.getY() != chest.getY() || !(level.getBlockState(bed).getBlock() instanceof BedBlock)
 			|| !roomCell(level, chest) || touchesInteriorScanBoundary(bed, chest)) return false;
 		HomeInterior interior = scanHomeInterior(level, bed);
 		return interior.bounded() && interior.footprint() != null && interior.cells().contains(chest.immutable())
@@ -554,7 +554,7 @@ public final class PrivateChestProvisioning {
 	}
 
 	private static HomeInterior scanHomeInterior(ServerLevel level, BlockPos bed) {
-		if (!level.hasChunkAt(bed) || !(level.getBlockState(bed).getBlock() instanceof BedBlock))
+		if (!de.villagerplus.world.LoadedColumns.ready(level, bed) || !(level.getBlockState(bed).getBlock() instanceof BedBlock))
 			return new HomeInterior(Set.of(), false, null);
 		HouseTemplate.Footprint footprint = HouseTemplate.homeSpacingFootprint(level, bed);
 		if (footprint == null || !withinHomeInteriorFootprint(bed, footprint))
@@ -649,13 +649,13 @@ public final class PrivateChestProvisioning {
 	private static boolean roomCell(ServerLevel level, BlockPos feet) {
 		BlockPos head = feet.above();
 		BlockPos floor = feet.below();
-		if (!level.hasChunkAt(feet) || !level.hasChunkAt(head) || !level.hasChunkAt(floor)
+		if (!de.villagerplus.world.LoadedColumns.ready(level, feet) || !de.villagerplus.world.LoadedColumns.ready(level, head) || !de.villagerplus.world.LoadedColumns.ready(level, floor)
 			|| !clearRoomBlock(level.getBlockState(feet)) || !clearRoomBlock(level.getBlockState(head))) return false;
 		BlockState floorState = level.getBlockState(floor);
 		if (!floorState.isFaceSturdy(level, floor, Direction.UP)) return false;
 		for (int height = 2; height <= 7; height++) {
 			BlockPos roof = feet.above(height);
-			if (!level.hasChunkAt(roof)) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, roof)) return false;
 			BlockState roofState = level.getBlockState(roof);
 			if (!roofState.is(net.minecraft.tags.BlockTags.LEAVES)
 				&& roofState.isFaceSturdy(level, roof, Direction.DOWN)) return true;
@@ -676,7 +676,7 @@ public final class PrivateChestProvisioning {
 	private static boolean hasNearbyRoof(ServerLevel level, BlockPos pos) {
 		for (int y = 2; y <= 8; y++) {
 			BlockPos roof = pos.above(y);
-			if (!level.hasChunkAt(roof)) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, roof)) return false;
 			if (level.getBlockState(roof).isFaceSturdy(level, roof, Direction.DOWN)) return true;
 		}
 		return false;

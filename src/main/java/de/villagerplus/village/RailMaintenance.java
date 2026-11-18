@@ -118,7 +118,7 @@ public final class RailMaintenance {
 			int built = (int) Math.max(0, Math.min((long) last + 1, roads.getOrDefault(railKey, 0L)));
 			if (built <= 0) continue;
 			BlockPos station = Specials.get(home, Blueprints.STATION);
-			if (station == null || !level.hasChunkAt(station)) continue;
+			if (station == null || !de.villagerplus.world.LoadedColumns.ready(level, station)) continue;
 			int start = stationStart(level, roads, routeKey, home.bell(), peer.bell(), station, length, last);
 			if (start < 0 || start >= built) continue;
 			for (int cursor = start; cursor < built; cursor++) {
@@ -148,7 +148,7 @@ public final class RailMaintenance {
 	}
 
 	private static boolean validBell(ServerLevel level, VillageRef ref) {
-		if (ref == null || ref.bell() == null || ref.data() == null || ref.bellEntity() == null || !level.hasChunkAt(ref.bell())) return false;
+		if (ref == null || ref.bell() == null || ref.data() == null || ref.bellEntity() == null || !de.villagerplus.world.LoadedColumns.ready(level, ref.bell())) return false;
 		BlockEntity current = level.getBlockEntity(ref.bell());
 		return current == ref.bellEntity() && current.getAttached(VillagerPlus.VILLAGE) == ref.data();
 	}
@@ -173,7 +173,7 @@ public final class RailMaintenance {
 		double distance = 24 * 24;
 		for (int cursor = 0; cursor <= last; cursor++) {
 			BlockPos point = RoadRoute.point(roads, routeKey, from, to, cursor);
-			if (!level.hasChunkAt(point) || findSite(level, point.getX(), point.getZ(), from.getY()) == null) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, point) || findSite(level, point.getX(), point.getZ(), from.getY()) == null) continue;
 			double candidate = station.distSqr(point);
 			if (candidate < distance) { selected = cursor; distance = candidate; }
 		}
@@ -181,13 +181,13 @@ public final class RailMaintenance {
 	}
 
 	private static Site findSite(ServerLevel level, int x, int z, int platformY) {
-		if (!level.hasChunkAt(new BlockPos(x, platformY, z))) return null;
-		int top = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, platformY, z))) return null;
+		int top = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
 		int high = platformY > level.getMinY() + 4 ? Math.max(top, platformY + 1) : top;
 		int low = Math.min(top - 3, platformY > level.getMinY() + 4 ? platformY - 4 : top - 3);
 		for (int y = high; y >= low; y--) {
 			BlockPos pos = new BlockPos(x, y, z);
-			if (!level.hasChunkAt(pos)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) continue;
 			BlockState state = level.getBlockState(pos);
 			if (state.getBlock() instanceof BaseRailBlock) {
 				BlockPos support = pos.below();
@@ -222,7 +222,7 @@ public final class RailMaintenance {
 	}
 
 	public static boolean repairable(ServerLevel level, Repair repair) {
-		if (repair == null || !level.hasChunkAt(repair.rail()) || !level.hasChunkAt(repair.peer())) return false;
+		if (repair == null || !de.villagerplus.world.LoadedColumns.ready(level, repair.rail()) || !de.villagerplus.world.LoadedColumns.ready(level, repair.peer())) return false;
 		BlockEntity entity = level.getBlockEntity(repair.home());
 		if (!(entity instanceof net.minecraft.world.level.block.entity.BellBlockEntity)) return false;
 		VillageRef home = new VillageRef(repair.home(), entity.getAttached(VillagerPlus.VILLAGE), entity);

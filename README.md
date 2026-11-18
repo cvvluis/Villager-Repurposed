@@ -4,6 +4,17 @@ Dorfbewohner haben Namen, feste Häuser mit Schild, einen festen Tagesplan und e
 mit Doppelkiste und wächst selbstständig. Server- und Client-Mod (der Info-Knopf braucht die Mod auch beim Spieler; Einzelspieler funktioniert), benötigt Fabric Loader 0.20.1+,
 Fabric API und Java 25.
 
+## Neu in 0.10.8: Dorfkarte lädt keine Chunks mehr (Playtest 11)
+
+Beim Betreten eines Dorfs im großen Modpack hing der Server-Thread in der Relief-Abtastung der großen Dorftafel (`VillageMap.grid` / `classifyFine`): `hasChunkAt` galt nur für die Zellmitte, `getHeight`/`getBlockState` haben fehlende Nachbarspalten synchron erzeugt (`getChunkBlocking`). Das Bild blieb stehen, der Server meldete „Can't keep up“.
+
+- Karte, Relief und die Textkarte lesen nur noch Chunks, die `getChunkNow` schon vollständig hat. Pro Aufruf werden höchstens 480 Zellen mit je vier Stichproben klassifiziert; der Rest erscheint in den nächsten Ticks. Ein fertiges Raster bleibt 10 Sekunden gültig, eines mit unbekannten Zellen 5 Sekunden. Eine fehlgeschlagene Abtastung wird nicht mehr alle 20 Ticks wiederholt.
+- Dieselbe nicht blockierende Höhenlesung gilt für die übrigen Geländeabtastungen der Mod (Wege, Bauplätze, Berufe), statt dort Chunks zu erzeugen.
+- Der Hänger-Wächter behandelt `managedBlock`/`pollTask` nicht mehr als Pause, wenn der Stapel in `getChunkBlocking` steht. Der Client zählt Frames (Schwelle 3 Sekunden), nicht mehr Spielticks.
+- Das Relief nutzt den Entity-Translucent-RenderType. Iris kennt `minecraft:pipeline/debug_quads` nicht.
+
+Nicht im Modpack gemessen, nur kompiliert.
+
 ## Neu in 0.10.7: kein Fehlalarm beim Weltstart (Playtest 10)
 
 Der Hänger-Bericht des Clients zählt nur noch, solange eine Welt läuft. Beim Erzeugen oder Laden einer Welt steht die Client-Schleife von selbst still, das war in 0.10.6 ein Fehlalarm.

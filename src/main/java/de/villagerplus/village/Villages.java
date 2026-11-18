@@ -96,7 +96,7 @@ public final class Villages {
 		Optional<GlobalPos> meeting = v.getBrain().getMemory(MemoryModuleType.MEETING_POINT);
 		if (meeting.isPresent() && meeting.get().dimension() == level.dimension()) {
 			BlockPos pos = meeting.get().pos();
-			if (level.hasChunkAt(pos)) {
+			if (de.villagerplus.world.LoadedColumns.ready(level, pos)) {
 				BlockEntity be = level.getBlockEntity(pos);
 				if (be instanceof net.minecraft.world.level.block.entity.BellBlockEntity) {
 					bells(level.dimension()).add(pos.asLong());
@@ -113,7 +113,7 @@ public final class Villages {
 			long l = known.next();
 			BlockPos p = BlockPos.of(l);
 			double d = p.distSqr(v.blockPosition());
-			if (d < bestDist && level.hasChunkAt(p)) {
+			if (d < bestDist && de.villagerplus.world.LoadedColumns.ready(level, p)) {
 				BlockEntity candidate = level.getBlockEntity(p);
 				if (candidate instanceof net.minecraft.world.level.block.entity.BellBlockEntity) {
 					best = p;
@@ -182,7 +182,7 @@ public final class Villages {
 		for (long l : bells(level.dimension())) {
 			BlockPos p = BlockPos.of(l);
 			double d = p.distSqr(pos);
-			if (d < bestDist && level.hasChunkAt(p) && level.getBlockEntity(p) instanceof net.minecraft.world.level.block.entity.BellBlockEntity) {
+			if (d < bestDist && de.villagerplus.world.LoadedColumns.ready(level, p) && level.getBlockEntity(p) instanceof net.minecraft.world.level.block.entity.BellBlockEntity) {
 				best = p;
 				bestDist = d;
 			}
@@ -216,7 +216,7 @@ public final class Villages {
 			Optional<GlobalPos> meeting = villager.getBrain().getMemory(MemoryModuleType.MEETING_POINT);
 			if (meeting.isPresent() && meeting.get().dimension().equals(level.dimension())) {
 				BlockPos meetingPos = meeting.get().pos();
-				if (level.hasChunkAt(meetingPos) && level.getBlockEntity(meetingPos) instanceof BellBlockEntity) {
+				if (de.villagerplus.world.LoadedColumns.ready(level, meetingPos) && level.getBlockEntity(meetingPos) instanceof BellBlockEntity) {
 					activeVillageMeetingPoints.add(meetingPos.asLong());
 				}
 				continue;
@@ -226,7 +226,7 @@ public final class Villages {
 			long residentRange = (long)range + de.villagerplus.Config.VILLAGE_RADIUS;
 			if (horizontalDistanceSquared(villager.blockPosition(), center) > residentRange * residentRange) continue;
 			VillageRef assigned = find(level, villager);
-			if (assigned != null && level.hasChunkAt(assigned.bell())
+			if (assigned != null && de.villagerplus.world.LoadedColumns.ready(level, assigned.bell())
 				&& level.getBlockEntity(assigned.bell()) instanceof BellBlockEntity) {
 				activeVillageMeetingPoints.add(assigned.bell().asLong());
 			}
@@ -236,7 +236,7 @@ public final class Villages {
 		while (known.hasNext()) {
 			long packed = known.next();
 			BlockPos position = BlockPos.of(packed);
-			if (horizontalDistanceSquared(position, center) > rangeSquared || position.equals(center) || !level.hasChunkAt(position)) continue;
+			if (horizontalDistanceSquared(position, center) > rangeSquared || position.equals(center) || !de.villagerplus.world.LoadedColumns.ready(level, position)) continue;
 			if (level.getBlockEntity(position) instanceof BellBlockEntity) {
 				if (activeVillageMeetingPoints.contains(packed)) nearby.add(position.immutable());
 			} else {
@@ -382,7 +382,7 @@ public final class Villages {
 
 	private static BlockPos findExistingDoubleChest(ServerLevel level, BlockPos bell) {
 		for (BlockPos p : BlockPos.betweenClosed(bell.offset(-12, -4, -12), bell.offset(12, 6, 12))) {
-			if (!level.hasChunkAt(p)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, p)) continue;
 			BlockState s = level.getBlockState(p);
 			if (s.getBlock() instanceof ChestBlock && s.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
 				// Kisten mit Beute-Tabelle (Dorf-Loot, z.B. Overhauled Villages) gehoeren nicht den Villagern.
@@ -495,13 +495,12 @@ public final class Villages {
 				for (int dz = -radius; dz <= radius; dz++) {
 					if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) continue;
 					BlockPos column = villageCenter.offset(dx, 0, dz);
-					if (!level.hasChunkAt(column)) {
+					if (!de.villagerplus.world.LoadedColumns.ready(level, column)) {
 						unloadedColumns++;
 						continue;
 					}
 					searchedColumns++;
-					int y = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
-						column.getX(), column.getZ());
+					int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column.getX(), column.getZ());
 					minSurfaceY = Math.min(minSurfaceY, y);
 					maxSurfaceY = Math.max(maxSurfaceY, y);
 					BlockPos a = new BlockPos(column.getX(), y, column.getZ());
@@ -511,8 +510,7 @@ public final class Villages {
 							unsafePairs++;
 							continue;
 						}
-						if (level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
-							b.getX(), b.getZ()) != y) {
+						if (de.villagerplus.world.LoadedColumns.heightOrMinY(level, net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, b.getX(), b.getZ()) != y) {
 							unevenPairs++;
 							continue;
 						}
@@ -549,7 +547,7 @@ public final class Villages {
 
 	private static boolean compactCellFree(ServerLevel level, BlockPos feet) {
 		BlockPos floor = feet.below();
-		if (!level.hasChunkAt(feet) || !level.hasChunkAt(floor)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, feet) || !de.villagerplus.world.LoadedColumns.ready(level, floor)) return false;
 		BlockState ground = level.getBlockState(floor);
 		if (!ground.isFaceSturdy(level, floor, Direction.UP) || !ground.getFluidState().isEmpty()
 			|| ground.is(net.minecraft.tags.BlockTags.LEAVES) || !level.getBlockState(feet).isAir()

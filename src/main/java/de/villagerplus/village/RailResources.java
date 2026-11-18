@@ -32,13 +32,13 @@ final class RailResources {
 	private static boolean hasVillageCenterChest(ServerLevel level, VillageRef village) {
 		if (village == null || village.data() == null || village.data().chest.isEmpty()) return false;
 		BlockPos pos = village.data().chest.get();
-		return level.hasChunkAt(pos) && village.chest(level) != null;
+		return de.villagerplus.world.LoadedColumns.ready(level, pos) && village.chest(level) != null;
 	}
 
 	/** A registered milestone depot counts only when a public container is physically present in loaded chunks. */
 	static boolean hasDepot(ServerLevel level, VillageRef village, String type) {
 		BlockPos origin = village == null ? null : Specials.get(village, type);
-		return origin != null && level.hasChunkAt(origin) && !specialContainers(level, village, type).isEmpty();
+		return origin != null && de.villagerplus.world.LoadedColumns.ready(level, origin) && !specialContainers(level, village, type).isEmpty();
 	}
 
 	static boolean canPay(ServerLevel level, VillageRef village, boolean powered, boolean needsSupport) {
@@ -74,7 +74,7 @@ final class RailResources {
 		Set<BlockPos> registered = new LinkedHashSet<>(village.data().extra.lagerChests);
 		if (registered.isEmpty()) {
 			for (BlockPos center : centers) {
-				if (!level.hasChunkAt(center)) continue;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, center)) continue;
 				for (BlockEntity entity : loadedBlockEntities(level, center, 5, -1, 4, 5)) {
 					BlockPos pos = entity.getBlockPos();
 					if (publicStorage(level, pos)) registered.add(pos.immutable());
@@ -87,7 +87,7 @@ final class RailResources {
 
 		for (String type : new String[] {Blueprints.GRANARY, Blueprints.TOOLSHED, Blueprints.STATION}) {
 			BlockPos origin = Specials.get(village, type);
-			if (origin == null || !level.hasChunkAt(origin)) continue;
+			if (origin == null || !de.villagerplus.world.LoadedColumns.ready(level, origin)) continue;
 			for (BlockEntity entity : loadedBlockEntities(level, origin, 9, -2, 8, 9)) {
 				BlockPos pos = entity.getBlockPos();
 				if (publicStorage(level, pos)) candidates.add(pos.immutable());
@@ -120,7 +120,7 @@ final class RailResources {
 		Set<BlockPos> positions = new LinkedHashSet<>(village.data().extra.lagerChests);
 		if (positions.isEmpty()) {
 			for (BlockPos center : centers) {
-				if (!level.hasChunkAt(center)) continue;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, center)) continue;
 				for (BlockEntity entity : loadedBlockEntities(level, center, 5, -1, 4, 5)) {
 					BlockPos pos = entity.getBlockPos();
 					if (publicStorage(level, pos)) positions.add(pos.immutable());
@@ -139,7 +139,7 @@ final class RailResources {
 
 	private static boolean registeredStorageContains(ServerLevel level, List<BlockPos> centers, BlockPos pos) {
 		for (BlockPos center : centers) {
-			if (level.hasChunkAt(center) && Math.abs(pos.getX() - center.getX()) <= 5
+			if (de.villagerplus.world.LoadedColumns.ready(level, center) && Math.abs(pos.getX() - center.getX()) <= 5
 				&& Math.abs(pos.getY() - center.getY()) <= 4 && pos.getY() >= center.getY() - 1
 				&& Math.abs(pos.getZ() - center.getZ()) <= 5) return true;
 		}
@@ -148,7 +148,7 @@ final class RailResources {
 
 	private static List<Container> specialContainers(ServerLevel level, VillageRef village, String type) {
 		BlockPos origin = village == null ? null : Specials.get(village, type);
-		if (origin == null || !level.hasChunkAt(origin)) return List.of();
+		if (origin == null || !de.villagerplus.world.LoadedColumns.ready(level, origin)) return List.of();
 		Set<Container> seen = Collections.newSetFromMap(new IdentityHashMap<>());
 		List<Container> out = new ArrayList<>();
 		for (BlockEntity entity : loadedBlockEntities(level, origin, 9, -2, 8, 9)) {

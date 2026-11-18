@@ -40,7 +40,7 @@ public final class CharcoalJob implements Job {
 		Container storage = Lager.combined(c.level(), c.village());
 		if (storage == null) return false;
 		BlockPos kitchen = Specials.get(c.village(), Blueprints.KITCHEN);
-		if (kitchen == null || !c.level().hasChunkAt(kitchen)) return false;
+		if (kitchen == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), kitchen)) return false;
 		BlockPos pos = c.st().target;
 		FurnaceBlockEntity furnace = pos == null ? null : furnaceAt(c.level(), pos);
 		if (furnace != null && !insideKitchen(pos, kitchen)) furnace = null;
@@ -197,7 +197,7 @@ public final class CharcoalJob implements Job {
 	}
 
 	private static FurnaceBlockEntity furnaceAt(ServerLevel level, BlockPos pos) {
-		if (!level.hasChunkAt(pos) || !level.getBlockState(pos).is(Blocks.FURNACE)) return null;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !level.getBlockState(pos).is(Blocks.FURNACE)) return null;
 		return level.getBlockEntity(pos) instanceof FurnaceBlockEntity furnace
 			&& furnace.getAttached(VillagerPlus.COMMUNAL_FURNACE) != null && !smithOwnsBatch(furnace) ? furnace : null;
 	}
@@ -206,7 +206,7 @@ public final class CharcoalJob implements Job {
 		BlockPos best = null;
 		double bestDistance = Double.MAX_VALUE;
 		for (BlockPos pos : BlockPos.betweenClosed(center.offset(-16, -4, -16), center.offset(16, 8, 16))) {
-			if (!level.hasChunkAt(pos) || !(level.getBlockEntity(pos) instanceof FurnaceBlockEntity furnace)
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !(level.getBlockEntity(pos) instanceof FurnaceBlockEntity furnace)
 				|| furnace.getAttached(VillagerPlus.COMMUNAL_FURNACE) == null) continue;
 			double distance = pos.distSqr(center);
 			if (distance < bestDistance) { best = pos.immutable(); bestDistance = distance; }

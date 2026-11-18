@@ -190,7 +190,7 @@ public final class PlanStoneSupply {
 
 	private static StoredPickaxe storedTool(ServerLevel level, VillageRef ref) {
 		BlockPos origin = Specials.get(ref, Blueprints.TOOLSHED);
-		if (origin == null || !level.hasChunkAt(origin)) return null;
+		if (origin == null || !de.villagerplus.world.LoadedColumns.ready(level, origin)) return null;
 		for (Container container : Specials.containers(level, ref, Blueprints.TOOLSHED)) {
 			for (int slot = 0; slot < container.getContainerSize(); slot++) {
 				if (usablePickaxe(container.getItem(slot))) return new StoredPickaxe(container, slot, origin);
@@ -364,7 +364,7 @@ public final class PlanStoneSupply {
 		BlockPos depot = data.chest.get();
 		int total = 0;
 		for (BlockPos pos : BlockPos.betweenClosed(depot.offset(-8, -2, -8), depot.offset(8, 4, 8))) {
-			if (!level.hasChunkAt(pos) || !level.getBlockState(pos).is(net.minecraft.world.level.block.Blocks.FURNACE)
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !level.getBlockState(pos).is(net.minecraft.world.level.block.Blocks.FURNACE)
 				|| !(level.getBlockEntity(pos) instanceof net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity furnace)
 				|| !Integer.valueOf(0).equals(furnace.getAttached(de.villagerplus.VillagerPlus.COMMUNAL_FURNACE))) continue;
 			ItemStack claim = furnace.getAttached(de.villagerplus.VillagerPlus.SMITH_FURNACE);

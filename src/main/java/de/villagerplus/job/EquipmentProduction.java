@@ -134,7 +134,7 @@ final class EquipmentProduction {
 
     /** Re-evaluates the selected loaded recipe at the bench and commits its exact assembled output atomically. */
     private static boolean craftVerifiedOutput(Ctx c,BlockPos bench,CraftingRecipe recipe,ItemStack expected) {
-        if(!c.level().hasChunkAt(bench)||!c.level().getBlockState(bench).is(Blocks.CRAFTING_TABLE))return false;
+        if(!de.villagerplus.world.LoadedColumns.ready(c.level(), bench)||!c.level().getBlockState(bench).is(Blocks.CRAFTING_TABLE))return false;
         Container inventory=c.v().getInventory();
         CraftingInput input=RecipeCrafting.inputFor(recipe,safeIngredientView(inventory),c.level());
         if(input==null)return false;
@@ -341,11 +341,11 @@ final class EquipmentProduction {
         BlockPos origin=Specials.get(c.village(),Blueprints.TOOLSHED);
         BlockPos cached=c.st().toolCraftBench;
         if(cached!=null && Math.abs(cached.getX()-origin.getX())<=8 && Math.abs(cached.getZ()-origin.getZ())<=8
-            && c.level().hasChunkAt(cached)&&c.level().getBlockState(cached).is(Blocks.CRAFTING_TABLE))return cached;
+            && de.villagerplus.world.LoadedColumns.ready(c.level(), cached)&&c.level().getBlockState(cached).is(Blocks.CRAFTING_TABLE))return cached;
         if(c.now()<c.st().toolCraftScanAt)return null;
         c.st().toolCraftScanAt=c.now()+200;c.st().toolCraftBench=null;
         for(BlockPos pos:BlockPos.betweenClosed(origin.offset(-8,-2,-8),origin.offset(8,6,8))) {
-            if(c.level().hasChunkAt(pos)&&c.level().getBlockState(pos).is(Blocks.CRAFTING_TABLE)) {
+            if(de.villagerplus.world.LoadedColumns.ready(c.level(), pos)&&c.level().getBlockState(pos).is(Blocks.CRAFTING_TABLE)) {
                 c.st().toolCraftBench=pos.immutable();return c.st().toolCraftBench;
             }
         }

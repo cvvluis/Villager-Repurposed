@@ -235,7 +235,7 @@ public final class Network {
 
 	private static boolean validVillageRef(ServerLevel level, VillageRef ref) {
 		if (level == null || ref == null || ref.bell() == null || ref.data() == null || ref.bellEntity() == null
-			|| !level.hasChunkAt(ref.bell()) || ref.bellEntity().getLevel() != level) return false;
+			|| !de.villagerplus.world.LoadedColumns.ready(level, ref.bell()) || ref.bellEntity().getLevel() != level) return false;
 		BlockEntity current = level.getBlockEntity(ref.bell());
 		return current == ref.bellEntity() && current instanceof BellBlockEntity
 			&& current.getAttachedOrCreate(VillagerPlus.VILLAGE) == ref.data();
@@ -456,7 +456,7 @@ public final class Network {
 		Set<Long> candidates = new HashSet<>();
 		Map<Long, Integer> populations = new HashMap<>();
 		for (BlockPos position : bells) {
-			if (position != null && level.hasChunkAt(position)
+			if (position != null && de.villagerplus.world.LoadedColumns.ready(level, position)
 				&& level.getBlockEntity(position) instanceof BellBlockEntity) {
 				long packed = position.asLong();
 				candidates.add(packed);
@@ -491,7 +491,7 @@ public final class Network {
 		boolean changed = false;
 		for (BlockPos position : nearby) {
 			if (position.equals(source.bell()) || source.bell().distSqr(position) > MAX_DISTANCE * MAX_DISTANCE
-				|| !level.hasChunkAt(position)) continue;
+				|| !de.villagerplus.world.LoadedColumns.ready(level, position)) continue;
 			BlockEntity entity = level.getBlockEntity(position);
 			if (!(entity instanceof BellBlockEntity bell)) continue;
 			VillageRef neighbor = new VillageRef(position, bell.getAttachedOrCreate(VillagerPlus.VILLAGE), bell);
@@ -514,7 +514,7 @@ public final class Network {
 		// Existing linked bells can be loaded outside the discovery radius. Reconcile their durable
 		// requests too; the persisted link identity remains the authority for this deferred work.
 		for (TradeNetwork.Link link : new ArrayList<>(current.links())) {
-			if (!dim(level).equals(link.dimension()) || !level.hasChunkAt(link.bell())) continue;
+			if (!dim(level).equals(link.dimension()) || !de.villagerplus.world.LoadedColumns.ready(level, link.bell())) continue;
 			VillageRef neighbor = resolve(level, link);
 			if (neighbor == null || !validVillageRef(level, neighbor)) continue;
 			TradeNetwork peer = of(neighbor.bellEntity());
@@ -532,7 +532,7 @@ public final class Network {
 
 	/** Das verlinkte Nachbardorf, falls Dimension und Chunk geladen und die Glocke noch da ist (sonst null). */
 	public static VillageRef resolve(ServerLevel level, TradeNetwork.Link link) {
-		if (!link.dimension().equals(dim(level)) || !level.hasChunkAt(link.bell())) {
+		if (!link.dimension().equals(dim(level)) || !de.villagerplus.world.LoadedColumns.ready(level, link.bell())) {
 			return null;
 		}
 		BlockEntity be = level.getBlockEntity(link.bell());
@@ -598,7 +598,7 @@ public final class Network {
 			VillageMessages.system(player, Component.literal("Das ist dieselbe Dorfglocke – such ein anderes Dorf."));
 			return;
 		}
-		if (!level.hasChunkAt(srcPos) || !(level.getBlockEntity(srcPos) instanceof BellBlockEntity srcBell)) {
+		if (!de.villagerplus.world.LoadedColumns.ready(level, srcPos) || !(level.getBlockEntity(srcPos) instanceof BellBlockEntity srcBell)) {
 			VillageMessages.system(player, Component.literal("Das Heimatdorf der Karte ist gerade nicht geladen oder existiert nicht mehr."));
 			return;
 		}
@@ -694,7 +694,7 @@ public final class Network {
 			if (!dim(level).equals(link.dimension())) {
 				return ActionOutcome.failure("Fernaktionen in eine andere Dimension werden nicht vorgemerkt.");
 			}
-			if (level.hasChunkAt(link.bell())) {
+			if (de.villagerplus.world.LoadedColumns.ready(level, link.bell())) {
 				return ActionOutcome.failure("Die gespeicherte Nachbarglocke fehlt. Aktualisiere die Dorfverbindung.");
 			}
 			if (action.equals(ACTION_ROUTE)) {
@@ -751,7 +751,7 @@ public final class Network {
 
 	private static boolean validApprovalBoard(ServerLevel level, ServerPlayer player, BlockPos board, VillageRef source) {
 		if (level == null || player == null || board == null || player.isSpectator() || player.level() != level
-			|| !level.hasChunkAt(board) || player.blockPosition().distSqr(board) > 24L * 24L
+			|| !de.villagerplus.world.LoadedColumns.ready(level, board) || player.blockPosition().distSqr(board) > 24L * 24L
 			|| !(level.getBlockState(board).getBlock() instanceof DorftafelBlock) || !validVillageRef(level, source)) return false;
 		VillageRef boardVillage = Villages.villageNear(level, board, 96);
 		return boardVillage != null && boardVillage.bell().equals(source.bell()) && validVillageRef(level, boardVillage);
@@ -826,12 +826,12 @@ public final class Network {
 		positions.addAll(ref.data().extra.lagerChests);
 		for (BlockPos p:positions) {
 			// A double chest may cross a chunk boundary in any horizontal direction.
-			if (!level.hasChunkAt(p)) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, p)) return false;
 			var state=level.getBlockState(p);
 			if (state.getBlock() instanceof net.minecraft.world.level.block.ChestBlock && state.getValue(net.minecraft.world.level.block.ChestBlock.TYPE) != net.minecraft.world.level.block.state.properties.ChestType.SINGLE) {
 				var facing=state.getValue(net.minecraft.world.level.block.ChestBlock.FACING);
 				var dir=state.getValue(net.minecraft.world.level.block.ChestBlock.TYPE)==net.minecraft.world.level.block.state.properties.ChestType.LEFT?facing.getClockWise():facing.getCounterClockWise();
-				if(!level.hasChunkAt(p.relative(dir))) return false;
+				if(!de.villagerplus.world.LoadedColumns.ready(level, p.relative(dir))) return false;
 			}
 		}
 		return true;
@@ -1161,7 +1161,7 @@ public final class Network {
 
 	private static int stationStartForStatus(ServerLevel level, VillageRef from, VillageRef to, Map<String, Long> state, String routeKey) {
 		BlockPos station = Specials.get(from, de.villagerplus.build.Blueprints.STATION);
-		if (station == null || !level.hasChunkAt(station)) return 0;
+		if (station == null || !de.villagerplus.world.LoadedColumns.ready(level, station)) return 0;
 		return Math.max(0, Roads.stationRailStartForCheck(level, from.bell(), to.bell(), station, state, routeKey));
 	}
 

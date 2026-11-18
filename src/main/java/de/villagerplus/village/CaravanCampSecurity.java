@@ -47,7 +47,7 @@ public final class CaravanCampSecurity {
 		}
 
 		BlockPos post = post(campCells);
-		if (post == null || !level.hasChunkAt(post) || !level.hasChunkAt(guard.blockPosition())) {
+		if (post == null || !de.villagerplus.world.LoadedColumns.ready(level, post) || !de.villagerplus.world.LoadedColumns.ready(level, guard.blockPosition())) {
 			end(guard);
 			return false;
 		}
@@ -82,7 +82,7 @@ public final class CaravanCampSecurity {
 	/** Resume the normal escort/post route after combat, without loading its destination chunk. */
 	static boolean returnTo(ServerLevel level, IronGolem guard, BlockPos target) {
 		if (guard == null || !guard.isAlive() || guard.isRemoved() || guard.getTarget() != null || target == null) return false;
-		if (!level.hasChunkAt(guard.blockPosition()) || !level.hasChunkAt(target)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, guard.blockPosition()) || !de.villagerplus.world.LoadedColumns.ready(level, target)) return false;
 		var navigation = guard.getNavigation();
 		// The camp post was safe when selected, but blocks and terrain may change while
 		// the guard fights. Never keep following a route to a destination that can no
@@ -114,7 +114,7 @@ public final class CaravanCampSecurity {
 	/** Confirms the exterior post has support, clear golem space, and no overlap with the planned tent. */
 	static boolean safePost(ServerLevel level, BlockPos center, Iterable<BlockPos> plannedCampCells) {
 		BlockPos guardPost = center.north(3);
-		if (!level.hasChunkAt(guardPost)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, guardPost)) return false;
 		IronGolem template = EntityTypes.IRON_GOLEM.create(level, EntitySpawnReason.COMMAND);
 		if (template == null) return false;
 		AABB guardBox = CaravanSites.bounds(template, guardPost);
@@ -136,7 +136,7 @@ public final class CaravanCampSecurity {
 		if (owner == null || campCells == null || campCells.isEmpty()) return null;
 		BlockPos post = post(campCells);
 		BlockPos spot = CaravanSites.armedGuardSpot(post);
-		if (post == null || spot == null || !level.hasChunkAt(spot)) return null;
+		if (post == null || spot == null || !de.villagerplus.world.LoadedColumns.ready(level, spot)) return null;
 
 		List<Villager> owned = new ArrayList<>();
 		for (Entity entity : level.getAllEntities()) {
@@ -182,8 +182,8 @@ public final class CaravanCampSecurity {
 
 		BlockPos campPost = post(campCells);
 		BlockPos guardPost = CaravanSites.armedGuardSpot(campPost);
-		if (campPost == null || guardPost == null || !level.hasChunkAt(campPost)
-			|| !level.hasChunkAt(guardPost) || !level.hasChunkAt(guard.blockPosition())) {
+		if (campPost == null || guardPost == null || !de.villagerplus.world.LoadedColumns.ready(level, campPost)
+			|| !de.villagerplus.world.LoadedColumns.ready(level, guardPost) || !de.villagerplus.world.LoadedColumns.ready(level, guard.blockPosition())) {
 			endArmedGuard(guard);
 			return false;
 		}
@@ -328,7 +328,7 @@ public final class CaravanCampSecurity {
 
 	private static boolean isCampHostile(ServerLevel level, BlockPos post, LivingEntity candidate) {
 		if (!(candidate instanceof Mob mob) || !candidate.isAlive() || candidate.isRemoved() || !isVanillaHostile(mob)) return false;
-		return level.hasChunkAt(candidate.blockPosition())
+		return de.villagerplus.world.LoadedColumns.ready(level, candidate.blockPosition())
 			&& candidate.distanceToSqr(Vec3.atCenterOf(post)) <= CAMP_RADIUS * CAMP_RADIUS;
 	}
 

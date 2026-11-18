@@ -39,8 +39,8 @@ public final class CaravanSites {
  private static BlockPos find(ServerLevel level,Entity entity,BlockPos preferred,int y,List<AABB> reserved) {
   for(int radius=0;radius<=4;radius++)for(int dx=-radius;dx<=radius;dx++)for(int dz=-radius;dz<=radius;dz++) {
    if(Math.max(Math.abs(dx),Math.abs(dz))!=radius)continue;
-   BlockPos column=preferred.offset(dx,0,dz);if(!level.hasChunkAt(column))continue;
-   BlockPos p=level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,column);
+   BlockPos column=preferred.offset(dx,0,dz);if(!de.villagerplus.world.LoadedColumns.ready(level, column))continue;
+   BlockPos p=de.villagerplus.world.LoadedColumns.heightmapPos(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column);
    if(Math.abs(p.getY()-y)<=2&&canStand(level,entity,p,reserved))return p;
   }
   return null;
@@ -52,7 +52,7 @@ public final class CaravanSites {
   int minZ=(int)Math.floor(box.minZ),maxZ=(int)Math.floor(box.maxZ-1e-7);
   for(int x=minX;x<=maxX;x++)for(int z=minZ;z<=maxZ;z++) {
    BlockPos floor=new BlockPos(x,feet.getY()-1,z);
-   if(!level.hasChunkAt(floor))return false;
+   if(!de.villagerplus.world.LoadedColumns.ready(level, floor))return false;
    var state=level.getBlockState(floor);
    if(!state.getFluidState().isEmpty()||!state.isFaceSturdy(level,floor,Direction.UP)
     ||state.is(Blocks.MAGMA_BLOCK)||state.is(Blocks.CACTUS)||state.is(Blocks.CAMPFIRE)||state.is(Blocks.SOUL_CAMPFIRE))return false;
@@ -70,7 +70,7 @@ public final class CaravanSites {
  /** Validates the visible guard's own footprint and keeps it outside the camp layout. */
  public static boolean canStandArmedGuard(ServerLevel level,Entity guard,BlockPos post,Iterable<BlockPos> campCells) {
   BlockPos spot=armedGuardSpot(post);
-  if(spot==null||!level.hasChunkAt(spot))return false;
+  if(spot==null||!de.villagerplus.world.LoadedColumns.ready(level, spot))return false;
   AABB guardBox=bounds(guard,spot);
   for(BlockPos campCell:campCells)if(guardBox.intersects(new AABB(campCell)))return false;
   return canStand(level,guard,spot,List.of());
@@ -81,7 +81,7 @@ public final class CaravanSites {
  }
 
  public static boolean campCellFree(ServerLevel level,BlockPos p) {
-  return level.hasChunkAt(p)&&!level.getBlockState(p).hasBlockEntity()
+  return de.villagerplus.world.LoadedColumns.ready(level, p)&&!level.getBlockState(p).hasBlockEntity()
    &&level.getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class,new AABB(p),e->e.isAlive()).isEmpty();
  }
 
@@ -89,14 +89,14 @@ public final class CaravanSites {
  public static boolean canPlaceCampAt(ServerLevel level, BlockPos center, Iterable<BlockPos> placements) {
   for (int x=-3;x<=3;x++) for (int z=-3;z<=3;z++) {
    BlockPos floor=center.offset(x,-1,z);
-   if (!level.hasChunkAt(floor)) return false;
+   if (!de.villagerplus.world.LoadedColumns.ready(level, floor)) return false;
    var ground=level.getBlockState(floor);
    if (!ground.getFluidState().isEmpty() || !ground.isFaceSturdy(level,floor,Direction.UP)) return false;
-   BlockPos surface=level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,floor);
+   BlockPos surface=de.villagerplus.world.LoadedColumns.heightmapPos(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, floor);
    if (surface.getY()!=center.getY()) return false;
   }
   for (BlockPos pos:placements) {
-   if (!level.hasChunkAt(pos) || !level.getBlockState(pos).isAir() || !campCellFree(level,pos)) return false;
+   if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !level.getBlockState(pos).isAir() || !campCellFree(level,pos)) return false;
   }
   return true;
  }

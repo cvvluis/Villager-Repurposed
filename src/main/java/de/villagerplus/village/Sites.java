@@ -85,7 +85,7 @@ public final class Sites {
 		int lo = Integer.MAX_VALUE, hi = Integer.MIN_VALUE;
 		for (int dx = minX; dx <= maxX; dx++) for (int dz = minZ; dz <= maxZ; dz++) {
 			int x = c.getX() + dx, z = c.getZ() + dz;
-			int g = groundHeight(level, x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
+			int g = groundHeight(level, x, de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
 			lo = Math.min(lo, g);
 			hi = Math.max(hi, g);
 		}
@@ -125,7 +125,7 @@ public final class Sites {
 		for (int dx = -4; dx <= 4; dx++) for (int dz = -4; dz <= 4; dz++) {
 			for (int dy = -32; dy <= 12; dy++) {
 				BlockPos p = around.offset(dx, dy, dz);
-				if (!level.hasChunkAt(p)) continue;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, p)) continue;
 				BlockState state = level.getBlockState(p);
 				if (state.is(Blocks.DIRT_PATH)) {
 					road.add(p.asLong());
@@ -200,10 +200,10 @@ public final class Sites {
 			double dist = minDist + r.nextInt(Math.max(1, maxDist - minDist + 1));
 			int x = around.getX() + (int) Math.round(Math.cos(angle) * dist);
 			int z = around.getZ() + (int) Math.round(Math.sin(angle) * dist);
-			if (!level.hasChunkAt(new BlockPos(x, around.getY(), z))) {
+			if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, around.getY(), z))) {
 				continue;
 			}
-			int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+			int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 			if (!villageLevel(referenceY, y)) continue;
 			BlockPos c = new BlockPos(x, y, z);
 			if (ok(level, c, half, headroom) && planFits.test(c)) {
@@ -299,10 +299,10 @@ public final class Sites {
 			long column = BlockPos.asLong(x, 0, z);
 			if (visitedColumns.contains(column) || !pageColumns.add(column)) continue;
 			BlockPos probe = new BlockPos(x, around.getY(), z);
-			if (!level.hasChunkAt(probe)) { SCAN_REJECT[1]++; continue; }
+			if (!de.villagerplus.world.LoadedColumns.ready(level, probe)) { SCAN_REJECT[1]++; continue; }
 			visitedColumns.add(column);
 			SCAN_REJECT[0]++;
-			BlockPos candidate = new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
+			BlockPos candidate = new BlockPos(x, de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
 			if (!villageLevel(referenceY, candidate.getY())) { SCAN_REJECT[2]++; continue; }
 			if (tolerant) {
 				int base = tolerantBase(level, candidate, minX, maxX, minZ, maxZ, headroom, maxRelief, clearableTrees);
@@ -339,9 +339,9 @@ public final class Sites {
 			long column = BlockPos.asLong(x, 0, z);
 			if (visitedColumns.contains(column) || !pageColumns.add(column)) continue;
 			BlockPos probe = new BlockPos(x, around.getY(), z);
-			if (!level.hasChunkAt(probe)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, probe)) continue;
 			visitedColumns.add(column);
-			BlockPos candidate = new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
+			BlockPos candidate = new BlockPos(x, de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
 			if (!villageLevel(referenceY, candidate.getY())) continue;
 			BlockPos anchor = resolveAnchor.apply(candidate);
 			if (anchor != null) return new SearchPage(anchor, i + 1, i + 1 >= total);
@@ -368,8 +368,8 @@ public final class Sites {
 			double angle = phase + i * Math.PI * (3.0 - Math.sqrt(5.0));
 			int x = around.getX() + (int) Math.round(Math.cos(angle) * radius);
 			int z = around.getZ() + (int) Math.round(Math.sin(angle) * radius);
-			if (!seen.add(BlockPos.asLong(x, 0, z)) || !level.hasChunkAt(new BlockPos(x, around.getY(), z))) continue;
-			BlockPos candidate = new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
+			if (!seen.add(BlockPos.asLong(x, 0, z)) || !de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, around.getY(), z))) continue;
+			BlockPos candidate = new BlockPos(x, de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
 			if (!villageLevel(referenceY, candidate.getY())) continue;
 			if (tolerant) {
 				int base = tolerantBase(level, candidate, minX, maxX, minZ, maxZ, headroom);
@@ -393,10 +393,10 @@ public final class Sites {
 		double dist = minDist + r.nextInt(Math.max(1, maxDist - minDist + 1));
 		int x = around.getX() + (int) Math.round(Math.cos(angle) * dist);
 		int z = around.getZ() + (int) Math.round(Math.sin(angle) * dist);
-		if (!level.hasChunkAt(new BlockPos(x, around.getY(), z))) {
+		if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, around.getY(), z))) {
 			return null;
 		}
-		BlockPos candidate = new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
+		BlockPos candidate = new BlockPos(x, de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
 		return villageLevel(referenceY, candidate.getY()) ? candidate : null;
 	}
 
@@ -412,11 +412,11 @@ public final class Sites {
 			for (int dz = minZ - 1; dz <= maxZ + 1; dz++) {
 				int x = c.getX() + dx;
 				int z = c.getZ() + dz;
-				if (!level.hasChunkAt(new BlockPos(x, c.getY(), z))) {
+				if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, c.getY(), z))) {
 					SCAN_REJECT[4]++;
 					return false;
 				}
-				int h = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+				int h = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 				boolean inner = dx >= minX && dx <= maxX && dz >= minZ && dz <= maxZ;
 				if (!inner) {
 					if (h > c.getY() + 1) {
@@ -468,7 +468,7 @@ public final class Sites {
 				boolean inner = dx >= minX && dx <= maxX && dz >= minZ && dz <= maxZ;
 				int x = c.getX() + dx;
 				int z = c.getZ() + dz;
-				if (!level.hasChunkAt(q.set(x, c.getY(), z))) {
+				if (!de.villagerplus.world.LoadedColumns.ready(level, q.set(x, c.getY(), z))) {
 					return Clearance.UNLOADED;
 				}
 				for (int y = c.getY() - (inner ? 3 : 1); y <= c.getY() + headroom + 3; y++) {
@@ -504,7 +504,7 @@ public final class Sites {
 		if (!state.is(Blocks.COBBLED_DEEPSLATE) && !state.is(Blocks.COBBLESTONE)
 			&& !state.is(Blocks.SPRUCE_PLANKS) && !state.is(Blocks.DIRT_PATH)) return false;
 		int x = ground.getX(), z = ground.getZ();
-		if (level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) != ground.getY() + 1) return false;
+		if (de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) != ground.getY() + 1) return false;
 		var chunk = level.getChunkSource().getChunkNow(x >> 4, z >> 4);
 		if (chunk == null) return false;
 		var structures = level.registryAccess().lookupOrThrow(Registries.STRUCTURE);
@@ -581,7 +581,7 @@ public final class Sites {
 		// A truncated POI query cannot prove safe spacing; defer this site instead of accepting an unchecked house.
 		if (homes.size() > MAX_HOUSE_POIS_TO_CHECK) return false;
 		for (BlockPos home : homes) {
-			if (!level.hasChunkAt(home)) {
+			if (!de.villagerplus.world.LoadedColumns.ready(level, home)) {
 				if (homeCenterTooClose(home, minX, maxX, minZ, maxZ)) return false;
 				continue;
 			}
@@ -727,7 +727,7 @@ public final class Sites {
 	private static boolean reachesSavedVillageStreet(ServerLevel level, BlockPos start, VillageRef ref) {
 		Set<Long> streetColumns = new HashSet<>();
 		for (BlockPos ground : Roads.savedVillagePathGrounds(level, ref)) {
-			if (!level.hasChunkAt(ground) || !streetSurface(level.getBlockState(ground))) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, ground) || !streetSurface(level.getBlockState(ground))) continue;
 			BlockPos feet = walkableSurface(level, ground.getX(), ground.getZ());
 			if (feet != null && feet.below().equals(ground)) streetColumns.add(columnKey(ground.getX(), ground.getZ()));
 		}
@@ -774,7 +774,7 @@ public final class Sites {
 	 * Unloaded chunks block the search (conservative: the caller rejects and retries later).
 	 */
 	public static boolean walksBackTo(ServerLevel level, BlockPos start, BlockPos goal) {
-		if (!level.hasChunkAt(start) || !level.hasChunkAt(goal)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, start) || !de.villagerplus.world.LoadedColumns.ready(level, goal)) return false;
 		ArrayDeque<BlockPos> queue = new ArrayDeque<>();
 		Map<Long, Integer> distance = new HashMap<>();
 		queue.addLast(start.immutable());
@@ -807,7 +807,7 @@ public final class Sites {
 				continue;
 			}
 			BlockPos floor = feet.below();
-			if (!level.hasChunkAt(floor)) return null;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, floor)) return null;
 			BlockState ground = level.getBlockState(floor);
 			if (ground.getFluidState().isEmpty() && (ground.isFaceSturdy(level, floor, Direction.UP) || ground.is(Blocks.DIRT_PATH)
 				|| ground.is(Blocks.FARMLAND) || ground.is(net.minecraft.tags.BlockTags.SLABS)
@@ -817,7 +817,7 @@ public final class Sites {
 	}
 
 	private static boolean walkThrough(ServerLevel level, BlockPos pos) {
-		if (!level.hasChunkAt(pos)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return false;
 		BlockState state = level.getBlockState(pos);
 		if (!state.getFluidState().isEmpty()) return false;
 		// Villagers open wooden doors; vanilla ground navigation never opens a closed fence gate.
@@ -827,11 +827,11 @@ public final class Sites {
 	/** Returns feet height only for an already loaded, stable surface with two clear blocks above it. */
 	private static BlockPos walkableSurface(ServerLevel level, int x, int z) {
 		BlockPos column = new BlockPos(x, level.getMinY(), z);
-		if (!level.hasChunkAt(column)) return null;
-		int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+		if (!de.villagerplus.world.LoadedColumns.ready(level, column)) return null;
+		int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 		BlockPos feet = new BlockPos(x, y, z);
 		BlockPos ground = feet.below();
-		if (!level.hasChunkAt(ground) || !level.hasChunkAt(feet.above())) return null;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, ground) || !de.villagerplus.world.LoadedColumns.ready(level, feet.above())) return null;
 		BlockState floor = level.getBlockState(ground);
 		// Dirt paths are genuinely walkable, but their collision shape is 1/16 block low and
 		// therefore fails the full-face support predicate used by ordinary full-block floors.
@@ -839,7 +839,7 @@ public final class Sites {
 			|| (!floor.isFaceSturdy(level, ground, Direction.UP) && !floor.is(Blocks.DIRT_PATH))) return null;
 		for (int dy = 0; dy < 2; dy++) {
 			BlockPos space = feet.above(dy);
-			if (!level.hasChunkAt(space)) return null;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, space)) return null;
 			BlockState state = level.getBlockState(space);
 			if (!state.getFluidState().isEmpty() || (!state.isAir() && !state.canBeReplaced())) return null;
 		}
@@ -864,10 +864,10 @@ public final class Sites {
 			double dist = minDist + r.nextInt(Math.max(1, maxDist - minDist + 1));
 			int x = around.getX() + (int) Math.round(Math.cos(angle) * dist);
 			int z = around.getZ() + (int) Math.round(Math.sin(angle) * dist);
-			if (!level.hasChunkAt(new BlockPos(x, around.getY(), z))) {
+			if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, around.getY(), z))) {
 				continue;
 			}
-			int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+			int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 			if (!villageLevel(referenceY, y)) continue;
 			BlockPos c = new BlockPos(x, y, z);
 			if (okRect(level, c, minX, maxX, minZ, maxZ, headroom)) {
@@ -938,11 +938,11 @@ public final class Sites {
 			for (int dz = minZ; dz <= maxZ; dz++) {
 				int x = c.getX() + dx;
 				int z = c.getZ() + dz;
-				if (!level.hasChunkAt(new BlockPos(x, c.getY(), z))) {
+				if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, c.getY(), z))) {
 					SCAN_REJECT[4]++;
 					return Integer.MIN_VALUE;
 				}
-				int surface = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+				int surface = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 				heights[n++] = clearableTrees ? groundHeight(level, x, surface, z) : surface;
 			}
 		}

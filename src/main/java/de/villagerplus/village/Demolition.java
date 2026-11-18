@@ -208,7 +208,7 @@ public final class Demolition {
 		Job job = list.get(0);
 		BlockPos jobOrigin = job.origin();
 		Built b = Builder.builtOf(ref).stream().filter(x -> x.origin().equals(jobOrigin)).findFirst().orElse(null);
-		if (b == null || !level.hasChunkAt(job.origin())) {
+		if (b == null || !de.villagerplus.world.LoadedColumns.ready(level, job.origin())) {
 			clearSite(level, job.origin());
 			if (b == null) {
 				list.remove(0);
@@ -238,7 +238,7 @@ public final class Demolition {
 		// so a negative index cannot crash a mason and an oversized cursor safely reaches completion.
 		int i = safeCursor(job.index(), steps.size());
 		while (i < steps.size()) {
-			if (!level.hasChunkAt(steps.get(i).pos())) {
+			if (!de.villagerplus.world.LoadedColumns.ready(level, steps.get(i).pos())) {
 				Anim.cancelBreaking(c.v());
 				return true;
 			}
@@ -288,7 +288,7 @@ public final class Demolition {
 		});
 		for (int j = i, seen = 0; j < steps.size() && seen < 60; j++) {
 			BlockPos cand = steps.get(j).pos();
-			if (!level.hasChunkAt(cand)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, cand)) continue;
 			BlockState cs = level.getBlockState(cand);
 			if (skipDuringDemolition(cs)) {
 				continue;
@@ -395,7 +395,7 @@ public final class Demolition {
 
 	static RemovalResult removeAndCollectResult(ServerLevel level, VillageRef ref, BlockPos pos, BlockState state,
 			net.minecraft.world.entity.npc.villager.Villager breaker, BooleanSupplier removeBlock) {
-		if (!level.hasChunkAt(pos) || state.isAir() || level.getBlockState(pos) != state) return new RemovalResult(false, false);
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || state.isAir() || level.getBlockState(pos) != state) return new RemovalResult(false, false);
 		BlockEntity be = level.getBlockEntity(pos);
 		if (be instanceof Container && be.getAttached(VillagerPlus.OWNER) != null) return new RemovalResult(false, false);
 
@@ -493,7 +493,7 @@ public final class Demolition {
 		if (steps.isEmpty()) return false;
 		var box = Furnisher.boxOf(steps);
 		for (BlockPos p : BlockPos.betweenClosed(box.minX(), box.minY(), box.minZ(), box.maxX(), box.maxY(), box.maxZ())) {
-			if (level.hasChunkAt(p) && hasPrivateContainer(level, p)) return true;
+			if (de.villagerplus.world.LoadedColumns.ready(level, p) && hasPrivateContainer(level, p)) return true;
 		}
 		return false;
 	}
@@ -545,7 +545,7 @@ public final class Demolition {
 		var box = Furnisher.boxOf(steps);
 		for (int x = box.minX() >> 4; x <= box.maxX() >> 4; x++) {
 			for (int z = box.minZ() >> 4; z <= box.maxZ() >> 4; z++) {
-				if (!level.hasChunk(x, z)) return false;
+				if (!de.villagerplus.world.LoadedColumns.readyChunk(level, x, z)) return false;
 			}
 		}
 		return true;
@@ -592,10 +592,10 @@ public final class Demolition {
 		for (int x = box.minX(); x <= box.maxX(); x++) {
 			for (int z = box.minZ(); z <= box.maxZ(); z++) {
 				BlockPos top = new BlockPos(x, floorY, z);
-				if (!level.hasChunkAt(top) || protectedLandColumn(level, ref, box, nearbyHomes, nearbyBeds, x, z, floorY)) continue;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, top) || protectedLandColumn(level, ref, box, nearbyHomes, nearbyBeds, x, z, floorY)) continue;
 				BlockPos raisedStep = top.above();
 				BlockState raised = level.getBlockState(raisedStep);
-				if (level.hasChunkAt(raisedStep) && level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1 == raisedStep.getY()
+				if (de.villagerplus.world.LoadedColumns.ready(level, raisedStep) && de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1 == raisedStep.getY()
 					&& VillageStyleNatural(raised) && raised.isFaceSturdy(level, raisedStep, net.minecraft.core.Direction.UP)
 					&& raised.getFluidState().isEmpty() && level.getBlockEntity(raisedStep) == null
 					&& !raised.is(Blocks.BEDROCK) && !raised.is(Blocks.ICE) && !raised.is(Blocks.PACKED_ICE)) {
@@ -609,7 +609,7 @@ public final class Demolition {
 				boolean foundSupport = false;
 				for (; supportY >= fillBottom; supportY--) {
 					BlockPos p = new BlockPos(x, supportY, z);
-					if (!level.hasChunkAt(p)) { safeColumn = false; break; }
+					if (!de.villagerplus.world.LoadedColumns.ready(level, p)) { safeColumn = false; break; }
 					BlockState cur = level.getBlockState(p);
 					if (!cur.getFluidState().isEmpty() || level.getBlockEntity(p) != null) { safeColumn = false; break; }
 					if (!cur.isAir() && !cur.canBeReplaced()) {
@@ -619,7 +619,7 @@ public final class Demolition {
 				}
 				if (safeColumn && !foundSupport && supportY < fillBottom) {
 					BlockPos base = new BlockPos(x, fillBottom - 1, z);
-					if (level.hasChunkAt(base)) {
+					if (de.villagerplus.world.LoadedColumns.ready(level, base)) {
 						BlockState baseState = level.getBlockState(base);
 						foundSupport = baseState.getFluidState().isEmpty() && level.getBlockEntity(base) == null
 							&& baseState.isFaceSturdy(level, base, net.minecraft.core.Direction.UP);
@@ -720,8 +720,8 @@ public final class Demolition {
 		if (cache.containsKey(key)) return cache.get(key);
 		BlockState surface = null;
 		BlockPos column = new BlockPos(x, floorY, z);
-		if (level.hasChunkAt(column)) {
-			int sampleY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+		if (de.villagerplus.world.LoadedColumns.ready(level, column)) {
+			int sampleY = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
 			if (Math.abs(sampleY - floorY) <= 8) {
 				BlockState candidate = level.getBlockState(new BlockPos(x, sampleY, z));
 				if (VillageStyleNatural(candidate) && candidate.getFluidState().isEmpty()) surface = candidate;

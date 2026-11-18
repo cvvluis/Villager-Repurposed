@@ -3,10 +3,13 @@ package de.villagerplus.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
+import de.villagerplus.VillagerPlus;
 import de.villagerplus.block.DorftafelNameBlockEntity;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.Direction;
+import net.minecraft.resources.Identifier;
 
 /** Draws the village map of the large board as coloured relief columns on the recessed map panel (one column per map pixel). */
 final class DorftafelRelief {
@@ -16,6 +19,9 @@ final class DorftafelRelief {
 	/** Front face of the recessed map panel, in model space (board front is z = 5 px). */
 	private static final float BASE_Z = 8.0F * PX - 0.003F;
 	private static final float STEP = 0.8F * PX;
+	/** Iris implements the entity-translucent pipeline and does not ship minecraft:pipeline/debug_quads. */
+	private static final Identifier WHITE = Identifier.fromNamespaceAndPath(VillagerPlus.MOD_ID, "textures/misc/white.png");
+	private static final int FULL_BRIGHT = 0x00F000F0;
 
 	// terrain code -> RGB: meadow, forest, path, water, field, building, sand, stone, snow, clay, plaza, unknown
 	private static final int[] COLORS = {0x7FA650, 0x3F7A3A, 0xB89A64, 0x4F86B8, 0xC9B450, 0xA2452F, 0xE2D08A, 0x8D8D8D, 0xF2F5F7, 0xB86F50, 0xD6C79A, 0xE0C995};
@@ -35,7 +41,7 @@ final class DorftafelRelief {
 			default -> 0.0F;
 		}));
 		matrices.translate(-0.5, 0.0, -0.5);
-		queue.submitCustomGeometry(matrices, RenderTypes.debugQuads(), (pose, vc) -> {
+		queue.submitCustomGeometry(matrices, RenderTypes.entityTranslucent(WHITE), (pose, vc) -> {
 			for (int j = 1; j < H - 1; j++) {
 				for (int i = 1; i < W - 1; i++) {
 					column(pose, vc, relief, i, j);
@@ -65,17 +71,17 @@ final class DorftafelRelief {
 		} else if (mark == 9) {
 			top = 0xFFF2C0; // villagers
 		}
-		quad(pose, vc, x0, y0, z, x1, y0, z, x1, y1, z, x0, y1, z, top);
+		quad(pose, vc, x0, y0, z, x1, y0, z, x1, y1, z, x0, y1, z, top, 0.0F, 0.0F, -1.0F);
 		int side = shade(COLORS[terrain], 0.55F);
 		int hl = level(relief, i + 1, j); // neighbour at -x side (right of the viewer)
 		int hr = level(relief, i - 1, j);
 		int hu = level(relief, i, j - 1);
 		int hd = level(relief, i, j + 1);
 		float zb = BASE_Z;
-		if (hl < h) quad(pose, vc, x0, y0, z, x0, y1, z, x0, y1, zb - hl * STEP, x0, y0, zb - hl * STEP, side);
-		if (hr < h) quad(pose, vc, x1, y0, z, x1, y1, z, x1, y1, zb - hr * STEP, x1, y0, zb - hr * STEP, side);
-		if (hu < h) quad(pose, vc, x0, y1, z, x1, y1, z, x1, y1, zb - hu * STEP, x0, y1, zb - hu * STEP, side);
-		if (hd < h) quad(pose, vc, x0, y0, z, x1, y0, z, x1, y0, zb - hd * STEP, x0, y0, zb - hd * STEP, side);
+		if (hl < h) quad(pose, vc, x0, y0, z, x0, y1, z, x0, y1, zb - hl * STEP, x0, y0, zb - hl * STEP, side, -1.0F, 0.0F, 0.0F);
+		if (hr < h) quad(pose, vc, x1, y0, z, x1, y1, z, x1, y1, zb - hr * STEP, x1, y0, zb - hr * STEP, side, 1.0F, 0.0F, 0.0F);
+		if (hu < h) quad(pose, vc, x0, y1, z, x1, y1, z, x1, y1, zb - hu * STEP, x0, y1, zb - hu * STEP, side, 0.0F, 1.0F, 0.0F);
+		if (hd < h) quad(pose, vc, x0, y0, z, x1, y0, z, x1, y0, zb - hd * STEP, x0, y0, zb - hd * STEP, side, 0.0F, -1.0F, 0.0F);
 	}
 
 	private static int shade(int rgb, float f) {
@@ -86,11 +92,15 @@ final class DorftafelRelief {
 	}
 
 	private static void quad(PoseStack.Pose pose, VertexConsumer vc, float ax, float ay, float az, float bx, float by, float bz,
-			float cx, float cy, float cz, float dx, float dy, float dz, int rgb) {
+			float cx, float cy, float cz, float dx, float dy, float dz, int rgb, float nx, float ny, float nz) {
 		int argb = 0xFF000000 | rgb;
-		vc.addVertex(pose, ax, ay, az).setColor(argb);
-		vc.addVertex(pose, bx, by, bz).setColor(argb);
-		vc.addVertex(pose, cx, cy, cz).setColor(argb);
-		vc.addVertex(pose, dx, dy, dz).setColor(argb);
+		vertex(pose, vc, ax, ay, az, argb, nx, ny, nz);
+		vertex(pose, vc, bx, by, bz, argb, nx, ny, nz);
+		vertex(pose, vc, cx, cy, cz, argb, nx, ny, nz);
+		vertex(pose, vc, dx, dy, dz, argb, nx, ny, nz);
+	}
+
+	private static void vertex(PoseStack.Pose pose, VertexConsumer vc, float x, float y, float z, int argb, float nx, float ny, float nz) {
+		vc.addVertex(pose, x, y, z).setColor(argb).setUv(0.5F, 0.5F).setOverlay(OverlayTexture.NO_OVERLAY).setLight(FULL_BRIGHT).setNormal(pose, nx, ny, nz);
 	}
 }

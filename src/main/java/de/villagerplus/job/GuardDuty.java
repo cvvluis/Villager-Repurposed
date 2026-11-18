@@ -67,11 +67,11 @@ public final class GuardDuty {
 		points.add(walk(level, ref.bell()));
 		for (BlockPos tower : towers(level, ref.bell())) points.add(walk(level, tower));
 		BlockPos station = Specials.get(ref, Blueprints.STATION);
-		if (station != null && level.hasChunkAt(station)) points.add(walk(level, station));
+		if (station != null && de.villagerplus.world.LoadedColumns.ready(level, station)) points.add(walk(level, station));
 		addLocalRoadPosts(level, center, points);
 		addLinkedRoadPosts(level, ref, points);
 		if (station != null) addRailPosts(level, station, points);
-		return points.stream().filter(point -> level.hasChunkAt(point)).distinct().toList();
+		return points.stream().filter(point -> de.villagerplus.world.LoadedColumns.ready(level, point)).distinct().toList();
 	}
 
 	private static boolean alarm(Ctx c) {
@@ -161,13 +161,13 @@ public final class GuardDuty {
 	}
 
 	private static void addRailPosts(ServerLevel level, BlockPos station, List<BlockPos> points) {
-		if (!level.hasChunkAt(station)) return;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, station)) return;
 		List<BlockPos> rails = new ArrayList<>();
 		for (int x = station.getX() - MAX_RAIL_SCAN_RADIUS; x <= station.getX() + MAX_RAIL_SCAN_RADIUS; x++) {
 			for (int z = station.getZ() - MAX_RAIL_SCAN_RADIUS; z <= station.getZ() + MAX_RAIL_SCAN_RADIUS; z++) {
 				for (int y = station.getY() - 4; y <= station.getY() + 4; y++) {
 					BlockPos rail = new BlockPos(x, y, z);
-					if (level.hasChunkAt(rail) && level.getBlockState(rail).is(BlockTags.RAILS)) rails.add(rail);
+					if (de.villagerplus.world.LoadedColumns.ready(level, rail) && level.getBlockState(rail).is(BlockTags.RAILS)) rails.add(rail);
 				}
 			}
 		}
@@ -186,8 +186,8 @@ public final class GuardDuty {
 	private static BlockPos besideRail(ServerLevel level, BlockPos rail) {
 		for (Direction direction : Direction.Plane.HORIZONTAL) {
 			BlockPos beside = rail.relative(direction);
-			if (!level.hasChunkAt(beside)) continue;
-			BlockPos feet = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, beside);
+			if (!de.villagerplus.world.LoadedColumns.ready(level, beside)) continue;
+			BlockPos feet = de.villagerplus.world.LoadedColumns.heightmapPos(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, beside);
 			if (Math.abs(feet.getY() - rail.getY()) > 2 || !level.getBlockState(feet).getCollisionShape(level, feet).isEmpty()
 				|| !level.getBlockState(feet).getFluidState().isEmpty()
 				|| !level.getBlockState(feet.above()).getCollisionShape(level, feet.above()).isEmpty()
@@ -199,9 +199,9 @@ public final class GuardDuty {
 	}
 
 	private static BlockPos pavedWalkPosition(ServerLevel level, BlockPos route) {
-		if (!level.hasChunkAt(route)) return null;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, route)) return null;
 		int x = route.getX(), z = route.getZ();
-		BlockPos ground = new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1, z);
+		BlockPos ground = new BlockPos(x, de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1, z);
 		if (!level.getBlockState(ground).is(Blocks.GRAVEL) && !level.getBlockState(ground).is(Blocks.COBBLESTONE)
 			&& !level.getBlockState(ground).is(Blocks.SANDSTONE) && !level.getBlockState(ground).is(Blocks.SMOOTH_SANDSTONE)
 			&& !level.getBlockState(ground).is(Blocks.SPRUCE_PLANKS)) return null;
@@ -213,7 +213,7 @@ public final class GuardDuty {
 	}
 
 	private static BlockPos walk(ServerLevel level, BlockPos pos) {
-		if (!level.hasChunkAt(pos)) return pos;
-		return level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, pos);
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return pos;
+		return de.villagerplus.world.LoadedColumns.heightmapPos(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, pos);
 	}
 }

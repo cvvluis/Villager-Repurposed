@@ -199,12 +199,11 @@ public final class Routine {
   int checked = 0;
   while (checked < MAX_GATHER_PATH_CHECKS_PER_ATTEMPT && search.cursor < search.columns.size()) {
    BlockPos column = search.columns.get(search.cursor);
-   if (!c.level().hasChunkAt(column)) {
+   if (!de.villagerplus.world.LoadedColumns.ready(c.level(), column)) {
     search.cursor++;
     continue;
    }
-   BlockPos candidate = c.level().getHeightmapPos(
-    net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column).immutable();
+   BlockPos candidate = de.villagerplus.world.LoadedColumns.heightmapPos(c.level(), net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column).immutable();
    if (!safeGatherStand(c, candidate) || crowdedGatherStand(candidate, occupied)) {
     search.cursor++;
     continue;
@@ -304,7 +303,7 @@ public final class Routine {
  private static boolean safeGatherStand(Ctx c, BlockPos feet) {
   BlockPos floor = feet.below();
   BlockPos head = feet.above();
-  if (!c.level().hasChunkAt(floor) || !c.level().hasChunkAt(feet) || !c.level().hasChunkAt(head)) return false;
+  if (!de.villagerplus.world.LoadedColumns.ready(c.level(), floor) || !de.villagerplus.world.LoadedColumns.ready(c.level(), feet) || !de.villagerplus.world.LoadedColumns.ready(c.level(), head)) return false;
   var ground = c.level().getBlockState(floor);
   var body = c.level().getBlockState(feet);
   var above = c.level().getBlockState(head);

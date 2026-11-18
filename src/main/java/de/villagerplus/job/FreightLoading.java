@@ -27,7 +27,7 @@ public final class FreightLoading {
 	public static boolean work(Ctx c) {
 		if (c.village() == null || !Specials.has(c.village(), Blueprints.STATION)) return false;
 		BlockPos station = Specials.get(c.village(), Blueprints.STATION);
-		if (station == null || !c.level().hasChunkAt(station)) return false;
+		if (station == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), station)) return false;
 		MinecartChest cart = c.level().getEntitiesOfClass(MinecartChest.class, new AABB(station).inflate(8, 4, 8), FreightLoading::docked)
 			.stream().filter(candidate -> hasRoom(candidate)).findFirst().orElse(null);
 		if (cart == null) return false;

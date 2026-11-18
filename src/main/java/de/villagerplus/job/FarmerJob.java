@@ -183,7 +183,7 @@ public class FarmerJob implements Job {
 	public static boolean safeClusterSite(ServerLevel level, BlockPos cropLevel) {
 		for (int dx = -2; dx <= 3; dx++) for (int dz = -2; dz <= 3; dz++) {
 			BlockPos p = cropLevel.offset(dx, 0, dz);
-			if (!level.hasChunkAt(p.below()) || !level.hasChunkAt(p.above())) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, p.below()) || !de.villagerplus.world.LoadedColumns.ready(level, p.above())) return false;
 			BlockState floor = level.getBlockState(p.below());
 			boolean perimeter = dx == -2 || dx == 3 || dz == -2 || dz == 3;
 			if (perimeter) {
@@ -203,7 +203,7 @@ public class FarmerJob implements Job {
 	static boolean safeStarterClusterSite(ServerLevel level, BlockPos cropLevel) {
 		for (int dx = -2; dx <= 2; dx++) for (int dz = -2; dz <= 2; dz++) {
 			BlockPos p = cropLevel.offset(dx, 0, dz);
-			if (!level.hasChunkAt(p.below()) || !level.hasChunkAt(p.above())) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, p.below()) || !de.villagerplus.world.LoadedColumns.ready(level, p.above())) return false;
 			BlockState floor = level.getBlockState(p.below());
 			boolean perimeter = Math.abs(dx) == 2 || Math.abs(dz) == 2;
 			if (perimeter) {
@@ -217,7 +217,7 @@ public class FarmerJob implements Job {
 
 	/** Small natural ground plants are valid field cells: the farmer clears them during the paid build step. */
 	private static boolean farmCellClearable(ServerLevel level, BlockPos pos) {
-		if (!level.hasChunkAt(pos)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return false;
 		BlockState state = level.getBlockState(pos);
 		return state.isAir() || clearableFarmPlant(state);
 	}
@@ -676,9 +676,8 @@ public class FarmerJob implements Job {
 	}
 
 	static BlockPos seedGrassSurface(ServerLevel level, BlockPos column) {
-		if (!level.hasChunkAt(column)) return null;
-		return new BlockPos(column.getX(), level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
-			column.getX(), column.getZ()), column.getZ());
+		if (!de.villagerplus.world.LoadedColumns.ready(level, column)) return null;
+		return new BlockPos(column.getX(), de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column.getX(), column.getZ()), column.getZ());
 	}
 
 	/** Grass regions (centre, until-tick) whose cells have no walk-back to the village street: a gully the forager cannot leave again. */
@@ -796,7 +795,7 @@ public class FarmerJob implements Job {
 	}
 
 	static boolean safeSeedGrass(ServerLevel level, VillageRef ref, BlockPos pos) {
-		if (!level.hasChunkAt(pos) || !level.hasChunkAt(pos.below())) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !de.villagerplus.world.LoadedColumns.ready(level, pos.below())) return false;
 		BlockState plant = level.getBlockState(pos);
 		if (!plant.is(Blocks.SHORT_GRASS) || plant.hasBlockEntity() || !plant.getFluidState().isEmpty()) return false;
 		BlockState soil = level.getBlockState(pos.below());
@@ -1337,7 +1336,7 @@ public class FarmerJob implements Job {
 				long horizontal = (long)dx * dx + (long)dz * dz;
 				if (horizontal > (long)FARM_WATER_SEARCH_RADIUS * FARM_WATER_SEARCH_RADIUS || horizontal <= 36L) continue;
 				BlockPos column = field.offset(dx, 0, dz);
-				if (!level.hasChunkAt(column)) continue;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, column)) continue;
 				for (int dy = -7; dy <= 3; dy++) {
 					BlockPos candidate = column.above(dy);
 					long distance = horizontal + (long)dy * dy;
@@ -1353,7 +1352,7 @@ public class FarmerJob implements Job {
 
 	private static boolean safeFarmWaterSource(ServerLevel level, VillageRef ref, BlockPos field, BlockPos source) {
 		if (level.environmentAttributes().getValue(EnvironmentAttributes.WATER_EVAPORATES, source)
-			|| !level.hasChunkAt(source) || !level.hasChunkAt(source.above())) return false;
+			|| !de.villagerplus.world.LoadedColumns.ready(level, source) || !de.villagerplus.world.LoadedColumns.ready(level, source.above())) return false;
 		BlockState state = level.getBlockState(source);
 		if (!state.is(Blocks.WATER) || !state.getFluidState().isSource() || !level.getBlockState(source.above()).isAir()
 			|| level.getBlockEntity(source) != null || level.getBlockState(source.below()).is(Blocks.FARMLAND)
@@ -1370,7 +1369,7 @@ public class FarmerJob implements Job {
 		int neighboringSources = 0;
 		for (net.minecraft.core.Direction direction : net.minecraft.core.Direction.Plane.HORIZONTAL) {
 			BlockPos neighbor = source.relative(direction);
-			if (!level.hasChunkAt(neighbor)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, neighbor)) continue;
 			BlockState adjacent = level.getBlockState(neighbor);
 			if (adjacent.is(Blocks.WATER) && adjacent.getFluidState().isSource()) neighboringSources++;
 			if (adjacent.is(Blocks.FARMLAND)) return false;
@@ -1382,7 +1381,7 @@ public class FarmerJob implements Job {
 		for (net.minecraft.core.Direction direction : net.minecraft.core.Direction.Plane.HORIZONTAL) {
 			for (int dy = 0; dy >= -1; dy--) {
 				BlockPos feet = source.relative(direction).above(dy);
-				if (!level.hasChunkAt(feet) || !level.hasChunkAt(feet.above()) || !level.hasChunkAt(feet.below())) continue;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, feet) || !de.villagerplus.world.LoadedColumns.ready(level, feet.above()) || !de.villagerplus.world.LoadedColumns.ready(level, feet.below())) continue;
 				if (level.getBlockState(feet).isAir() && level.getBlockState(feet.above()).isAir()
 					&& level.getBlockState(feet.below()).isFaceSturdy(level, feet.below(), net.minecraft.core.Direction.UP)) return feet.immutable();
 			}
@@ -1468,8 +1467,8 @@ public class FarmerJob implements Job {
 		}
 		ExpansionStep step = expansionStep(plan, plan.cursor());
 		if (step == null) return true;
-		if (!c.level().hasChunkAt(step.pos()) || !c.level().hasChunkAt(step.pos().below())
-			|| !c.level().hasChunkAt(step.pos().above())) {
+		if (!de.villagerplus.world.LoadedColumns.ready(c.level(), step.pos()) || !de.villagerplus.world.LoadedColumns.ready(c.level(), step.pos().below())
+			|| !de.villagerplus.world.LoadedColumns.ready(c.level(), step.pos().above())) {
 			c.setActivity("wartet auf geladenes Feldgebiet");
 			return true;
 		}
@@ -1809,9 +1808,8 @@ public class FarmerJob implements Job {
 			candidates.sort(Comparator.comparingDouble((BlockPos p) -> p.distSqr(center))
 				.thenComparingInt(BlockPos::getX).thenComparingInt(BlockPos::getZ));
 			for (BlockPos candidate : candidates) {
-				if (!level.hasChunk(candidate.getX() >> 4, candidate.getZ() >> 4)) continue;
-				BlockPos site = new BlockPos(candidate.getX(), level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
-					candidate.getX(), candidate.getZ()), candidate.getZ());
+				if (!de.villagerplus.world.LoadedColumns.readyChunk(level, candidate.getX() >> 4, candidate.getZ() >> 4)) continue;
+				BlockPos site = new BlockPos(candidate.getX(), de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, candidate.getX(), candidate.getZ()), candidate.getZ());
 				if (starter ? safeStarterClusterSite(level, site) : safeClusterSite(level, site)) return site;
 			}
 			return null;
@@ -1823,8 +1821,8 @@ public class FarmerJob implements Job {
 			for (int dx = -radius; dx <= radius; dx += 2) for (int dz = -radius; dz <= radius; dz += 2) {
 				if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) continue;
 				int x = center.getX() + dx, z = center.getZ() + dz;
-				if (!level.hasChunk(x >> 4, z >> 4)) continue;
-				int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+				if (!de.villagerplus.world.LoadedColumns.readyChunk(level, x >> 4, z >> 4)) continue;
+				int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 				BlockPos candidate = new BlockPos(x, y, z);
 				if (starter ? safeStarterClusterSite(level, candidate) : safeClusterSite(level, candidate)) return candidate;
 			}

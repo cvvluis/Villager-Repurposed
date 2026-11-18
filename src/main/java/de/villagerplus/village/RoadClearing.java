@@ -16,8 +16,8 @@ public final class RoadClearing {
 
  public static Column column(ServerLevel level,VillageRef ref,int x,int z,Map<String,Long> state,String key) {
   int referenceY=ref==null?level.getMinY():ref.bell().getY();
-  if(!level.hasChunkAt(new BlockPos(x,referenceY,z)))return null;
-  int rawHeight=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z)-1;
+  if(!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x,referenceY,z)))return null;
+  int rawHeight=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)-1;
   // Resolve the actual surface before looking for trunks. Capping at bellY + 20
   // made taller trunks or elevated forest edges look like solid ground.
   int capY=rawHeight;
@@ -45,7 +45,7 @@ public final class RoadClearing {
     // bounds so the next route scan rediscovers the current tree instead of paving below it.
    for(int y=peak+1;y<=root.getY()+32;y++) {
     BlockPos above=new BlockPos(x,y,z);
-    if(!level.hasChunkAt(above))return null;
+    if(!de.villagerplus.world.LoadedColumns.ready(level, above))return null;
     if(level.getBlockState(above).is(BlockTags.OVERWORLD_NATURAL_LOGS)) {
      state.remove(key+":root");state.remove(key+":top");
      return null;
@@ -81,7 +81,7 @@ public final class RoadClearing {
 
  public static boolean validTask(ServerLevel level,Roads.Repair task) {
   BlockPos p=task.ground(),stand=task.worksite();
-  if(!level.hasChunkAt(p)||!level.hasChunkAt(stand)||!level.getBlockState(p).equals(task.removal()))return false;
+  if(!de.villagerplus.world.LoadedColumns.ready(level, p)||!de.villagerplus.world.LoadedColumns.ready(level, stand)||!level.getBlockState(p).equals(task.removal()))return false;
   if(!safeStand(level,stand))return false;
   if(task.treeRoot()!=null) {
    BlockPos root=task.treeRoot();
@@ -100,11 +100,11 @@ public final class RoadClearing {
  }
  private static boolean canopy(ServerLevel level,BlockPos top){
   for(BlockPos p:BlockPos.betweenClosed(top.offset(-3,-2,-3),top.offset(3,4,3)))
-   if(level.hasChunkAt(p)&&level.getBlockState(p).is(BlockTags.LEAVES)&&soft(level.getBlockState(p)))return true;
+   if(de.villagerplus.world.LoadedColumns.ready(level, p)&&level.getBlockState(p).is(BlockTags.LEAVES)&&soft(level.getBlockState(p)))return true;
   return false;
  }
  private static BlockPos[] findLogColumn(ServerLevel level,int x,int z) {
-  int maxY=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z)-1;
+  int maxY=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)-1;
   int minY=Math.max(level.getMinY()+1,maxY-32);
   for(int y=minY;y<=maxY;y++) {
    BlockPos seed=new BlockPos(x,y,z);
@@ -119,7 +119,7 @@ public final class RoadClearing {
  }
  private static boolean protectedArea(ServerLevel level,BlockPos root){
   for(BlockPos p:BlockPos.betweenClosed(root.offset(-2,-1,-2),root.offset(2,32,2))) {
-   if(!level.hasChunkAt(p))return true;
+   if(!de.villagerplus.world.LoadedColumns.ready(level, p))return true;
    BlockState s=level.getBlockState(p);Block b=s.getBlock();
    if(s.hasBlockEntity()||s.is(Blocks.FARMLAND)||s.is(BlockTags.PLANKS)||b instanceof DoorBlock||b instanceof FenceBlock||b instanceof StairBlock||b instanceof SlabBlock||b instanceof BedBlock)return true;
   }
@@ -128,7 +128,7 @@ public final class RoadClearing {
  private static BlockPos stand(ServerLevel level,BlockPos ground){
   for(int r=0;r<=5;r++)for(int dx=-r;dx<=r;dx++)for(int dz=-r;dz<=r;dz++) {
    if(Math.max(Math.abs(dx),Math.abs(dz))!=r)continue;
-   BlockPos p=ground.offset(dx,1,dz);if(level.hasChunkAt(p)&&safeStand(level,p))return p;
+   BlockPos p=ground.offset(dx,1,dz);if(de.villagerplus.world.LoadedColumns.ready(level, p)&&safeStand(level,p))return p;
   }
   return null;
  }
@@ -140,7 +140,7 @@ public final class RoadClearing {
    if(dx==0&&dz==0)continue;
    for(int y=maxY;y>=minY;y--) {
     BlockPos p=new BlockPos(root.getX()+dx,y,root.getZ()+dz);
-    if(level.hasChunkAt(p)&&safeStand(level,p))return p;
+    if(de.villagerplus.world.LoadedColumns.ready(level, p)&&safeStand(level,p))return p;
    }
   }
   return null;

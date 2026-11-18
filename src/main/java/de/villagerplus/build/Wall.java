@@ -67,7 +67,7 @@ public final class Wall {
 
 	/** Bodenhoehe (erste freie Luftschicht) ohne die eigene Mauer: Mauerbloecke, Zaeune, Laternen und Torbogen zaehlen nicht mit. */
 	public static int groundHeight(ServerLevel level, int x, int z, Block wall) {
-		int h = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+		int h = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 		while (h > level.getMinY() + 1) {
 			BlockState s = level.getBlockState(new BlockPos(x, h - 1, z));
 			if (s.is(wall) || s.is(Blocks.LANTERN) || s.getBlock() instanceof net.minecraft.world.level.block.FenceBlock || s.getBlock() instanceof StairBlock) {
@@ -95,7 +95,7 @@ public final class Wall {
 		List<Integer> footings = new ArrayList<>();
 		for (int kk = 0; kk < THICK + 6; kk++) {
 			int x = bell.getX() + o[0] + in.getStepX() * kk, z = bell.getZ() + o[1] + in.getStepZ() * kk;
-			if (!level.hasChunkAt(new BlockPos(x, bell.getY(), z))) return null;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, bell.getY(), z))) return null;
 			int surface = groundHeight(level, x, z, wall);
 			if (kk < THICK) base = Math.max(base, surface);
 			int footing = supportingFloor(level, x, z, surface);
@@ -144,10 +144,10 @@ public final class Wall {
 		Direction in = inward(r, t);
 		int bx = bell.getX() + o[0];
 		int bz = bell.getZ() + o[1];
-		if (!level.hasChunkAt(new BlockPos(bx, bell.getY(), bz))) {
+		if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(bx, bell.getY(), bz))) {
 			return out;
 		}
-		for (int kk = 0; kk < THICK + 6; kk++) if (!level.hasChunkAt(new BlockPos(bx + in.getStepX() * kk, bell.getY(), bz + in.getStepZ() * kk))) return out;
+		for (int kk = 0; kk < THICK + 6; kk++) if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(bx + in.getStepX() * kk, bell.getY(), bz + in.getStepZ() * kk))) return out;
 		Profile profile = profile(level, bell, wall, r, t);
 		if (profile == null) return out;
 		int hb = profile.baseY();
@@ -161,7 +161,7 @@ public final class Wall {
 		for (int kk = 0; kk < THICK; kk++) {
 			int x = bx + in.getStepX() * kk;
 			int z = bz + in.getStepZ() * kk;
-			if (!level.hasChunkAt(new BlockPos(x, hb, z))) {
+			if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, hb, z))) {
 				continue;
 			}
 			int hk = profile.footings().get(kk);
@@ -203,7 +203,7 @@ public final class Wall {
 			for (int kk = THICK; kk <= THICK + 5; kk++) {
 				int x = bx + in.getStepX() * kk;
 				int z = bz + in.getStepZ() * kk;
-				if (!level.hasChunkAt(new BlockPos(x, hb, z))) {
+				if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, hb, z))) {
 					continue;
 				}
 				int stepY = hb + (THICK + 5 - kk);

@@ -535,9 +535,9 @@ public final class Mining {
 			Direction side = Direction.from2DDataValue(mine.dir).getClockWise();
 			BlockPos left = base.relative(side, -SUPPORT_RADIUS).below();
 			BlockPos right = base.relative(side, SUPPORT_RADIUS).below();
-			boolean leftAlreadyPaved = level.hasChunkAt(left)
+			boolean leftAlreadyPaved = de.villagerplus.world.LoadedColumns.ready(level, left)
 				&& (level.getBlockState(left).is(Blocks.OAK_PLANKS) || level.getBlockState(left).is(Blocks.COBBLESTONE));
-			boolean rightAlreadyPaved = level.hasChunkAt(right)
+			boolean rightAlreadyPaved = de.villagerplus.world.LoadedColumns.ready(level, right)
 				&& (level.getBlockState(right).is(Blocks.OAK_PLANKS) || level.getBlockState(right).is(Blocks.COBBLESTONE));
 			if (!leftAlreadyPaved && !rightAlreadyPaved
 				&& mineGalleryFloorCanBePaved(level, left) && mineGalleryFloorCanBePaved(level, right)) {
@@ -587,7 +587,7 @@ public final class Mining {
 	private static boolean mineWallTorchSupported(ServerLevel level, BlockPos spot, Direction side, int sign) {
 		Direction facing = sign > 0 ? side.getOpposite() : side;
 		BlockPos wall = spot.relative(side, sign);
-		if (!level.hasChunkAt(wall)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, wall)) return false;
 		BlockState wallState = level.getBlockState(wall);
 		return wallState.isFaceSturdy(level, wall, facing) && !wallState.hasBlockEntity()
 			&& !(wallState.getBlock() instanceof FallingBlock) && wallState.getFluidState().isEmpty();
@@ -609,11 +609,11 @@ public final class Mining {
 			double dist = 14 + c.v().getRandom().nextInt(ring);
 			int x = ref.bell().getX() + (int) Math.round(Math.cos(angle) * dist);
 			int z = ref.bell().getZ() + (int) Math.round(Math.sin(angle) * dist);
-			if (!level.hasChunkAt(new BlockPos(x, ref.bell().getY(), z))) {
+			if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, ref.bell().getY(), z))) {
 				why[0]++;
 				continue;
 			}
-			int y0 = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+			int y0 = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 			// An entrance high on a hill (or in a hollow) far from the village level is a poor walk for everyone: keep it reachable.
 			if (Math.abs(y0 - ref.bell().getY()) > 10) {
 				why[1]++;
@@ -694,18 +694,18 @@ public final class Mining {
 		Direction side = Direction.from2DDataValue(m.dir).getClockWise();
 		for (int i = 0; i < len; i++) {
 			BlockPos b = bottom(m, i);
-			if (!level.hasChunkAt(b)) {
+			if (!de.villagerplus.world.LoadedColumns.ready(level, b)) {
 				return previewFail(0);
 			}
 			for (int lane = -TUNNEL_HALF_WIDTH; lane <= TUNNEL_HALF_WIDTH; lane++) {
 				BlockPos column = b.relative(side, lane);
-				if (!level.hasChunkAt(column) || !level.hasChunkAt(column.below())
+				if (!de.villagerplus.world.LoadedColumns.ready(level, column) || !de.villagerplus.world.LoadedColumns.ready(level, column.below())
 					|| !level.getBlockState(column.below()).isFaceSturdy(level, column.below(), Direction.UP)) {
 					return previewFail(1);
 				}
 				for (int k = 0; k < cells(m, i); k++) {
 					BlockPos p = column.above(k);
-					if (!level.hasChunkAt(p) || hazard(level, p)) return previewFail(2);
+					if (!de.villagerplus.world.LoadedColumns.ready(level, p) || hazard(level, p)) return previewFail(2);
 					BlockState state = level.getBlockState(p);
 					if (!state.isAir() && !mineable(state)) {
 						NONMINEABLE.merge(net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath(), 1, Integer::sum);
@@ -713,23 +713,23 @@ public final class Mining {
 					}
 				}
 				BlockPos roof = column.above(cells(m, i));
-				if (!level.hasChunkAt(roof) || hazard(level, roof) || unsafeFallingRoof(level, roof)) return previewFail(4);
+				if (!de.villagerplus.world.LoadedColumns.ready(level, roof) || hazard(level, roof) || unsafeFallingRoof(level, roof)) return previewFail(4);
 			}
 			if (supportSection(i)) {
 				for (int sign : new int[]{-1, 1}) {
 					BlockPos post = b.relative(side, sign * SUPPORT_RADIUS);
-					if (!level.hasChunkAt(post.below())
+					if (!de.villagerplus.world.LoadedColumns.ready(level, post.below())
 						|| !level.getBlockState(post.below()).isFaceSturdy(level, post.below(), Direction.UP)) return previewFail(5);
 					for (int k = 0; k < cells(m, i); k++) {
 						BlockPos p = post.above(k);
-						if (!level.hasChunkAt(p) || hazard(level, p)) return previewFail(6);
+						if (!de.villagerplus.world.LoadedColumns.ready(level, p) || hazard(level, p)) return previewFail(6);
 						BlockState state = level.getBlockState(p);
 						if (!state.isAir() && !state.is(BlockTags.WOODEN_FENCES) && !mineable(state)) return previewFail(7);
 					}
 				}
 				for (int lane = -SUPPORT_RADIUS; lane <= SUPPORT_RADIUS; lane++) {
 					BlockPos beam = b.relative(side, lane).above(cells(m, i));
-					if (!level.hasChunkAt(beam) || hazard(level, beam)
+					if (!de.villagerplus.world.LoadedColumns.ready(level, beam) || hazard(level, beam)
 						|| unsafeFallingRoof(level, beam)) return previewFail(8);
 					BlockState state = level.getBlockState(beam);
 					if (!state.isAir() && !state.is(BlockTags.PLANKS) && !mineable(state)) return previewFail(9);
@@ -739,9 +739,9 @@ public final class Mining {
 				int sign = Math.floorMod(i / LIGHT_SPACING, 2) == 0 ? -1 : 1;
 				BlockPos light = b.relative(side, sign * SUPPORT_RADIUS);
 				BlockPos wall = light.relative(side, sign);
-				if (!level.hasChunkAt(light) || !level.hasChunkAt(light.below())
+				if (!de.villagerplus.world.LoadedColumns.ready(level, light) || !de.villagerplus.world.LoadedColumns.ready(level, light.below())
 					|| !level.getBlockState(light.below()).isFaceSturdy(level, light.below(), Direction.UP)
-					|| !level.hasChunkAt(wall) || !mineWallTorchSupported(level, light, side, sign)
+					|| !de.villagerplus.world.LoadedColumns.ready(level, wall) || !mineWallTorchSupported(level, light, side, sign)
 					|| hazard(level, light) || level.getBlockState(light.above()).getBlock() instanceof FallingBlock) return previewFail(10);
 				BlockState state = level.getBlockState(light);
 				if (!state.isAir() && !isMineTorch(state) && !mineable(state)) return previewFail(11);
@@ -850,7 +850,7 @@ public final class Mining {
 		List<MineEntranceBlock> plan = mineEntrancePlan(mine, MINE_ENTRANCE_SITE_PALETTE);
 		for (MineEntranceBlock target : plan) {
 			BlockPos pos = target.pos();
-			if (!level.hasChunkAt(pos)) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return false;
 			BlockState state = level.getBlockState(pos);
 			if (!state.isAir() || state.hasBlockEntity() || !state.getFluidState().isEmpty()) return false;
 			if (mineEntranceFooting(mine, side, pos) && !mineEntranceFootingSupported(level, pos)) return false;
@@ -901,7 +901,7 @@ public final class Mining {
 		BlockPos signPos = mineEntranceSignPos(mine);
 		for (MineEntranceBlock target : mineEntrancePlan(mine, palette)) {
 			BlockPos pos = target.pos();
-			if (!level.hasChunkAt(pos)) return rejectEntrance("r1");
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return rejectEntrance("r1");
 			BlockState before = level.getBlockState(pos);
 			if (mineEntranceFooting(mine, side, pos) && !mineEntranceFootingSupported(level, pos)) return rejectEntrance("r2");
 			// Keep an already-owned legacy sign when a refreshed biome palette selects another wood species.
@@ -923,7 +923,7 @@ public final class Mining {
 			BlockPos porch = mine.entrance.relative(direction.getOpposite());
 			for (int sign : new int[] {-2, 2}) {
 				BlockPos oldTorch = porch.relative(side, sign).relative(direction.getOpposite()).above(1);
-				if (!level.hasChunkAt(oldTorch)) return rejectEntrance("r6");
+				if (!de.villagerplus.world.LoadedColumns.ready(level, oldTorch)) return rejectEntrance("r6");
 				BlockState state = level.getBlockState(oldTorch);
 				if (state.getBlock() instanceof WallTorchBlock
 					&& state.getValue(WallTorchBlock.FACING) == direction.getOpposite()) {
@@ -964,7 +964,7 @@ public final class Mining {
 	}
 
 	private static boolean writeMineEntranceSign(ServerLevel level, BlockPos signPos) {
-		if (!level.hasChunkAt(signPos)
+		if (!de.villagerplus.world.LoadedColumns.ready(level, signPos)
 			|| !(level.getBlockState(signPos).getBlock() instanceof net.minecraft.world.level.block.WallSignBlock)
 			|| !(level.getBlockEntity(signPos) instanceof SignBlockEntity sign)) return false;
 		SignText text = sign.getFrontText()
@@ -994,23 +994,23 @@ public final class Mining {
 
 	private static boolean mineEntranceFootingSupported(ServerLevel level, BlockPos footing) {
 		BlockPos floor = footing.below();
-		return level.hasChunkAt(floor) && level.getBlockState(floor).isFaceSturdy(level, floor, Direction.UP);
+		return de.villagerplus.world.LoadedColumns.ready(level, floor) && level.getBlockState(floor).isFaceSturdy(level, floor, Direction.UP);
 	}
 
 	private static boolean legacyMineEntrancePattern(ServerLevel level, VillageData.Mine mine, Direction side) {
 		int beam = 0, posts = 0, lanterns = 0;
 		for (int lane = -2; lane <= 2; lane++) {
 			BlockPos header = mine.entrance.relative(side, lane).above(TUNNEL_CLEAR_HEIGHT);
-			if (!level.hasChunkAt(header)) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, header)) return false;
 			if (level.getBlockState(header).is(Blocks.SPRUCE_PLANKS)) beam++;
 		}
 		for (int sign : new int[]{-2, 2}) {
 			BlockPos post = mine.entrance.relative(side, sign);
 			for (int y = 0; y <= 1; y++) {
-				if (!level.hasChunkAt(post.above(y))) return false;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, post.above(y))) return false;
 				if (level.getBlockState(post.above(y)).is(Blocks.SPRUCE_FENCE)) posts++;
 			}
-			if (!level.hasChunkAt(post.above(TUNNEL_CLEAR_HEIGHT - 1))) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, post.above(TUNNEL_CLEAR_HEIGHT - 1))) return false;
 			BlockState lantern = level.getBlockState(post.above(TUNNEL_CLEAR_HEIGHT - 1));
 			if (lantern.is(Blocks.LANTERN) && lantern.getValue(net.minecraft.world.level.block.LanternBlock.HANGING)) lanterns++;
 		}
@@ -1085,7 +1085,7 @@ public final class Mining {
 		for (int lane = -TUNNEL_HALF_WIDTH; lane <= TUNNEL_HALF_WIDTH; lane++) {
 			for (int y = 0; y < TUNNEL_CLEAR_HEIGHT; y++) {
 				BlockPos p = e.relative(side, lane).above(y);
-				if (!level.hasChunkAt(p)) return;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, p)) return;
 				BlockState state = level.getBlockState(p);
 				if (mineSealTargetProtected(level, p, state)) return;
 				if (state.is(Blocks.SPRUCE_PLANKS) || state.isCollisionShapeFullBlock(level, p)) continue;
@@ -1105,7 +1105,7 @@ public final class Mining {
 		for (MinePortalChange change : portal) planned.add(change.pos().asLong());
 		for (BlockPos p : surfacePlan.coverCells()) {
 			if (planned.contains(p.asLong())) continue;
-			if (!level.hasChunkAt(p)) return;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, p)) return;
 			BlockState state = level.getBlockState(p);
 			if (mineSealTargetProtected(level, p, state)) return;
 			if (state.isCollisionShapeFullBlock(level, p)) continue;
@@ -1116,7 +1116,7 @@ public final class Mining {
 		}
 		List<MinePortalChange> roof = new ArrayList<>();
 		for (BlockPos p : surfacePlan.roofCells()) {
-			if (!level.hasChunkAt(p)) return;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, p)) return;
 			BlockState state = level.getBlockState(p);
 			if (mineSealTargetProtected(level, p, state)) return;
 			if (state.isCollisionShapeFullBlock(level, p)) continue;
@@ -1140,7 +1140,7 @@ public final class Mining {
 		}
 		Direction out = dir.getOpposite();
 		BlockPos signPos = e.above(1).relative(out);
-		if (!level.hasChunkAt(signPos)) return;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, signPos)) return;
 		BlockState existingSignState = level.getBlockState(signPos);
 		SignBlockEntity oldSign = level.getBlockEntity(signPos) instanceof SignBlockEntity sign ? sign : null;
 		boolean existingSign = oldSign != null;
@@ -1219,7 +1219,7 @@ public final class Mining {
 				continue;
 			}
 			VillageRef ref = mineVillage(level, mine);
-			if (ref == null || !level.hasChunkAt(mine.entrance)) {
+			if (ref == null || !de.villagerplus.world.LoadedColumns.ready(level, mine.entrance)) {
 				entry.setValue(new PendingMineSeal(mine, retry.exhausted(), now + BLOCKED_SEAL_RETRY_TICKS));
 				continue;
 			}
@@ -1240,16 +1240,16 @@ public final class Mining {
 		for (int lane = -TUNNEL_HALF_WIDTH; lane <= TUNNEL_HALF_WIDTH; lane++) {
 			for (int y = 0; y < TUNNEL_CLEAR_HEIGHT; y++) {
 				BlockPos pos = mine.entrance.relative(side, lane).above(y);
-				if (!level.hasChunkAt(pos) || !level.getBlockState(pos).isCollisionShapeFullBlock(level, pos)) return false;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !level.getBlockState(pos).isCollisionShapeFullBlock(level, pos)) return false;
 			}
 		}
 		MineSurfaceSealPlan surfacePlan = mineSurfaceSealPlan(level, mine);
 		if (!surfacePlan.loaded()) return false;
 		for (BlockPos pos : surfacePlan.coverCells()) {
-			if (!level.hasChunkAt(pos) || !level.getBlockState(pos).isCollisionShapeFullBlock(level, pos)) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !level.getBlockState(pos).isCollisionShapeFullBlock(level, pos)) return false;
 		}
 		for (BlockPos roof : surfacePlan.roofCells()) {
-			if (!level.hasChunkAt(roof) || !level.getBlockState(roof).isCollisionShapeFullBlock(level, roof)) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, roof) || !level.getBlockState(roof).isCollisionShapeFullBlock(level, roof)) return false;
 		}
 		return true;
 	}
@@ -1313,16 +1313,16 @@ public final class Mining {
 	private static int mineTerrainSurfaceY(ServerLevel level, BlockPos base, Direction side, int lane) {
 		int probeLane = lane < 0 ? -3 : lane > 0 ? 3 : -3;
 		BlockPos first = base.relative(side, probeLane);
-		if (!level.hasChunkAt(first)) return Integer.MIN_VALUE;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, first)) return Integer.MIN_VALUE;
 		int firstY = mineTerrainSurfaceY(level, first);
 		if (lane != 0) return firstY;
 		BlockPos second = base.relative(side, 3);
-		if (!level.hasChunkAt(second)) return Integer.MIN_VALUE;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, second)) return Integer.MIN_VALUE;
 		return Math.max(firstY, mineTerrainSurfaceY(level, second));
 	}
 
 	private static int mineTerrainSurfaceY(ServerLevel level, BlockPos sample) {
-		int surfaceY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sample.getX(), sample.getZ());
+		int surfaceY = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sample.getX(), sample.getZ());
 		while (surfaceY > level.getMinY()
 			&& level.getBlockState(new BlockPos(sample.getX(), surfaceY - 1, sample.getZ()))
 				.is(net.minecraft.tags.BlockTags.OVERWORLD_NATURAL_LOGS)) {
@@ -1449,10 +1449,10 @@ public final class Mining {
 		int removed = 0;
 		for (int x = bell.getX() - 90; x <= bell.getX() + 90; x++) {
 			for (int z = bell.getZ() - 90; z <= bell.getZ() + 90; z++) {
-				if (!level.hasChunkAt(new BlockPos(x, bell.getY(), z))) {
+				if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, bell.getY(), z))) {
 					continue;
 				}
-				int top = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+				int top = de.villagerplus.world.LoadedColumns.heightOrMinY(level, net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 				BlockPos p = null;
 				for (int yy = top + 2; yy >= top - 2; yy--) {
 					if (level.getBlockState(new BlockPos(x, yy, z)).is(Blocks.OAK_SIGN)) {
@@ -1519,7 +1519,7 @@ public final class Mining {
 		for (int lane = -TUNNEL_HALF_WIDTH; lane <= TUNNEL_HALF_WIDTH; lane++) {
 			BlockPos column = base.relative(side, lane);
 			BlockPos floor = column.below();
-			if (!level.hasChunkAt(floor)) return new MineSectionPlan(false, false, List.of());
+			if (!de.villagerplus.world.LoadedColumns.ready(level, floor)) return new MineSectionPlan(false, false, List.of());
 			if (!level.getBlockState(floor).isFaceSturdy(level, floor, Direction.UP)) {
 				return new MineSectionPlan(true, false, List.of());
 			}
@@ -1544,7 +1544,7 @@ public final class Mining {
 			for (int sign : new int[]{-1, 1}) {
 				BlockPos post = base.relative(side, sign * SUPPORT_RADIUS);
 				BlockPos floor = post.below();
-				if (!level.hasChunkAt(floor)) return new MineSectionPlan(false, false, List.of());
+				if (!de.villagerplus.world.LoadedColumns.ready(level, floor)) return new MineSectionPlan(false, false, List.of());
 				if (!level.getBlockState(floor).isFaceSturdy(level, floor, Direction.UP)) {
 					return new MineSectionPlan(true, false, List.of());
 				}
@@ -1577,11 +1577,11 @@ public final class Mining {
 			int sign = Math.floorMod(mine.index / LIGHT_SPACING, 2) == 0 ? -1 : 1;
 			BlockPos spot = base.relative(side, sign * SUPPORT_RADIUS);
 			BlockPos wall = spot.relative(side, sign);
-			if (!level.hasChunkAt(spot.below())) return new MineSectionPlan(false, false, List.of());
+			if (!de.villagerplus.world.LoadedColumns.ready(level, spot.below())) return new MineSectionPlan(false, false, List.of());
 			if (!level.getBlockState(spot.below()).isFaceSturdy(level, spot.below(), Direction.UP)) {
 				return new MineSectionPlan(true, false, List.of());
 			}
-			if (!level.hasChunkAt(wall)) return new MineSectionPlan(false, false, List.of());
+			if (!de.villagerplus.world.LoadedColumns.ready(level, wall)) return new MineSectionPlan(false, false, List.of());
 			if (!mineWallTorchSupported(level, spot, side, sign)) return new MineSectionPlan(true, false, List.of());
 			if (!hazardAreaLoaded(level, spot)) return new MineSectionPlan(false, false, List.of());
 			if (hazard(level, spot) || level.getBlockState(spot.above()).getBlock() instanceof FallingBlock) {
@@ -1704,7 +1704,7 @@ public final class Mining {
 	private static boolean carveColumn(Ctx c, BlockPos bottom, int h, List<BlockPos> dug) {
 		ServerLevel level = c.level();
 		BlockPos floor = bottom.below();
-		if (!level.hasChunkAt(bottom) || !terraceFloorLoaded(level, floor)) {
+		if (!de.villagerplus.world.LoadedColumns.ready(level, bottom) || !terraceFloorLoaded(level, floor)) {
 			return false;
 		}
 		if (!level.getBlockState(floor).isFaceSturdy(level, floor, Direction.UP)) {
@@ -1763,7 +1763,7 @@ public final class Mining {
 		int mined = 0;
 		while (!queue.isEmpty() && mined < VEIN_LIMIT) {
 			BlockPos p = queue.poll();
-			if (!level.hasChunkAt(p)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, p)) continue;
 			if (!isOre(level.getBlockState(p)) || hazard(level, p)) {
 				continue;
 			}
@@ -1772,7 +1772,7 @@ public final class Mining {
 			}
 			for (Direction d : Direction.values()) {
 				BlockPos n = p.relative(d);
-				if (level.hasChunkAt(n) && seen.add(n.asLong())) {
+				if (de.villagerplus.world.LoadedColumns.ready(level, n) && seen.add(n.asLong())) {
 					queue.add(n);
 				}
 			}
@@ -1863,12 +1863,12 @@ public final class Mining {
 				BlockPos post = base.relative(side, sign * SUPPORT_RADIUS);
 				for (int k = 0; k < cells; k++) {
 					BlockPos target = post.above(k);
-					if (level.hasChunkAt(target) && !level.getBlockState(target).is(materials.fence())) fences++;
+					if (de.villagerplus.world.LoadedColumns.ready(level, target) && !level.getBlockState(target).is(materials.fence())) fences++;
 				}
 			}
 			for (int lane = -SUPPORT_RADIUS; lane <= SUPPORT_RADIUS; lane++) {
 				BlockPos beam = base.relative(side, lane).above(cells);
-				if (level.hasChunkAt(beam) && !level.getBlockState(beam).is(materials.planks())) framePlanks++;
+				if (de.villagerplus.world.LoadedColumns.ready(level, beam) && !level.getBlockState(beam).is(materials.planks())) framePlanks++;
 			}
 			return new MineSupplies(fences, framePlanks, walkwayPlanks, 0);
 		}
@@ -1876,7 +1876,7 @@ public final class Mining {
 			int sign = Math.floorMod(mine.index / LIGHT_SPACING, 2) == 0 ? -1 : 1;
 			BlockPos torch = base.relative(side, sign * SUPPORT_RADIUS);
 			return new MineSupplies(0, 0, walkwayPlanks,
-				level.hasChunkAt(torch) && !isMineTorch(level.getBlockState(torch)) ? 1 : 0);
+				de.villagerplus.world.LoadedColumns.ready(level, torch) && !isMineTorch(level.getBlockState(torch)) ? 1 : 0);
 		}
 		return new MineSupplies(0, 0, walkwayPlanks, 0);
 	}
@@ -2177,7 +2177,7 @@ public final class Mining {
 
 	/** Tick's entry guard: do not let safeCell mistake an unloaded support for a fatal hole. */
 	static boolean waitForUnloadedApproach(Ctx c, BlockPos cell) {
-		if (c.level().hasChunkAt(cell) && terraceFloorLoaded(c.level(), cell.below())) {
+		if (de.villagerplus.world.LoadedColumns.ready(c.level(), cell) && terraceFloorLoaded(c.level(), cell.below())) {
 			return false;
 		}
 		c.setActivity("wartet auf geladenen Minenabschnitt");
@@ -2197,14 +2197,14 @@ public final class Mining {
 
 	/** Never inspect or mutate a landing in an unloaded chunk; both blocks participate in the step check. */
 	private static boolean terraceFloorLoaded(ServerLevel level, BlockPos floor) {
-		return level.hasChunkAt(floor) && level.hasChunkAt(floor.below());
+		return de.villagerplus.world.LoadedColumns.ready(level, floor) && de.villagerplus.world.LoadedColumns.ready(level, floor.below());
 	}
 
 	/** Every state inspected by hazard() must already be in a loaded chunk. */
 	private static boolean hazardAreaLoaded(ServerLevel level, BlockPos pos) {
-		if (!level.hasChunkAt(pos)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return false;
 		for (Direction direction : Direction.values()) {
-			if (!level.hasChunkAt(pos.relative(direction))) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos.relative(direction))) return false;
 		}
 		return true;
 	}
@@ -2253,7 +2253,7 @@ public final class Mining {
 		}
 		for (int x = net.minecraft.util.Mth.floor(bounds.minX) >> 4; x <= net.minecraft.util.Mth.floor(bounds.maxX) >> 4; x++) {
 			for (int z = net.minecraft.util.Mth.floor(bounds.minZ) >> 4; z <= net.minecraft.util.Mth.floor(bounds.maxZ) >> 4; z++) {
-				if (!level.hasChunkAt(new BlockPos(x << 4, m.entrance.getY(), z << 4))) return false;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x << 4, m.entrance.getY(), z << 4))) return false;
 			}
 		}
 		return level.getEntitiesOfClass(LivingEntity.class, bounds, e -> e.isAlive()
@@ -2570,8 +2570,8 @@ public final class Mining {
 		Direction side = direction.getClockWise();
 		BlockPos sample = mine.entrance.relative(direction.getOpposite(), forwardDistance)
 			.relative(side, sign * lateralDistance);
-		if (!level.hasChunkAt(new BlockPos(sample.getX(), mine.entrance.getY(), sample.getZ()))) return null;
-		int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sample.getX(), sample.getZ());
+		if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(sample.getX(), mine.entrance.getY(), sample.getZ()))) return null;
+		int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sample.getX(), sample.getZ());
 		if (Math.abs(y - mine.entrance.getY()) > 2) return null;
 		return new BlockPos(sample.getX(), y, sample.getZ());
 	}
@@ -2583,8 +2583,8 @@ public final class Mining {
 
 	static boolean mineWaitingCellSafe(Ctx c, BlockPos stand) {
 		ServerLevel level = c.level();
-		if (!level.hasChunkAt(stand) || !level.hasChunkAt(stand.below())
-			|| !level.hasChunkAt(stand.above()) || !level.hasChunkAt(stand.above(2))) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, stand) || !de.villagerplus.world.LoadedColumns.ready(level, stand.below())
+			|| !de.villagerplus.world.LoadedColumns.ready(level, stand.above()) || !de.villagerplus.world.LoadedColumns.ready(level, stand.above(2))) return false;
 		BlockState feet = level.getBlockState(stand);
 		BlockState head = level.getBlockState(stand.above());
 		BlockState upper = level.getBlockState(stand.above(2));
@@ -2807,7 +2807,7 @@ public final class Mining {
 
 	static MineWalk walkMineStep(Ctx c, VillageData.Mine mine, BlockPos cell) {
 		ServerLevel level = c.level();
-		if (!level.hasChunkAt(cell) || !level.hasChunkAt(cell.below())) {
+		if (!de.villagerplus.world.LoadedColumns.ready(level, cell) || !de.villagerplus.world.LoadedColumns.ready(level, cell.below())) {
 			c.v().getNavigation().stop();
 			c.v().getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
 			c.st().clearTarget();
@@ -3211,8 +3211,8 @@ public final class Mining {
 
 	/** A route landing must be loaded, supported, dry, and clear of containers through the full worker volume. */
 	static boolean safeMineLanding(ServerLevel level, BlockPos cell) {
-		if (level == null || cell == null || !level.hasChunkAt(cell) || !level.hasChunkAt(cell.below())
-				|| !level.hasChunkAt(cell.above()) || !level.hasChunkAt(cell.above(2))) return false;
+		if (level == null || cell == null || !de.villagerplus.world.LoadedColumns.ready(level, cell) || !de.villagerplus.world.LoadedColumns.ready(level, cell.below())
+				|| !de.villagerplus.world.LoadedColumns.ready(level, cell.above()) || !de.villagerplus.world.LoadedColumns.ready(level, cell.above(2))) return false;
 		BlockPos floor = cell.below();
 		if (level.getBlockEntity(floor) != null
 				|| !level.getBlockState(floor).isFaceSturdy(level, floor, Direction.UP)) return false;
@@ -3236,7 +3236,7 @@ public final class Mining {
 
 	private static boolean solidFloor(Ctx c, BlockPos cell) {
 		BlockPos f = cell.below();
-		return c.level().hasChunkAt(f)
+		return de.villagerplus.world.LoadedColumns.ready(c.level(), f)
 			&& c.level().getBlockState(f).isFaceSturdy(c.level(), f, net.minecraft.core.Direction.UP);
 	}
 

@@ -29,7 +29,7 @@ public final class Ownership {
 
 	/** Owner metadata for a loaded block entity only; this never loads a chunk. */
 	public static UUID ownerAt(ServerLevel level, BlockPos pos) {
-		if (level == null || pos == null || !level.hasChunkAt(pos)) return null;
+		if (level == null || pos == null || !de.villagerplus.world.LoadedColumns.ready(level, pos)) return null;
 		BlockEntity be = level.getBlockEntity(pos);
 		return be == null ? null : be.getAttached(VillagerPlus.OWNER);
 	}

@@ -72,7 +72,7 @@ public final class School {
 		LocationKey key = new LocationKey(level.dimension(), school.asLong());
 		BoundingBox box = schoolBox(school);
 		BlockPos cached = LECTERNS.get(key);
-		if (cached != null && box.isInside(cached) && level.hasChunkAt(cached)
+		if (cached != null && box.isInside(cached) && de.villagerplus.world.LoadedColumns.ready(level, cached)
 			&& level.getBlockState(cached).getBlock() instanceof LecternBlock
 			&& de.villagerplus.build.Furnisher.isSchoolInterior(level, cached)) {
 			return cached;
@@ -133,11 +133,11 @@ public final class School {
 
 	private static boolean schoolFootprintLoaded(ServerLevel level, BlockPos school) {
 		BoundingBox box = schoolBox(school);
-		return level.hasChunkAt(school)
-			&& level.hasChunkAt(new BlockPos(box.minX(), school.getY(), box.minZ()))
-			&& level.hasChunkAt(new BlockPos(box.minX(), school.getY(), box.maxZ()))
-			&& level.hasChunkAt(new BlockPos(box.maxX(), school.getY(), box.minZ()))
-			&& level.hasChunkAt(new BlockPos(box.maxX(), school.getY(), box.maxZ()));
+		return de.villagerplus.world.LoadedColumns.ready(level, school)
+			&& de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(box.minX(), school.getY(), box.minZ()))
+			&& de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(box.minX(), school.getY(), box.maxZ()))
+			&& de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(box.maxX(), school.getY(), box.minZ()))
+			&& de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(box.maxX(), school.getY(), box.maxZ()));
 	}
 
 	private static Classroom classroom(ServerLevel level, VillageRef ref) {
@@ -162,7 +162,7 @@ public final class School {
 		boolean roofed = false;
 		for (int dy = 1; dy <= 5; dy++) {
 			BlockPos above = position.above(dy);
-			if (!level.hasChunkAt(above)) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, above)) return false;
 			var state = level.getBlockState(above);
 			if (!state.isAir() && !state.canBeReplaced()) {
 				roofed = true;
@@ -175,7 +175,7 @@ public final class School {
 			boolean wall = false;
 			for (int distance = 1; distance <= 4 && !wall; distance++) {
 				BlockPos candidate = position.relative(direction, distance);
-				wall = level.hasChunkAt(candidate)
+				wall = de.villagerplus.world.LoadedColumns.ready(level, candidate)
 					&& level.getBlockState(candidate).isFaceSturdy(level, candidate, direction.getOpposite());
 			}
 			if (wall) enclosedSides++;
@@ -185,7 +185,7 @@ public final class School {
 	}
 
 	private static boolean safeStand(ServerLevel level, BlockPos feet) {
-		return level.hasChunkAt(feet) && level.hasChunkAt(feet.above()) && level.hasChunkAt(feet.below())
+		return de.villagerplus.world.LoadedColumns.ready(level, feet) && de.villagerplus.world.LoadedColumns.ready(level, feet.above()) && de.villagerplus.world.LoadedColumns.ready(level, feet.below())
 			&& level.getBlockState(feet).getCollisionShape(level, feet).isEmpty()
 			&& level.getBlockState(feet.above()).getCollisionShape(level, feet.above()).isEmpty()
 			&& level.getBlockState(feet.below()).isFaceSturdy(level, feet.below(), Direction.UP);
