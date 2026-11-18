@@ -5,6 +5,10 @@ public final class Config {
 	private Config() {
 	}
 
+	/** Verbose mod logging (Planprüfung, Sturz, Bauplatz-Diagnose). Default off. */
+	public static final boolean DEBUG = Boolean.getBoolean("villagerplus.debug")
+		|| Boolean.getBoolean("villagerplus.debugLogs");
+
 	/** Alle wie viele Ticks ein Dorfbewohner seinen Job "denkt". */
 	public static final int JOB_INTERVAL = 10;
 	/** Alle wie viele Ticks Name/Haus/Schild eines Dorfbewohners geprueft werden. */

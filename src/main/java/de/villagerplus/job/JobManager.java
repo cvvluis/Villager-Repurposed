@@ -235,6 +235,9 @@ public final class JobManager {
 				}
 				WEATHER_PAUSES.remove(v.getUUID());
 				WEATHER_SEARCH_CURSORS.remove(v.getUUID());
+				FALL_LOG.remove(v.getUUID());
+				WALK_HOME.remove(v.getUUID());
+				DEEP_WATCH.remove(v.getUUID());
 				Routine.forgetGatherSearch(v);
 				JobUtil.clearLongRoute(v);
 				STATES.remove(v.getUUID());
@@ -247,11 +250,7 @@ public final class JobManager {
 		net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) ->
 			!(entity instanceof Villager villager && source.is(net.minecraft.tags.DamageTypeTags.IS_FALL) && villager.fallDistance <= SAFE_VILLAGER_FALL));
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
-			WEATHER_PAUSES.clear();
-			WEATHER_SEARCH_CURSORS.clear();
-			WEATHER_PATH_BUDGETS.clear();
-			Routine.clearGatherSearches();
-			JobUtil.clearLongRoutes();
+			clearWorldCaches();
 		});
 	}
 
@@ -1130,7 +1129,22 @@ public final class JobManager {
 	}
 
 	private static boolean hasJobTag(net.minecraft.core.Holder<VillagerProfession> profession, String job) {
-		return profession.is(net.minecraft.tags.TagKey.create(net.minecraft.core.registries.Registries.VILLAGER_PROFESSION,
-			net.minecraft.resources.Identifier.fromNamespaceAndPath(VillagerPlus.MOD_ID, "job/" + job)));
+		return JobTags.has(profession, job);
+	}
+
+	public static void clearWorldCaches() {
+		GROUPS.clear();
+		STATES.clear();
+		WEATHER_PAUSES.clear();
+		WEATHER_SEARCH_CURSORS.clear();
+		WEATHER_PATH_BUDGETS.clear();
+		clearDeepWatches();
+		Routine.clearGatherSearches();
+		JobUtil.clearLongRoutes();
+	}
+
+	public static void onWorldUnload(ServerLevel level) {
+		GROUPS.remove(level);
+		WEATHER_PATH_BUDGETS.remove(level);
 	}
 }

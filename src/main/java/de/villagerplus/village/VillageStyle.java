@@ -34,9 +34,8 @@ public record VillageStyle(Block wall, Block floor, Block roof, Block stairs, Bl
 		Map<Block, Integer> stairs = new HashMap<>();
 		Map<Block, Integer> doors = new HashMap<>();
 
-		List<BlockPos> beds = level.getPoiManager()
-			.getInRange(h -> h.is(PoiTypes.HOME), bell, 48, PoiManager.Occupancy.ANY)
-			.map(r -> r.getPos()).sorted(java.util.Comparator.comparingDouble(bed -> bed.distSqr(bell))).limit(12).collect(Collectors.toList());
+		List<BlockPos> beds = de.villagerplus.world.LoadedPoi.positionsInRange(level, h -> h.is(PoiTypes.HOME), bell, 48, PoiManager.Occupancy.ANY)
+			.stream().sorted(java.util.Comparator.comparingDouble(bed -> bed.distSqr(bell))).limit(12).toList();
 
 		for (BlockPos bed : beds) {
 			BlockPos under = bed.below();
