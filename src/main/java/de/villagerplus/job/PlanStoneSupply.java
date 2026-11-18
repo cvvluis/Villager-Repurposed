@@ -1,9 +1,12 @@
 package de.villagerplus.job;
 
 import de.villagerplus.build.Blueprints;
+import de.villagerplus.village.RecipeIndex;
 import de.villagerplus.village.Specials;
 import de.villagerplus.village.VillageData;
 import de.villagerplus.village.VillageRef;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.Level;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -31,6 +34,11 @@ public final class PlanStoneSupply {
 	private static final Map<Long, PickaxeCraftProbe> PICKAXE_CRAFT_PROBES = new HashMap<>();
 
 	private record PickaxeCraftProbe(long signature, long validUntil, boolean craftable) { }
+
+	private static final long SUPPORTS_CACHE_TTL = 200L;
+	private record SupportsCacheEntry(ResourceKey<Level> dimension, long timeBucket, boolean needsBricks,
+			boolean needsCracked, boolean supported) { }
+	private static volatile SupportsCacheEntry supportsCache;
 
 	/** True only when missing downstream inputs can usefully be supplied from the real mine. */
 	public static boolean needsCobble(ServerLevel level, VillageData data, Container stock) {
@@ -138,7 +146,7 @@ public final class PlanStoneSupply {
 
 	static boolean tryCraftPlanPickaxe(final ServerLevel level, final Container stock, final Container inventory,
 			final long villageBell, final long now) {
-		long signature = containerSignature(stock, inventory);
+		long signature = pickaxeIngredientSignature(stock, inventory);
 		PickaxeCraftProbe cached = PICKAXE_CRAFT_PROBES.get(villageBell);
 		if (cached != null && cached.signature() == signature && now < cached.validUntil() && !cached.craftable()) {
 			return false;
@@ -148,22 +156,14 @@ public final class PlanStoneSupply {
 		return crafted;
 	}
 
-	private static long containerSignature(final Container first, final Container second) {
+	/** Counts sticks, planks, and cobblestone in village stock plus the worker inventory — the pickaxe chain's real inputs. */
+	private static long pickaxeIngredientSignature(final Container stock, final Container inventory) {
+		Container available = new CompoundContainer(inventory, stock);
 		long signature = 17L;
-		signature = signature * 31L + signature(first);
-		return signature * 31L + signature(second);
-	}
-
-	private static long signature(final Container container) {
-		long value = container.getContainerSize();
-		for (int slot = 0; slot < container.getContainerSize(); slot++) {
-			ItemStack stack = container.getItem(slot);
-			if (stack.isEmpty()) continue;
-			value = value * 31L + slot;
-			value = value * 31L + net.minecraft.core.registries.BuiltInRegistries.ITEM.getId(stack.getItem());
-			value = value * 31L + stack.getCount();
-		}
-		return value;
+		signature = signature * 31L + JobUtil.count(available, stack -> stack.is(Items.STICK));
+		signature = signature * 31L + JobUtil.count(available, stack -> stack.is(ItemTags.PLANKS));
+		signature = signature * 31L + JobUtil.count(available, stack -> stack.is(Items.COBBLESTONE));
+		return signature;
 	}
 
 	/** A real loaded wooden/stone pickaxe recipe, paid from the worker's carried items and public village stock. */
@@ -175,8 +175,8 @@ public final class PlanStoneSupply {
 		for (Item target : noSticks ? new Item[] {Items.WOODEN_PICKAXE, Items.STONE_PICKAXE, Items.STICK}
 				: new Item[] {Items.WOODEN_PICKAXE, Items.STONE_PICKAXE}) {
 			boolean stickStep = target == Items.STICK;
-			for (var holder : level.recipeAccess().getRecipes()) {
-				if (!(holder.value() instanceof CraftingRecipe recipe)) continue;
+			for (var holder : RecipeIndex.crafting()) {
+				CraftingRecipe recipe = holder.value();
 				CraftingInput input = RecipeCrafting.inputFor(recipe, available, level);
 				if (input == null) continue;
 				ItemStack output = recipe.assemble(input);
@@ -289,8 +289,8 @@ public final class PlanStoneSupply {
 		if (!data.hasPlan() || stock == null || count(stock, Items.STONE_BRICKS) >= brickTarget(data, stock)
 		|| count(stock, Items.STONE) - wanted(data, Items.STONE)
 			- claimedOutput(level, data, Items.STONE) < 4) return false;
-		for (var holder : level.recipeAccess().getRecipes()) {
-			if (!(holder.value() instanceof CraftingRecipe recipe)) continue;
+		for (var holder : RecipeIndex.crafting()) {
+			CraftingRecipe recipe = holder.value();
 			var input = RecipeCrafting.inputFor(recipe, stock, level);
 			if (input == null || input.size() != 4) continue;
 			boolean onlyStone = true;
@@ -320,6 +320,18 @@ public final class PlanStoneSupply {
 
 	/** Checks that every step uses the server's currently loaded recipe registry. */
 	static boolean supports(ServerLevel level, boolean needsBricks, boolean needsCracked) {
+		long bucket = level.getGameTime() / SUPPORTS_CACHE_TTL;
+		SupportsCacheEntry cached = supportsCache;
+		if (cached != null && cached.dimension() == level.dimension() && cached.timeBucket() == bucket
+			&& cached.needsBricks() == needsBricks && cached.needsCracked() == needsCracked) {
+			return cached.supported();
+		}
+		boolean supported = computeSupports(level, needsBricks, needsCracked);
+		supportsCache = new SupportsCacheEntry(level.dimension(), bucket, needsBricks, needsCracked, supported);
+		return supported;
+	}
+
+	private static boolean computeSupports(ServerLevel level, boolean needsBricks, boolean needsCracked) {
 		var stoneRecipe = SmithSmelting.matchingRecipeForCheck(level, new ItemStack(Items.COBBLESTONE));
 		if (stoneRecipe == null) return false;
 		ItemStack stoneResult = stoneRecipe.assemble(new SingleRecipeInput(new ItemStack(Items.COBBLESTONE)));
@@ -328,8 +340,8 @@ public final class PlanStoneSupply {
 			SimpleContainer input = new SimpleContainer(4);
 			for (int i = 0; i < 4; i++) input.setItem(i, new ItemStack(Items.STONE));
 			boolean found = false;
-			for (var holder : level.recipeAccess().getRecipes()) {
-				if (!(holder.value() instanceof CraftingRecipe recipe)) continue;
+			for (var holder : RecipeIndex.crafting()) {
+				CraftingRecipe recipe = holder.value();
 				var grid = RecipeCrafting.inputFor(recipe, input, level);
 				if (grid == null || grid.size() != 4) continue;
 				ItemStack result = recipe.assemble(grid);

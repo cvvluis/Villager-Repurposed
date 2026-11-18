@@ -173,5 +173,6 @@ public class VillagerPlus implements ModInitializer {
 		de.villagerplus.village.RailTransport.register();
 		de.villagerplus.dev.AutoTest.register();
 		de.villagerplus.village.Board.register();
+		de.villagerplus.village.RecipeIndex.register();
 	}
 }

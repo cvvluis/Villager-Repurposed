@@ -1,5 +1,7 @@
 package de.villagerplus.job;
 
+import de.villagerplus.village.RecipeIndex;
+
 import de.villagerplus.village.VillageData;
 import de.villagerplus.village.VillageRef;
 import java.util.ArrayList;
@@ -93,7 +95,7 @@ public final class Workshop {
 		Container combined = de.villagerplus.village.Lager.combined(c.level(), ref);
 		if (combined == null) return false;
 
-		for (RecipeHolder<?> holder : c.level().recipeAccess().getRecipes()) {
+		for (RecipeHolder<?> holder : RecipeIndex.crafting()) {
 			if (!(holder.value() instanceof CraftingRecipe recipe)) continue;
 			CraftingInput input = RecipeCrafting.inputFor(recipe, combined, c.level());
 			if (input == null) continue;

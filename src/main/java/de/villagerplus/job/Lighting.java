@@ -9,6 +9,7 @@ import de.villagerplus.village.Market;
 import de.villagerplus.village.Roads;
 import de.villagerplus.village.Specials;
 import de.villagerplus.village.ZonePolicy;
+import de.villagerplus.village.RecipeIndex;
 import de.villagerplus.village.VillageRef;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -297,10 +298,10 @@ public final class Lighting {
 
 	/** Crafts one actual loaded torch recipe, accepting charcoal and sticks as the only source ingredients. */
 	static boolean craftTorchFromCharcoal(ServerLevel level, Container stock) {
-		return craftTorchFromCharcoal(level, stock, level.recipeAccess().getRecipes());
+		return craftTorchFromCharcoal(level, stock, RecipeIndex.crafting());
 	}
 
-	static boolean craftTorchFromCharcoal(ServerLevel level, Container stock, Iterable<RecipeHolder<?>> recipes) {
+	static boolean craftTorchFromCharcoal(ServerLevel level, Container stock, Iterable<? extends RecipeHolder<?>> recipes) {
 		if (stock == null || JobUtil.count(stock, stack -> stack.is(Items.CHARCOAL)) == 0
 			|| JobUtil.count(stock, stack -> stack.is(Items.STICK)) == 0) return false;
 		SimpleContainer ingredients = new SimpleContainer(stock.getContainerSize());

@@ -1,5 +1,7 @@
 package de.villagerplus.job;
 
+import de.villagerplus.village.RecipeIndex;
+
 import de.villagerplus.VillagerPlus;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
@@ -178,7 +180,7 @@ public final class Workstation {
 	}
 
 	private static boolean craftVanillaAnvil(Ctx c, Container chest, BlockPos table) {
-		for (var holder : c.level().recipeAccess().getRecipes()) {
+		for (var holder : RecipeIndex.crafting()) {
 			if (!(holder.value() instanceof CraftingRecipe recipe)
 				|| !holder.id().identifier().getNamespace().equals("minecraft")
 				|| !holder.id().identifier().getPath().equals("anvil")) continue;
@@ -204,7 +206,7 @@ public final class Workstation {
 	}
 
 	private static boolean craftVanillaIronBlock(Ctx c, Container chest, BlockPos table) {
-		for (var holder : c.level().recipeAccess().getRecipes()) {
+		for (var holder : RecipeIndex.crafting()) {
 			if (!(holder.value() instanceof CraftingRecipe recipe)
 				|| !holder.id().identifier().getNamespace().equals("minecraft")
 				|| !holder.id().identifier().getPath().equals("iron_block")) continue;
@@ -311,7 +313,7 @@ public final class Workstation {
 	}
 
 	private static boolean craftPlanFurnace(Ctx c, Container chest, BlockPos table) {
-		for (var holder : c.level().recipeAccess().getRecipes()) {
+		for (var holder : RecipeIndex.crafting()) {
 			if (!(holder.value() instanceof CraftingRecipe recipe)) continue;
 			ItemStack preview = RecipeCrafting.preview(recipe);
 			if (preview == null || !preview.is(Items.FURNACE) || preview.getCount() != 1) continue;

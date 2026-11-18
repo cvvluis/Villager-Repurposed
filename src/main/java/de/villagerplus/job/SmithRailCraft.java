@@ -6,6 +6,7 @@ import de.villagerplus.village.Lager;
 import de.villagerplus.village.Network;
 import de.villagerplus.village.Roads;
 import de.villagerplus.village.Specials;
+import de.villagerplus.village.RecipeIndex;
 import de.villagerplus.village.VillageRef;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -89,10 +90,8 @@ final class SmithRailCraft {
 				available = new CompoundContainer(available, source);
 			}
 		}
-		for (var holder : c.level().recipeAccess().getRecipes()) {
-			if (!(holder.value() instanceof net.minecraft.world.item.crafting.CraftingRecipe recipe)) {
-				continue;
-			}
+		for (var holder : RecipeIndex.crafting()) {
+			net.minecraft.world.item.crafting.CraftingRecipe recipe = holder.value();
 			if (target == Items.CHEST_MINECART
 				&& !holder.id().identifier().toString().equals("minecraft:chest_minecart")) {
 				continue;
