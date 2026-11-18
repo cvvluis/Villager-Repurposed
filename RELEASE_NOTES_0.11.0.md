@@ -10,6 +10,12 @@ Auf der Karte gibt es jetzt fünf Zonenarten: Feld, Wohnen, Arbeit, Weide und **
 
 Findet das Dorf keinen geeigneten Hausplatz, merkt es sich eine Kurzstatistik (Hang, Zone, blockierte Parzelle, …). Diese Zeile erscheint auf der Dorftafel und im Statusbefehl neben den übrigen Dorfdaten.
 
+## Dorfplatz und Dorftafel
+
+Neue Dörfer suchen den Platz am **Wohnschwerpunkt** (Glocke, Häuser, Betten), nicht am AABB-Rand. Der Platz ist kleiner, wird sofort mit Palettenpflaster, Brunnen, Bänken, Laternen und Blumen gestaltet; die **offizielle Dorftafel** steht am Platzeingang mit Blick zum Zentrum, daneben ein **Fahnenmast**. Die leere Starter-Kiste verschwindet nach dem Umzug auf den Platz; der Inhalt wandert in die neue Dorfkiste.
+
+**Wegweiser:** `/villagerplus tafel` und `status` zeigen klickbare Tafel-Koordinaten (OP: Teleport-Link). Beim Betreten des Dorfgebiets erscheint ein gedrosselter Actionbar-Hinweis (`-Dvillagerplus.boardWayfinding=false` zum Abschalten). **Tafel verlegen:** Schleichen + Rechtsklick an der Dorftafel (pinnt die Position). Bereits gebaute Plätze werden nur nachgerüstet (Tafel/Fahnenmast/Deko), nicht neu gegraben. **`/villagerplus platz neu`** (Gamemaster/OP) legt einen zusätzlichen Platz am neuen Kern an.
+
 ## Dorfglocke und Datenhaltung
 
 Eine Dorfglocke mit Dorfdaten bricht beim normalen Abbau nur nach Bestätigung. Mit Schleichen wird sie mit **allen** persistenten Dorf-Attachments (Netz, Markt, Journal, Baupläne, Straßen, Quoten, Zonen, …) als Item aufgehoben und in derselben Dimension wieder platziert — mit Abstand zu anderen Dörfern. Weltkoordinaten in diesen Daten werden zum neuen Glockenort verschoben; Nachbar-Glocken im Handelsnetz, Dorftafel-Blöcke und der Journal-Verlauf bleiben unverändert (Hinweis im Chat). Kreative Duplikate der Umzugs-Glocke enthalten keine zweite Datensatz-Kopie. Explosionen zerstören verwaltete Glocken nicht. Beim Serverende werden interne Caches zuverlässig geleert.

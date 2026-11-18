@@ -180,5 +180,6 @@ public class VillagerPlus implements ModInitializer {
 		de.villagerplus.village.RecipeIndex.register();
 		de.villagerplus.village.WorldCaches.register();
 		de.villagerplus.village.BellProtection.register();
+		de.villagerplus.village.BoardWayfinding.register();
 	}
 }

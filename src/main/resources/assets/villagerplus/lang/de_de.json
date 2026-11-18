@@ -14,5 +14,15 @@
  "message.villagerplus.bell_relocate_shifted": "Baupläne, Gebäude, Zonen, Wege und Marktpositionen wurden zum neuen Glockenort verschoben.",
  "message.villagerplus.bell_relocate_external": "Handelsnetz-Nachbarpositionen, Dorftafel-Blöcke und der Journal-Verlauf bleiben unverändert; Bewohner-Tags wurden angepasst.",
  "board.villagerplus.site_search.none": "Keine aktuelle Bauplatzsuche.",
- "board.villagerplus.site_search.summary": "Letzte Suche (%s): %s%% Hang, %s%% außerhalb Zone, %s%% blockiert, %s%% übrige Gründe (vor %s s)."
+ "board.villagerplus.site_search.summary": "Letzte Suche (%s): %s%% Hang, %s%% außerhalb Zone, %s%% blockiert, %s%% übrige Gründe (vor %s s).",
+ "message.villagerplus.board_coords_line": "Dorftafel: %s",
+ "message.villagerplus.board_coords_copy": "Koordinaten in den Chat übernehmen",
+ "message.villagerplus.board_coords_tp": "[TP]",
+ "message.villagerplus.board_wayfind_hint": "Dorftafel: ~%s m %s",
+ "message.villagerplus.plaza_built": "Die Dorfbewohner haben einen Dorfplatz errichtet — Dorftafel bei %s.",
+ "message.villagerplus.board_relocated": "Offizielle Dorftafel hierher verlegt.",
+ "message.villagerplus.board_relocate_no_plaza": "Kein Dorf in der Nähe — Tafel konnte nicht verlegt werden.",
+ "message.villagerplus.platz_neu_none": "In der Nähe wurde keine Dorfglocke gefunden.",
+ "message.villagerplus.platz_neu_failed": "Kein freier Platz im Dorfkern gefunden.",
+ "message.villagerplus.platz_neu_ok": "Neuer Dorfplatz angelegt bei %s (alter Platz bleibt bestehen)."
 }

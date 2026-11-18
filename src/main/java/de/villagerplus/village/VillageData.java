@@ -179,6 +179,10 @@ public class VillageData {
 			HouseSiteSearch.CODEC.optionalFieldOf("house_site_search"),
 			extra -> com.mojang.datafixers.util.Pair.of(extra.houseSiteSearch, HouseSiteSearch.CODEC.optionalFieldOf("house_site_search")),
 			(extra, search) -> { extra.houseSiteSearch = search; return extra; }
+		).dependent(
+			Codec.BOOL.optionalFieldOf("board_pinned", false),
+			extra -> com.mojang.datafixers.util.Pair.of(extra.boardPinned, Codec.BOOL.optionalFieldOf("board_pinned", false)),
+			(extra, pinned) -> { extra.boardPinned = pinned; return extra; }
 		).codec();
 
 		/** Small persisted cursor for resuming the step-wise house site search after reload. Absent in older saves. */
@@ -280,6 +284,8 @@ public class VillageData {
 		public Optional<CivicSiteSearch> civicSiteSearch = Optional.empty();
 		/** Resumable step-wise house site search (cursor only); absent when none is running or in older saves. */
 		public Optional<HouseSiteSearch> houseSiteSearch = Optional.empty();
+		/** Manuelle Dorftafel-Position: automatische Suche und Plaza-Umzug respektieren sie. */
+		public boolean boardPinned = false;
 
 		public Extra() {
 			this(Optional.empty(), 0L, 0L, 0L, List.of(), 0, 0L, Optional.empty(), Optional.empty(), List.of(), Optional.empty(), List.of(), List.of(), 0L,

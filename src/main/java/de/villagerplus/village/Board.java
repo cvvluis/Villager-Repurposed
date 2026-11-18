@@ -2,6 +2,10 @@ package de.villagerplus.village;
 
 import de.villagerplus.block.DorftafelBlock;
 import de.villagerplus.block.ModBlocks;
+import de.villagerplus.build.Palette;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.level.block.state.BlockState;
 import java.util.List;
 import java.util.Optional;
@@ -37,7 +41,48 @@ public final class Board {
 	}
 
 	public static void register() {
-		// Die Dorftafel ist ein eigener Block (siehe DorftafelBlock); hier gibt es nichts mehr zu registrieren.
+		UseBlockCallback.EVENT.register(Board::onUseBoard);
+	}
+
+	private static InteractionResult onUseBoard(Player player, Level world, InteractionHand hand,
+		BlockHitResult hit) {
+		if (world.isClientSide() || !(world instanceof ServerLevel level) || !player.isShiftKeyDown()) {
+			return InteractionResult.PASS;
+		}
+		if (!(level.getBlockState(hit.getBlockPos()).getBlock() instanceof DorftafelBlock)) {
+			return InteractionResult.PASS;
+		}
+		VillageRef ref = Villages.villageNear(level, hit.getBlockPos(), 96);
+		if (ref == null) return InteractionResult.PASS;
+		return relocateOfficial(level, ref, player, hit.getBlockPos()) ? InteractionResult.SUCCESS : InteractionResult.FAIL;
+	}
+
+	/** Verlegt die offizielle Tafel an die Spielerposition (Schleich-Rechtsklick). */
+	public static boolean relocateOfficial(ServerLevel level, VillageRef ref, Player player, BlockPos from) {
+		BlockPos target = player.blockPosition();
+		if (!Plaza.inside(level, ref, from, 64) && Market.of(ref).plaza().isEmpty()) {
+			VillageMessages.overlay((net.minecraft.server.level.ServerPlayer) player,
+				Component.translatable("message.villagerplus.board_relocate_no_plaza"));
+			return false;
+		}
+		var state = level.getBlockState(from);
+		if (state.getBlock() instanceof DorftafelBlock) {
+			for (BlockPos part : DorftafelBlock.parts(state, from)) {
+				for (BlockPos cell : new BlockPos[] {part, part.above()}) {
+					if (level.getBlockState(cell).getBlock() instanceof DorftafelBlock) {
+						level.setBlock(cell, Blocks.AIR.defaultBlockState(), 3);
+					}
+				}
+			}
+		}
+		Direction facing = Sites.facingTowards(target, Market.of(ref).plaza().orElse(ref.bell()));
+		DorftafelBlock.placeAll(level, target, ModBlocks.DORFTAFEL_GROSS.defaultBlockState().setValue(DorftafelBlock.FACING, facing));
+		ref.data().extra.board = Optional.of(target.immutable());
+		ref.data().extra.boardPinned = true;
+		ref.dirty();
+		VillageMessages.overlay((net.minecraft.server.level.ServerPlayer) player,
+			Component.translatable("message.villagerplus.board_relocated"));
+		return true;
 	}
 
 	/** Schreibt den gewaehlten Reiter der Dorftafel. */
@@ -75,6 +120,16 @@ public final class Board {
 
 	/** Stellt sicher, dass neben der Dorfkiste eine Dorftafel (3 Bloecke breit, 2 hoch) steht; alte Tafeln werden ersetzt. */
 	public static void ensure(ServerLevel level, VillageRef ref) {
+		if (ref.data().extra.boardPinned && ref.data().extra.board.isPresent()) {
+			BlockPos pinned = ref.data().extra.board.get();
+			if (level.getBlockState(pinned).getBlock() instanceof DorftafelBlock) return;
+		}
+		Optional<BlockPos> plaza = Market.of(ref).plaza();
+		if (plaza.isPresent()) {
+			Palette palette = Palette.detect(level, ref.bell(), null, plaza.get().asLong(), plaza.get());
+			Plaza.placeBoardAndFlagpole(level, ref, plaza.get(), palette, false);
+			return;
+		}
 		BlockPos chest = ref.chestPos(level);
 		if (chest == null) {
 			return;

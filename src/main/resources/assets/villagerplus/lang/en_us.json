@@ -14,5 +14,15 @@
  "message.villagerplus.bell_relocate_shifted": "Build plans, buildings, zones, roads and market positions were shifted to the new bell.",
  "message.villagerplus.bell_relocate_external": "Trade-network neighbor positions, village board blocks and the journal were kept; resident tags were updated.",
  "board.villagerplus.site_search.none": "No recent house-site search.",
- "board.villagerplus.site_search.summary": "Last search (%s): %s%% slope, %s%% outside zones, %s%% blocked, %s%% other reasons (%s s ago)."
+ "board.villagerplus.site_search.summary": "Last search (%s): %s%% slope, %s%% outside zones, %s%% blocked, %s%% other reasons (%s s ago).",
+ "message.villagerplus.board_coords_line": "Village board: %s",
+ "message.villagerplus.board_coords_copy": "Insert coordinates into chat",
+ "message.villagerplus.board_coords_tp": "[TP]",
+ "message.villagerplus.board_wayfind_hint": "Village board: ~%s m %s",
+ "message.villagerplus.plaza_built": "The villagers built a village square — board at %s.",
+ "message.villagerplus.board_relocated": "Official village board moved here.",
+ "message.villagerplus.board_relocate_no_plaza": "No village nearby — board could not be moved.",
+ "message.villagerplus.platz_neu_none": "No village bell found nearby.",
+ "message.villagerplus.platz_neu_failed": "No free site in the village core.",
+ "message.villagerplus.platz_neu_ok": "New village square at %s (old square kept)."
 }
