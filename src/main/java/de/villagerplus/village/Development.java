@@ -267,10 +267,10 @@ public final class Development {
 				}
 			}
 		}
-		var meetings = level.getPoiManager().getInRange(h -> h.is(PoiTypes.MEETING), bell,
-			MEETING_POI_DISCOVERY_RADIUS, PoiManager.Occupancy.ANY).map(p -> p.getPos().immutable()).toList();
-		var homes = level.getPoiManager().getInRange(h -> h.is(PoiTypes.HOME), bell,
-			HOME_POI_DISCOVERY_RADIUS, PoiManager.Occupancy.ANY).map(p -> p.getPos().immutable()).toList();
+		var meetings = de.villagerplus.world.LoadedPoi.positionsInRange(level, h -> h.is(PoiTypes.MEETING), bell,
+			MEETING_POI_DISCOVERY_RADIUS, PoiManager.Occupancy.ANY);
+		var homes = de.villagerplus.world.LoadedPoi.positionsInRange(level, h -> h.is(PoiTypes.HOME), bell,
+			HOME_POI_DISCOVERY_RADIUS, PoiManager.Occupancy.ANY);
 		for (BlockPos pos : homes) {
 			if (!belongsToBell(pos, bell, meetings)) continue;
 			observed = union(observed, new BoundingBox(pos.getX(), pos.getY(), pos.getZ(), pos.getX(), pos.getY(), pos.getZ()));
