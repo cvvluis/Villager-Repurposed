@@ -2,6 +2,12 @@
 
 **Aktuelle Übergabe, 30.10.2026.** GitHub-Repository: https://github.com/LvisXVI/Villager-Repurposed (privat, Branch `main`). Aktueller Code und die folgenden Nachweise gehen älteren Abschnitten vor.
 
+## Lauf 18.11.2026 (3) – Auswertung des Nutzer-Logs mit 0.10.6 (0.10.7)
+
+- Nutzer schickte `latest.log` (0.10.6, CurseForge-Instanz, 366 Mods) und `villagerplus-stall-client.txt`; `villagerplus-stall-server.txt` existiert nicht (Server stand nie über 8 s still). Befund: (1) der Client-Bericht um 17:42:12 stammt vom Erzeugen der Welt (Render-Thread in `Minecraft.doWorldLoad`, Server-Thread beim Spawn-Suchen, ein Worker beim DataFixer der Strukturvorlagen), kein villagerplus-Frame: Fehlalarm, behoben in 0.10.7 (Wächter nur scharf, wenn `level != null && player != null`). (2) Die vom Nutzer gezeigte Stacktrace ist eine Iris-Meldung "Missing program minecraft:pipeline/debug_quads ... likely an Iris bug" (java.lang.Throwable, kein Absturz). (3) "Can't keep up": 8335 ms beim Weltstart (Chunk-Erzeugung nach 14 s Ladezeit), 2936 ms direkt nach `/locate ctov:large/village_plains` (2632 ms, vom Nutzer ausgelöst), danach Server 5-7 TPS nach dem Teleport in unerzeugtes Gelände (2,3 km entfernt). Die Mod-Zeilen (Bürgermeister, Schilder) laufen innerhalb einer Sekunde. Das Log endet mit normalem "Stopping!" (17:43:32).
+- Nicht belegt: ob die Mod am Lag beteiligt ist (keine `/villagerplus perf`-Ausgabe), und was das "Einfrieren" war (im Log kein Hänger über 8 s nach dem Welteintritt).
+- Nächster Schritt: `/villagerplus perf` im Spiel messen lassen; Hänger-Bericht mit 0.10.7 wiederholen.
+
 ## Lauf 18.11.2026 (2) – Einfrieren im Modpack, Hänger-Bericht (0.10.6)
 
 - Nutzer: Spiel stürzt nicht richtig ab, friert aber ein (nicht mehr bedienbar, nicht normal schließbar) nach starkem Lag; Log zeigte "large tps diff! client:15 server:3" und eine Stacktrace durch GameRenderer/Iris/Jacaranda (kein villagerplus-Frame im sichtbaren Teil), Anfang der Meldung fehlt. Ursache NICHT gefunden.

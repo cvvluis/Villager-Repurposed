@@ -20,12 +20,19 @@ public final class StallWatchdog {
 	private static final int MAX_REPORTS = 3;
 
 	private final String label;
+	/** The loop only counts as stalled while this is true (the client loop does not tick while a world is being created or loaded). */
+	private final java.util.function.BooleanSupplier armed;
 	private final Path logDirectory;
 	private final AtomicLong lastTick = new AtomicLong(System.nanoTime());
 	private volatile boolean running;
 	private int reports;
 
 	public StallWatchdog(String label, Path gameDirectory) {
+		this(label, gameDirectory, () -> true);
+	}
+
+	public StallWatchdog(String label, Path gameDirectory, java.util.function.BooleanSupplier armed) {
+		this.armed = armed;
 		this.label = label;
 		this.logDirectory = gameDirectory.resolve("logs");
 	}
@@ -55,6 +62,17 @@ public final class StallWatchdog {
 				Thread.sleep(2_000L);
 			} catch (InterruptedException interrupted) {
 				return;
+			}
+			boolean isArmed;
+			try {
+				isArmed = armed.getAsBoolean();
+			} catch (Throwable error) {
+				isArmed = false;
+			}
+			if (!isArmed) {
+				lastTick.set(System.nanoTime());
+				reported = false;
+				continue;
 			}
 			long stalledMillis = (System.nanoTime() - lastTick.get()) / 1_000_000L;
 			if (stalledMillis < STALL_MILLIS) {

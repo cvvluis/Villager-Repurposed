@@ -4,6 +4,10 @@ Dorfbewohner haben Namen, feste Häuser mit Schild, einen festen Tagesplan und e
 mit Doppelkiste und wächst selbstständig. Server- und Client-Mod (der Info-Knopf braucht die Mod auch beim Spieler; Einzelspieler funktioniert), benötigt Fabric Loader 0.20.1+,
 Fabric API und Java 25.
 
+## Neu in 0.10.7: kein Fehlalarm beim Weltstart (Playtest 10)
+
+Der Hänger-Bericht des Clients zählt nur noch, solange eine Welt läuft. Beim Erzeugen oder Laden einer Welt steht die Client-Schleife von selbst still, das war in 0.10.6 ein Fehlalarm.
+
 ## Neu in 0.10.6: Hänger-Bericht (Playtest 9)
 
 Nur Diagnose, keine Fehlerbehebung: Friert das Spiel oder der Server für mehr als 8 Sekunden ein, schreibt die Mod die Thread-Stapel nach `logs/villagerplus-stall-server.txt` bzw. `-client.txt` (höchstens drei Berichte je Start). Damit lässt sich sehen, welcher Code (diese Mod oder eine andere) den Hänger hält. Ein pausierter Einzelspieler-Server zählt nicht als Hänger. Die Ursache des Einfrierens im Modpack ist weiterhin nicht gefunden.
