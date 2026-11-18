@@ -4,6 +4,7 @@ import de.villagerplus.build.Blueprints;
 import de.villagerplus.village.Lager;
 import de.villagerplus.village.Specials;
 import de.villagerplus.village.StockPolicy;
+import de.villagerplus.village.RecipeIndex;
 import de.villagerplus.village.Villages;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -76,17 +77,16 @@ final class EquipmentProduction {
         }
         Container safeAvailable=safeIngredientView(available);
         List<CraftingPlan> plans=new ArrayList<>();
-        for(var holder:c.level().recipeAccess().getRecipes()) {
-            if(holder.value() instanceof CraftingRecipe recipe) {
-                CraftingInput input=RecipeCrafting.inputFor(recipe,safeAvailable,c.level());
-                if(input==null||equipmentIngredient(input))continue;
-                ItemStack output=recipe.assemble(input);
-                if(!replacementOutput(output,familyDeficits,armorDeficits,sidearmDeficits,utilityDeficits)
-                    ||!reserveNeeded(depots,residents,reserve,output)
-                    ||!canDeliver(c,depots,residents,output))continue;
-                plans.add(new CraftingPlan(recipe,input,output,
-                    replacementDeficit(output,familyDeficits,armorDeficits,sidearmDeficits,utilityDeficits),preference(output)));
-            }
+        for(var holder:RecipeIndex.crafting()) {
+            CraftingRecipe recipe = holder.value();
+            CraftingInput input=RecipeCrafting.inputFor(recipe,safeAvailable,c.level());
+            if(input==null||equipmentIngredient(input))continue;
+            ItemStack output=recipe.assemble(input);
+            if(!replacementOutput(output,familyDeficits,armorDeficits,sidearmDeficits,utilityDeficits)
+                ||!reserveNeeded(depots,residents,reserve,output)
+                ||!canDeliver(c,depots,residents,output))continue;
+            plans.add(new CraftingPlan(recipe,input,output,
+                replacementDeficit(output,familyDeficits,armorDeficits,sidearmDeficits,utilityDeficits),preference(output)));
         }
         // Fill the greatest usable-stock gap first, with stable tie breaks across loaded recipes.
         plans.sort(Comparator.comparingInt(CraftingPlan::deficit).reversed()

@@ -116,6 +116,10 @@ public class VillagerPlus implements ModInitializer {
  public static final AttachmentType<java.util.List<de.villagerplus.village.ZonePolicy.Zone>> ZONES = AttachmentRegistry.createPersistent(
   Identifier.fromNamespaceAndPath(MOD_ID,"zones"),de.villagerplus.village.ZonePolicy.Zone.CODEC.listOf());
 
+ /** Last house-site search histogram for the Dorftafel details tab. */
+ public static final AttachmentType<de.villagerplus.village.SiteSearchDiagnostics> SITE_SEARCH = AttachmentRegistry.createPersistent(
+  Identifier.fromNamespaceAndPath(MOD_ID, "site_search"), de.villagerplus.village.SiteSearchDiagnostics.CODEC);
+
  /** Laufende Abrissauftraege des Dorfes (siehe Demolition). */
  public static final AttachmentType<java.util.List<de.villagerplus.village.Demolition.Job>> DEMOLITION = AttachmentRegistry.createPersistent(
   Identifier.fromNamespaceAndPath(MOD_ID,"demolition"),de.villagerplus.village.Demolition.Job.CODEC.listOf());
@@ -173,5 +177,9 @@ public class VillagerPlus implements ModInitializer {
 		de.villagerplus.village.RailTransport.register();
 		de.villagerplus.dev.AutoTest.register();
 		de.villagerplus.village.Board.register();
+		de.villagerplus.village.RecipeIndex.register();
+		de.villagerplus.village.WorldCaches.register();
+		de.villagerplus.village.BellProtection.register();
+		de.villagerplus.village.BoardWayfinding.register();
 	}
 }

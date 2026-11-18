@@ -9,6 +9,7 @@ import de.villagerplus.village.Market;
 import de.villagerplus.village.Roads;
 import de.villagerplus.village.Specials;
 import de.villagerplus.village.ZonePolicy;
+import de.villagerplus.village.RecipeIndex;
 import de.villagerplus.village.VillageRef;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -297,10 +298,10 @@ public final class Lighting {
 
 	/** Crafts one actual loaded torch recipe, accepting charcoal and sticks as the only source ingredients. */
 	static boolean craftTorchFromCharcoal(ServerLevel level, Container stock) {
-		return craftTorchFromCharcoal(level, stock, level.recipeAccess().getRecipes());
+		return craftTorchFromCharcoal(level, stock, RecipeIndex.crafting());
 	}
 
-	static boolean craftTorchFromCharcoal(ServerLevel level, Container stock, Iterable<RecipeHolder<?>> recipes) {
+	static boolean craftTorchFromCharcoal(ServerLevel level, Container stock, Iterable<? extends RecipeHolder<?>> recipes) {
 		if (stock == null || JobUtil.count(stock, stack -> stack.is(Items.CHARCOAL)) == 0
 			|| JobUtil.count(stock, stack -> stack.is(Items.STICK)) == 0) return false;
 		SimpleContainer ingredients = new SimpleContainer(stock.getContainerSize());
@@ -861,10 +862,7 @@ public final class Lighting {
 	/** True when a physical build footprint must not be placed in this village cell. */
 	public static boolean protectedVillageCell(ServerLevel level, VillageRef ref, BlockPos ground) {
 		if (ref == null || ground == null) return false;
-		for (ZonePolicy.Zone zone : ref.bellEntity().getAttachedOrElse(VillagerPlus.ZONES, List.of())) {
-			if (ground.getX() >= zone.minX() && ground.getX() <= zone.maxX()
-				&& ground.getZ() >= zone.minZ() && ground.getZ() <= zone.maxZ()) return true;
-		}
+		if (ZonePolicy.blocksWork(ref, ground)) return true;
 		if (ground.distSqr(ref.bell()) <= 9) return true;
 		for (Built built : ref.bellEntity().getAttachedOrElse(VillagerPlus.BUILDINGS, List.of())) {
 			int half = Blueprints.half(built.type()) + 1;

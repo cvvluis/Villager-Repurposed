@@ -192,7 +192,7 @@ public final class RoadTerrainChecks {
             bellEntity.setAttached(VillagerPlus.VILLAGE, village);
             bellEntity.setAttached(VillagerPlus.MARKET, new MarketData(Optional.of(plaza), java.util.List.of(), 0, 0));
             bellEntity.setAttached(VillagerPlus.ROADS, Map.of("center", 21L, "repair:center", 0L));
-            bellEntity.setAttached(VillagerPlus.ZONES, java.util.List.of(new ZonePolicy.Zone("protected-road-check", "work",
+            bellEntity.setAttached(VillagerPlus.ZONES, java.util.List.of(new ZonePolicy.Zone("protected-road-check", "protected",
                 protectedGap.getX(), protectedGap.getZ(), protectedGap.getX(), protectedGap.getZ())));
             setPathFixtureBlock(level, chest.below(), Blocks.STONE.defaultBlockState());
             setPathFixtureBlock(level, chest, Blocks.CHEST.defaultBlockState());

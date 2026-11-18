@@ -5,6 +5,14 @@ public final class Config {
 	private Config() {
 	}
 
+	/** Verbose mod logging (Planprüfung, Sturz, Bauplatz-Diagnose). Default off. */
+	public static final boolean DEBUG = Boolean.getBoolean("villagerplus.debug")
+		|| Boolean.getBoolean("villagerplus.debugLogs");
+
+	/** Actionbar-Hinweis zur Dorftafel beim Betreten des Dorfgebiets (Deaktivierung: `-Dvillagerplus.boardWayfinding=false`). */
+	public static final boolean BOARD_WAYFINDING = !Boolean.getBoolean("villagerplus.boardWayfinding")
+		&& !"false".equalsIgnoreCase(System.getenv().getOrDefault("VP_BOARD_WAYFINDING", "true"));
+
 	/** Alle wie viele Ticks ein Dorfbewohner seinen Job "denkt". */
 	public static final int JOB_INTERVAL = 10;
 	/** Alle wie viele Ticks Name/Haus/Schild eines Dorfbewohners geprueft werden. */

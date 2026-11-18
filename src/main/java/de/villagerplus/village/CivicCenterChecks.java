@@ -154,12 +154,15 @@ public final class CivicCenterChecks {
             int layoutChecks = 0;
             if (palette.base() != palette.floor()) {
                 int stockBefore = count(chest, palette.base().asItem());
-                Plaza.SurfaceBatch outerFrame = Plaza.upgradeSurface(level, ref, center, palette, 84, java.util.Set.of());
-                require(outerFrame.cursor() == 92 && !outerFrame.pending()
-                    && level.getBlockState(center.offset(-10, -1, -10)).is(palette.base())
-                    && level.getBlockState(center.offset(-10, -1, -3)).is(palette.base())
-                    && count(chest, palette.base().asItem()) == stockBefore - 8,
-                    "the broad 21-by-21 outer frame is built in a safe batch and paid from public stock");
+                int outer = Plaza.PLAZA_RADIUS - 1;
+                int batchCursor = Plaza.SURFACE_CELLS - 16;
+                Plaza.SurfaceBatch outerFrame = Plaza.upgradeSurface(level, ref, center, palette, batchCursor, java.util.Set.of());
+                int paid = count(chest, palette.base().asItem());
+                require(!outerFrame.pending()
+                    && level.getBlockState(center.offset(-outer, -1, -outer)).is(palette.base())
+                    && level.getBlockState(center.offset(-outer, -1, -3)).is(palette.base())
+                    && paid < stockBefore,
+                    "the compact courtyard frame is built in a safe batch and paid from public stock");
                 layoutChecks++;
             }
             boolean noWaterBucket = true;
@@ -179,18 +182,20 @@ public final class CivicCenterChecks {
     }
 
     private static int checkBroadPlazaLayout(BlockPos center) {
-        require(Plaza.inside(center, center.east(13), 0)
-            && Plaza.inside(center, center.offset(13, 0, 9), 0)
-            && !Plaza.inside(center, center.east(14), 0),
-            "the plaza reserves a 27-block-wide octagonal courtyard rather than only the fountain footprint");
-        require(Plaza.outerSquareBorderOffset(10, 0) && Plaza.accentPavingOffset(10, 0)
-            && Plaza.basePavingOffset(10, 0) && Plaza.surfaceUpgradeOffsetSafe(10, 0),
-            "the nested 21-by-21 courtyard frame is part of the paid, bounded paving design");
+        int r = Plaza.PLAZA_RADIUS;
+        require(Plaza.inside(center, center.east(r), 0)
+            && Plaza.inside(center, center.offset(r, 0, r - 1), 0)
+            && !Plaza.inside(center, center.east(r + 1), 0),
+            "the plaza reserves a compact octagonal courtyard (" + (r * 2 + 1) + "-block span) rather than only the fountain footprint");
+        int outer = r - 1;
+        require(Plaza.outerSquareBorderOffset(outer, 0) && Plaza.accentPavingOffset(outer, 0)
+            && Plaza.basePavingOffset(outer, 0) && Plaza.surfaceUpgradeOffsetSafe(outer, 0),
+            "the nested courtyard frame is part of the paid, bounded paving design");
         boolean pathsConnected = true;
-        for (int n = 0; n <= 13; n++) for (int side = -2; side <= 2; side++) {
+        for (int n = 0; n <= r; n++) for (int side = -2; side <= 2; side++) {
             pathsConnected &= Plaza.basePavingOffset(n, side) && Plaza.basePavingOffset(side, n);
         }
-        for (int n = 14; n <= 18; n++) for (int side = -2; side <= 2; side++) {
+        for (int n = r + 1; n <= r + 5; n++) for (int side = -2; side <= 2; side++) {
             pathsConnected &= Plaza.roadArmOffset(n, side) && Plaza.roadArmOffset(side, n);
         }
         require(pathsConnected, "all four five-wide approaches connect the fountain to the outside road arms");

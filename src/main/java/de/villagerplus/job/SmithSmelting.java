@@ -6,6 +6,7 @@ import de.villagerplus.village.Balance;
 import de.villagerplus.village.Lager;
 import de.villagerplus.village.Specials;
 import de.villagerplus.village.VillageRef;
+import de.villagerplus.village.RecipeIndex;
 import de.villagerplus.village.StockPolicy;
 import java.util.List;
 import java.util.function.Predicate;
@@ -267,7 +268,7 @@ final class SmithSmelting {
 		if (stores.isEmpty()) return null;
 		RecipeType<? extends AbstractCookingRecipe> type = recipeType(level.getBlockState(furnace.getBlockPos()));
 		if (type == null) return null;
-		for (RecipeHolder<?> holder : level.recipeAccess().getRecipes()) {
+		for (RecipeHolder<?> holder : RecipeIndex.all()) {
 			if (!(holder.value() instanceof AbstractCookingRecipe recipe) || recipe.getType() != type) continue;
 			for (Container store : stores) for (int slot = 0; slot < store.getContainerSize(); slot++) {
 				ItemStack stack = store.getItem(slot);
@@ -299,7 +300,7 @@ final class SmithSmelting {
 
 	static AbstractCookingRecipe matchingRecipe(ServerLevel level, ItemStack input, RecipeType<? extends AbstractCookingRecipe> type) {
 		SingleRecipeInput single = new SingleRecipeInput(input);
-		for (RecipeHolder<?> holder : level.recipeAccess().getRecipes()) {
+		for (RecipeHolder<?> holder : RecipeIndex.all()) {
 			if (holder.value() instanceof AbstractCookingRecipe recipe && recipe.getType() == type && recipe.matches(single, level)) return recipe;
 		}
 		return null;

@@ -1,5 +1,6 @@
 package de.villagerplus.job;
 
+import de.villagerplus.village.RecipeIndex;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.HashMap;
@@ -43,7 +44,7 @@ public final class RecipeCrafting {
 	}
 
 	public static boolean craft(Ctx c, Container chest, BlockPos workPos, Predicate<ItemStack> outputFilter, int outputCap) {
-		for (RecipeHolder<?> holder : c.level().recipeAccess().getRecipes()) {
+		for (RecipeHolder<?> holder : RecipeIndex.all()) {
 			if (holder.value() instanceof CraftingRecipe recipe) {
 				ItemStack preview = preview(recipe);
 				if (preview != null && (preview.isEmpty() || !outputFilter.test(preview)
@@ -74,7 +75,7 @@ public final class RecipeCrafting {
 	/** Read-only check for a loaded vanilla crafting recipe that can produce the requested output from this stock. */
 	public static boolean canCraftCraftingOutput(Ctx c, Container chest, Predicate<ItemStack> outputFilter, int outputCap) {
 		if (c == null || chest == null || outputFilter == null || outputCap < 0) return false;
-		for (RecipeHolder<?> holder : c.level().recipeAccess().getRecipes()) {
+		for (RecipeHolder<?> holder : RecipeIndex.crafting()) {
 			if (!(holder.value() instanceof CraftingRecipe recipe)) continue;
 			ItemStack preview = preview(recipe);
 			if (preview != null && (preview.isEmpty() || !outputFilter.test(preview)
@@ -288,7 +289,7 @@ public final class RecipeCrafting {
 	 * name-based conversions or consuming anything until the actual recipe transaction fits.
 	 */
 	static boolean craftPrerequisite(Ctx c, Container chest, BlockPos workPos, net.minecraft.world.item.Item target) {
-		var recipes = c.level().recipeAccess().getRecipes();
+		var recipes = RecipeIndex.crafting();
 		for (RecipeHolder<?> wantedHolder : recipes) {
 			if (!(wantedHolder.value() instanceof CraftingRecipe wantedRecipe)) continue;
 			ItemStack wantedPreview = preview(wantedRecipe);

@@ -3,6 +3,7 @@ package de.villagerplus.job;
 import de.villagerplus.VillagerPlus;
 import de.villagerplus.build.Blueprints;
 import de.villagerplus.village.Lager;
+import de.villagerplus.village.RecipeIndex;
 import de.villagerplus.village.Specials;
 import java.util.ArrayList;
 import java.util.List;
@@ -52,7 +53,7 @@ final class DelightKitchenCrafting {
 
 	static CookingPotRecipe firstPreparedPotRecipe(ServerLevel level, Predicate<ItemStack> outputFilter) {
 		if (!FabricLoader.getInstance().isModLoaded(MOD_ID)) return null;
-		for (RecipeHolder<?> holder : level.recipeAccess().getRecipes()) {
+		for (RecipeHolder<?> holder : RecipeIndex.all()) {
 			if (holder.value() instanceof CookingPotRecipe recipe && recipe.getType() == ModRecipeTypes.COOKING.get()
 				&& outputFilter.test(recipe.result().create())) return recipe;
 		}
@@ -61,7 +62,7 @@ final class DelightKitchenCrafting {
 
 	static CookingPotRecipe preparedPotRecipe(ServerLevel level, Identifier id, Predicate<ItemStack> outputFilter) {
 		if (!FabricLoader.getInstance().isModLoaded(MOD_ID)) return null;
-		for (RecipeHolder<?> holder : level.recipeAccess().getRecipes()) {
+		for (RecipeHolder<?> holder : RecipeIndex.all()) {
 			if (holder.id().identifier().equals(id) && holder.value() instanceof CookingPotRecipe recipe
 				&& recipe.getType() == ModRecipeTypes.COOKING.get() && outputFilter.test(recipe.result().create())) return recipe;
 		}
@@ -83,10 +84,10 @@ final class DelightKitchenCrafting {
 	static CuttingBoardRecipe firstGuaranteedPotPrepRecipe(ServerLevel level) {
 		if (!FabricLoader.getInstance().isModLoaded(MOD_ID)) return null;
 		List<CookingPotRecipe> potRecipes = new ArrayList<>();
-		for (RecipeHolder<?> holder : level.recipeAccess().getRecipes()) {
+		for (RecipeHolder<?> holder : RecipeIndex.all()) {
 			if (holder.value() instanceof CookingPotRecipe recipe && recipe.getType() == ModRecipeTypes.COOKING.get()) potRecipes.add(recipe);
 		}
-		for (RecipeHolder<?> holder : level.recipeAccess().getRecipes()) {
+		for (RecipeHolder<?> holder : RecipeIndex.all()) {
 			if (!(holder.value() instanceof CuttingBoardRecipe recipe) || recipe.getType() != ModRecipeTypes.CUTTING.get()) continue;
 			boolean feedsKitchen = recipe.getRollableResults().stream().filter(result -> result.chance() >= 1.0F)
 				.map(result -> result.stack().create()).anyMatch(stack -> isUsefulPrep(stack, potRecipes));
@@ -117,7 +118,7 @@ final class DelightKitchenCrafting {
 	static boolean cookFromPot(Ctx c, Container pantry, BlockPos pot, Predicate<ItemStack> outputFilter, int cap,
 			CookingPotRecipe onlyRecipe) {
 		if (!FabricLoader.getInstance().isModLoaded(MOD_ID) || pot == null) return false;
-		for (RecipeHolder<?> holder : c.level().recipeAccess().getRecipes()) {
+		for (RecipeHolder<?> holder : RecipeIndex.all()) {
 			if (!(holder.value() instanceof CookingPotRecipe recipe) || recipe.getType() != ModRecipeTypes.COOKING.get()) continue;
 			if (onlyRecipe != null && recipe != onlyRecipe) continue;
 			List<ItemStack> chosen = select(pantry, recipe.input());
@@ -162,11 +163,11 @@ final class DelightKitchenCrafting {
 			CuttingBoardRecipe requiredRecipe) {
 		if (!FabricLoader.getInstance().isModLoaded(MOD_ID) || board == null) return false;
 		List<CookingPotRecipe> potRecipes = new ArrayList<>();
-		for (RecipeHolder<?> holder : c.level().recipeAccess().getRecipes()) {
+		for (RecipeHolder<?> holder : RecipeIndex.all()) {
 			if (holder.value() instanceof CookingPotRecipe recipe && recipe.getType() == ModRecipeTypes.COOKING.get()) potRecipes.add(recipe);
 		}
 		if (potRecipes.isEmpty()) return false;
-		for (RecipeHolder<?> holder : c.level().recipeAccess().getRecipes()) {
+		for (RecipeHolder<?> holder : RecipeIndex.all()) {
 			if (!(holder.value() instanceof CuttingBoardRecipe recipe) || recipe.getType() != ModRecipeTypes.CUTTING.get()) continue;
 			if (requiredRecipe != null && recipe != requiredRecipe) continue;
 			boolean feedsKitchen = recipe.getRollableResults().stream()
@@ -299,7 +300,7 @@ final class DelightKitchenCrafting {
 		List<Container> pantries = Specials.containers(level, ref, Blueprints.GRANARY);
 		if (pantries.isEmpty()) return null;
 		List<AbstractCookingRecipe> recipes = new ArrayList<>();
-		for (RecipeHolder<?> holder : level.recipeAccess().getRecipes()) {
+		for (RecipeHolder<?> holder : RecipeIndex.all()) {
 			if (holder.value() instanceof AbstractCookingRecipe recipe && recipe.getType() == RecipeType.SMELTING) recipes.add(recipe);
 		}
 		for (Container pantry : pantries) {

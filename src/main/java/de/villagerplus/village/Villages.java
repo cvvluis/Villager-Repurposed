@@ -37,7 +37,14 @@ public final class Villages {
 	static {
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_LOAD.register(Villages::invalidateResidentIndex);
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_UNLOAD.register(Villages::invalidateResidentIndex);
-		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(server -> RESIDENT_INDEX.clear());
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPED.register(server -> clearWorldCaches());
+	}
+
+	/** Drops cached village lookups so saves and restarts do not reuse stale data. */
+	public static void clearWorldCaches() {
+		CACHE.clear();
+		RESIDENT_INDEX.clear();
+		NEXT_CENTER_ATTEMPT.clear();
 	}
 
 	private Villages() {

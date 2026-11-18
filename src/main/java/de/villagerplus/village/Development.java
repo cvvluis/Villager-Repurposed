@@ -267,10 +267,10 @@ public final class Development {
 				}
 			}
 		}
-		var meetings = level.getPoiManager().getInRange(h -> h.is(PoiTypes.MEETING), bell,
-			MEETING_POI_DISCOVERY_RADIUS, PoiManager.Occupancy.ANY).map(p -> p.getPos().immutable()).toList();
-		var homes = level.getPoiManager().getInRange(h -> h.is(PoiTypes.HOME), bell,
-			HOME_POI_DISCOVERY_RADIUS, PoiManager.Occupancy.ANY).map(p -> p.getPos().immutable()).toList();
+		var meetings = de.villagerplus.world.LoadedPoi.positionsInRange(level, h -> h.is(PoiTypes.MEETING), bell,
+			MEETING_POI_DISCOVERY_RADIUS, PoiManager.Occupancy.ANY);
+		var homes = de.villagerplus.world.LoadedPoi.positionsInRange(level, h -> h.is(PoiTypes.HOME), bell,
+			HOME_POI_DISCOVERY_RADIUS, PoiManager.Occupancy.ANY);
 		for (BlockPos pos : homes) {
 			if (!belongsToBell(pos, bell, meetings)) continue;
 			observed = union(observed, new BoundingBox(pos.getX(), pos.getY(), pos.getZ(), pos.getX(), pos.getY(), pos.getZ()));
@@ -367,6 +367,34 @@ public final class Development {
 		BoundingBox box = bounds(level, ref);
 		return new BlockPos(box.minX() + (box.maxX() - box.minX()) / 2, ref.bell().getY(),
 			box.minZ() + (box.maxZ() - box.minZ()) / 2);
+	}
+
+	/** Schwerpunkt aus Glocke, gebauten Häusern und bekannten Betten; fällt auf {@link #center} zurück. */
+	public static BlockPos centroid(ServerLevel level, VillageRef ref) {
+		long sx = ref.bell().getX();
+		long sz = ref.bell().getZ();
+		int n = 1;
+		var built = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.BUILDINGS, java.util.List.<de.villagerplus.build.Built>of());
+		for (de.villagerplus.build.Built house : built) {
+			if (house == null || house.origin() == null) continue;
+			sx += house.origin().getX();
+			sz += house.origin().getZ();
+			n++;
+		}
+		int radius = de.villagerplus.Config.VILLAGE_RADIUS;
+		for (net.minecraft.world.entity.npc.villager.Villager villager : level.getEntitiesOfClass(
+			net.minecraft.world.entity.npc.villager.Villager.class,
+			new net.minecraft.world.phys.AABB(ref.bell()).inflate(radius), net.minecraft.world.entity.npc.villager.Villager::isAlive)) {
+			var memory = villager.getAttachedOrCreate(de.villagerplus.VillagerPlus.MEMORY);
+			if (memory.homeBed.isPresent()) {
+				BlockPos bed = memory.homeBed.get();
+				sx += bed.getX();
+				sz += bed.getZ();
+				n++;
+			}
+		}
+		if (n <= 1) return center(level, ref);
+		return new BlockPos((int) Math.round(sx / (double) n), ref.bell().getY(), (int) Math.round(sz / (double) n));
 	}
 
 	private static int edgeDistance(BoundingBox box, BlockPos bell) {

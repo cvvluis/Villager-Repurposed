@@ -1,6 +1,7 @@
 package de.villagerplus.job;
 
 import de.villagerplus.Config;
+import de.villagerplus.village.RecipeIndex;
 import java.util.Set;
 import java.util.function.Predicate;
 import net.minecraft.core.component.DataComponents;
@@ -45,7 +46,7 @@ public final class Meals {
 		if (isPreparedFood(stack)) return true;
 		if (stack.isEmpty() || !isFood(stack)
 			|| !net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("farmersdelight")) return false;
-		for (var holder : level.recipeAccess().getRecipes()) {
+		for (var holder : RecipeIndex.all()) {
 			if (!(holder.value() instanceof vectorwing.farmersdelight.common.crafting.CookingPotRecipe recipe)
 				|| recipe.getType() != vectorwing.farmersdelight.common.registry.ModRecipeTypes.COOKING.get()) continue;
 			ItemStack output = recipe.result().create();

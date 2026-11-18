@@ -1,5 +1,6 @@
 package de.villagerplus.village;
 
+import de.villagerplus.Config;
 import de.villagerplus.VillagerPlus;
 import de.villagerplus.block.DorftafelBlock;
 import de.villagerplus.block.ModBlocks;
@@ -31,9 +32,9 @@ import net.minecraft.world.level.levelgen.Heightmap;
 /** A broad octagonal square with free sightlines; no existing building or chest is removed. */
 public final class Plaza {
  private Plaza() {}
- private static final int PLAZA_RADIUS=13;
- private static final int PLAZA_DIAMOND_RADIUS=22;
- private static final int PLAZA_EDGE_CLEARANCE=5;
+ public static final int PLAZA_RADIUS=8;
+ public static final int PLAZA_DIAMOND_RADIUS=15;
+ private static final int PLAZA_EDGE_CLEARANCE=3;
  private static final int ROAD_ARM_START=PLAZA_RADIUS+1;
  private static final int ROAD_ARM_END=PLAZA_RADIUS+5;
  private static final int SURFACE_BLOCKS_PER_TICK=8;
@@ -41,7 +42,7 @@ public final class Plaza {
  private static final int WORK_BATCH_INTERVAL_TICKS=1;
  private static final long CIVIC_RETRY_TICKS=200L;
  private static final int SURFACE_SIDE=PLAZA_RADIUS*2+1;
- private static final int SURFACE_CELLS=SURFACE_SIDE*SURFACE_SIDE;
+ public static final int SURFACE_CELLS=SURFACE_SIDE*SURFACE_SIDE;
  public static boolean inside(ServerLevel level, VillageRef ref, BlockPos p, int margin) {
   MarketData m=Market.of(ref); if(m.plaza().isEmpty()) return false;
   return inside(m.plaza().get(),p,margin);
@@ -51,6 +52,7 @@ public final class Plaza {
   return x<=PLAZA_RADIUS+margin && z<=PLAZA_RADIUS+margin && x+z<=PLAZA_DIAMOND_RADIUS+margin*2;
  }
  private static final java.util.Set<String> SHRINE_FIXED=new java.util.HashSet<>();
+ private static final java.util.Set<String> PLAZA_RETROFITTED=new java.util.HashSet<>();
  private static final java.util.Map<String,Long> DECOR_CHECK=new java.util.HashMap<>();
  private static final java.util.Map<String,Long> FOUNTAIN_CHECK=new java.util.HashMap<>();
  private static final java.util.Map<String,Long> SURFACE_CHECK=new java.util.HashMap<>();
@@ -230,7 +232,8 @@ public final class Plaza {
 	  return decorationRingOffsetSafe(dx,dz)&&!lampOffset(dx,dz); // legacy light rings remain reserved in the compatibility map
  }
 	private static boolean decorationRingOffsetSafe(int dx,int dz) {
-	  if(Math.max(Math.abs(dx),Math.abs(dz))>12 || Math.abs(dx)+Math.abs(dz)>20 || Math.abs(dx)<=2 || Math.abs(dz)<=2) return false;
+	  if(Math.max(Math.abs(dx),Math.abs(dz))>PLAZA_RADIUS || Math.abs(dx)+Math.abs(dz)>PLAZA_DIAMOND_RADIUS
+	   || Math.abs(dx)<=2 || Math.abs(dz)<=2) return false;
 	  if(Math.abs(dx)<=2 && Math.abs(dz)<=2) return false; // shrine and its roof supports
 	  if(dx>=-2 && dx<=1 && dz>=3 && dz<=5) return false; // double chest and its access side
 	  if(dx>=-1 && dx<=1 && dz>=-5 && dz<=-4) return false; // Dorftafel and its three-wide front access
@@ -261,7 +264,7 @@ public final class Plaza {
 		return Math.max(Math.abs(dx),Math.abs(dz))==5&&Math.min(Math.abs(dx),Math.abs(dz))>=3;
 	}
  static boolean outerSquareBorderOffset(int dx,int dz) {
-	  return Math.max(Math.abs(dx),Math.abs(dz))==10;
+	  return Math.max(Math.abs(dx),Math.abs(dz))==PLAZA_RADIUS-1;
  }
  /** The four five-wide road arms continue from the plaza edge through the bounded site apron. */
  static boolean roadArmOffset(int dx,int dz) {
@@ -281,7 +284,7 @@ public final class Plaza {
 	/** Palette-matched octagonal fountain court, double-diamond medallion, and diagonal rays form the central motif. */
  static boolean plazaInlayOffset(int dx,int dz) {
   int x=Math.abs(dx),z=Math.abs(dz);
-	  boolean diagonalRays=x==z&&x>=4&&x<=11;
+	  boolean diagonalRays=x==z&&x>=4&&x<=PLAZA_RADIUS;
 	  boolean fountainCourt=innerMedallionRingOffset(dx,dz)||outerMedallionRingOffset(dx,dz);
   boolean fountainMedallion=x+z==7&&x>=3&&z>=3;
 	  boolean innerDiamondBorder=x+z==12&&x>=3&&z>=3;
@@ -863,12 +866,35 @@ public final class Plaza {
  }
  public static void ensure(ServerLevel level,VillageRef ref,Villager hint,long now) {
   MarketData m=Market.of(ref);
-  if(m.plaza().isPresent()) { decorate(level,ref,hint,m.plaza().get(),now); return; }
+  if(m.plaza().isPresent()) {
+   retrofitExisting(level, ref, hint, m.plaza().get());
+   decorate(level,ref,hint,m.plaza().get(),now);
+   return;
+  }
   if(now<m.nextPlan()) return;
   Market.save(ref,new MarketData(m.plaza(),m.shops(),now+600,m.sales()));
-  BlockPos center=Development.center(level,ref);
+  BlockPos center=Development.centroid(level,ref);
   BlockPos c=findCentralSite(level,center,ref.bell(),ref.bell().asLong(),Math.floorDiv(now,600L));
   if(c!=null) build(level,ref,c,hint);
+ }
+
+ /** Baut einen neuen Platz am Dorf-Schwerpunkt; alter Platz bleibt stehen (Admin-Befehl). */
+ public static boolean rebuildAtCentroid(ServerLevel level, VillageRef ref, Villager hint) {
+  BlockPos center = Development.centroid(level, ref);
+  BlockPos site = findCentralSite(level, center, ref.bell(), ref.bell().asLong(), level.getGameTime());
+  if (site == null) return false;
+  build(level, ref, site, hint);
+  return true;
+ }
+
+ static void retrofitExisting(ServerLevel level, VillageRef ref, Villager hint, BlockPos plaza) {
+  String key = cacheKey(level, ref) + "/retro";
+  if (!PLAZA_RETROFITTED.add(key) || !de.villagerplus.world.LoadedColumns.ready(level, plaza)) return;
+  Palette palette = Palette.detect(level, ref.bell(), hint, plaza.asLong(), plaza);
+  placeBoardAndFlagpole(level, ref, plaza, palette, false);
+  buildImmediateCivicDecor(level, ref, plaza, palette, Set.of());
+  if (Config.DEBUG) org.slf4j.LoggerFactory.getLogger("villagerplus")
+   .info("Plaza retrofit at {} for {}", plaza.toShortString(), ref.bell().toShortString());
  }
 
  /** Deterministic centre-out search. Existing buildings and homes are skipped by {@link #site}; each retry moves outward. */
@@ -892,8 +918,6 @@ public final class Plaza {
    BlockPos at=new BlockPos(x,de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z),z);
    BlockPos plaza=site(level,at,PLAZA_RADIUS,PLAZA_EDGE_CLEARANCE,null,context);
    if(plaza==null||Math.abs(plaza.getY()-bell.getY())>12) continue;
-   if(!level.getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class,
-			new net.minecraft.world.phys.AABB(plaza).inflate(PLAZA_RADIUS+PLAZA_EDGE_CLEARANCE,8,PLAZA_RADIUS+PLAZA_EDGE_CLEARANCE)).isEmpty()) continue;
    return plaza;
   }
   return null;
@@ -923,22 +947,30 @@ public final class Plaza {
   if(protectedZoneIntersects(context,at,half+clearance)) return null;
   // Keep a real buffer around every registered civic, work, and home point.
   BlockPos site=at;
-  if(level.getPoiManager().getInRange(h->true,site,half+clearance+5,net.minecraft.world.entity.ai.village.poi.PoiManager.Occupancy.ANY)
-    .anyMatch(p->Math.abs(p.getPos().getX()-site.getX())<=half+clearance+2 && Math.abs(p.getPos().getZ()-site.getZ())<=half+clearance+2))return null;
+  BlockPos bell=context==null?null:context.bell();
+  if(poiBlocksSite(level, site, half, clearance, bell)) return null;
   Set<Long> roadGrounds=context==null?Set.of():savedRoadGrounds(level,context);
   int high=Integer.MIN_VALUE,low=Integer.MAX_VALUE;
   for(int x=-half-clearance;x<=half+clearance;x++) for(int z=-half-clearance;z<=half+clearance;z++) {
    BlockPos col=at.offset(x,0,z);
-   if(plaza!=null && (Math.abs(x)>half || Math.abs(z)>half) && inside(plaza,col,0))continue;
+   boolean footprint=Math.abs(x)<=half && Math.abs(z)<=half;
+   if(plaza!=null && !footprint && inside(plaza,col,0))continue;
    if(!de.villagerplus.world.LoadedColumns.ready(level, col)) return null;
    int y=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, col.getX(), col.getZ());
    BlockPos ground=new BlockPos(col.getX(),y-1,col.getZ()); var state=level.getBlockState(ground);
-   if(roadGrounds.contains(ground.asLong())||state.is(Blocks.DIRT_PATH)||Roads.isProtectedLaneCell(level,ground)) return null;
+   boolean roadCell=roadGrounds.contains(ground.asLong())||state.is(Blocks.DIRT_PATH)||Roads.isProtectedLaneCell(level,ground);
+   if(!footprint && roadCell) return null;
+   if(footprint && protectedFootprintBlock(level, context, ground, state)) return null;
    boolean paving=state.is(Blocks.SANDSTONE)||state.is(Blocks.SMOOTH_SANDSTONE)||state.is(Blocks.CUT_SANDSTONE);
-   if((!VillageStyle.natural(state)&&!paving) || !state.getFluidState().isEmpty() || state.is(BlockTags.LEAVES)
+   if(footprint && roadCell) { /* integriert ins Pflaster */ }
+   else if((!VillageStyle.natural(state)&&!paving) || !state.getFluidState().isEmpty() || state.is(BlockTags.LEAVES)
     || state.is(Blocks.FARMLAND) || !state.isFaceSturdy(level,ground,Direction.UP)) return null;
-   for(int dy=0;dy<6;dy++) { var s=level.getBlockState(ground.above(dy+1)); if(!s.isAir() && !s.canBeReplaced()) return null; }
-   if(Math.abs(x)<=half && Math.abs(z)<=half) { high=Math.max(high,y); low=Math.min(low,y); }
+   for(int dy=0;dy<6;dy++) {
+    var s=level.getBlockState(ground.above(dy+1));
+    if(!s.isAir() && !s.canBeReplaced() && footprint && protectedFootprintBlock(level, context, ground.above(dy+1), s)) return null;
+    if(!footprint && !s.isAir() && !s.canBeReplaced()) return null;
+   }
+   if(footprint) { high=Math.max(high,y); low=Math.min(low,y); }
   }
   if(high-low>4) return null;
   return new BlockPos(at.getX(),high,at.getZ());
@@ -966,59 +998,278 @@ public final class Plaza {
   return false;
  }
  private static void build(ServerLevel level,VillageRef ref,BlockPos c,Villager hint) {
+  nudgeEntitiesFromFootprint(level, c, PLAZA_RADIUS + 2);
   Palette p=Palette.detect(level,ref.bell(),hint,c.asLong(),c);
+  Set<Long> roadGrounds=savedRoadGrounds(level,ref);
   for(int x=-PLAZA_RADIUS;x<=PLAZA_RADIUS;x++) for(int z=-PLAZA_RADIUS;z<=PLAZA_RADIUS;z++) {
-	   if(Math.abs(x)+Math.abs(z)>PLAZA_DIAMOND_RADIUS) continue;
+   if(Math.abs(x)+Math.abs(z)>PLAZA_DIAMOND_RADIUS) continue;
    BlockPos floor=c.offset(x,-1,z);
    int y=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, floor.getX(), floor.getZ());
    for(int k=y;k<c.getY()-1;k++) level.setBlock(new BlockPos(floor.getX(),k,floor.getZ()),p.base().defaultBlockState(),3);
-	   boolean ring=Math.abs(x)==PLAZA_RADIUS || Math.abs(z)==PLAZA_RADIUS
-	    || Math.abs(x)+Math.abs(z)==PLAZA_DIAMOND_RADIUS;
-   level.setBlock(floor,(ring || Math.abs(x)<=2 || Math.abs(z)<=2 ? p.base() : p.floor()).defaultBlockState(),3);
-   for(int dy=0;dy<3;dy++) if(level.getBlockState(c.offset(x,dy,z)).canBeReplaced()) level.setBlock(c.offset(x,dy,z),Blocks.AIR.defaultBlockState(),3);
-  }
-  // Low fountain with four wide approach paths; chest and board remain accessible.
-  for(int x=-2;x<=2;x++) for(int z=-2;z<=2;z++) level.setBlock(c.offset(x,0,z),
-   p.base().defaultBlockState(),3);
-  level.setBlock(c.above(),p.base().defaultBlockState(),3);
-  level.setBlock(c.above(2),Blocks.CHISELED_STONE_BRICKS.defaultBlockState(),3);
-  level.setBlock(c.above(3),Blocks.LANTERN.defaultBlockState(),3);
-  buildShrineRoof(level,c,p);
-  if(p.roofStair() instanceof StairBlock) for(int side:new int[]{-1,1}) for(int z:new int[]{-3,3})
-	   level.setBlock(c.offset(side*6,0,z),p.roofStair().defaultBlockState().setValue(StairBlock.FACING,side<0?Direction.WEST:Direction.EAST),3);
-  for(Direction dir:Direction.Plane.HORIZONTAL) for(int n=ROAD_ARM_START;n<=ROAD_ARM_END;n++) {
-   BlockPos road=c.relative(dir,n);int height=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, road.getX(), road.getZ());
-	   int target=c.getY()-(n-PLAZA_RADIUS);if(height>target+1)break;
-   for(int side=-2;side<=2;side++) {
-    BlockPos stair=new BlockPos(road.getX(),target,road.getZ()).relative(dir.getClockWise(),side);
-    var cur=level.getBlockState(stair);if(!cur.isAir()&&!cur.canBeReplaced()&&!VillageStyle.natural(cur))continue;
-    var stairState=p.roofStair().defaultBlockState();if(p.roofStair() instanceof StairBlock)stairState=stairState.setValue(StairBlock.FACING,dir.getOpposite());
-    level.setBlock(stair,stairState,3);
+   boolean ring=Math.abs(x)==PLAZA_RADIUS || Math.abs(z)==PLAZA_RADIUS || Math.abs(x)+Math.abs(z)==PLAZA_DIAMOND_RADIUS;
+   BlockPos ground=floor.below();
+   BlockState groundState=level.getBlockState(ground);
+   boolean road=roadGrounds.contains(ground.asLong())||groundState.is(Blocks.DIRT_PATH)||Roads.isProtectedLaneCell(level,ground);
+   Block paving=ring || accentPavingOffset(x,z) ? p.base() : p.floor();
+   if(road && !ring) paving=p.base();
+   level.setBlock(floor,paving.defaultBlockState(),3);
+   for(int dy=0;dy<3;dy++) {
+    BlockPos cell=c.offset(x,dy,z);
+    if(!protectedFootprintBlock(level, ref, cell, level.getBlockState(cell)) && level.getBlockState(cell).canBeReplaced()) {
+     level.setBlock(cell,Blocks.AIR.defaultBlockState(),3);
+    }
    }
   }
-  BlockPos old=ref.chestPos(level), chest=c.offset(-1,0,4);
-  var oldBox=ref.chest(level); java.util.List<net.minecraft.world.item.ItemStack> contents=new java.util.ArrayList<>();
-  if(oldBox!=null) for(int i=0;i<oldBox.getContainerSize();i++) contents.add(oldBox.getItem(i).copy());
-  var state=Blocks.CHEST.defaultBlockState().setValue(ChestBlock.FACING,Direction.NORTH);
-  level.setBlock(chest,state.setValue(ChestBlock.TYPE,ChestType.LEFT),3);
-  level.setBlock(chest.east(),state.setValue(ChestBlock.TYPE,ChestType.RIGHT),3);
-  var box=net.minecraft.world.level.block.entity.HopperBlockEntity.getContainerAt(level,chest);
-  if(box==null || contents.size()>box.getContainerSize()) throw new IllegalStateException("Plaza chest capacity mismatch");
-  for(int i=0;i<contents.size();i++) box.setItem(i,contents.get(i));
-  if(oldBox!=null) oldBox.clearContent();
-  ref.data().chest=Optional.of(chest);
-  // Old center remains as an empty chest; only the mod's own board is relocated.
-  if(ref.data().extra.board.isPresent()) {
-   BlockPos b=ref.data().extra.board.get(); var bs=level.getBlockState(b);
-   if(bs.getBlock() instanceof DorftafelBlock) for(BlockPos q:DorftafelBlock.parts(bs,b)) for(BlockPos t:new BlockPos[]{q,q.above()})
-    if(level.getBlockState(t).getBlock() instanceof DorftafelBlock) level.setBlock(t,Blocks.AIR.defaultBlockState(),3);
+  // Kompakter Brunnen in Palettenoptik (ohne Schrein-Dach).
+  for(int x=-2;x<=2;x++) for(int z=-2;z<=2;z++) level.setBlock(c.offset(x,0,z),p.base().defaultBlockState(),3);
+  level.setBlock(c,Blocks.WATER.defaultBlockState(),3);
+  level.setBlock(c.above(),Blocks.LANTERN.defaultBlockState(),3);
+  for(Direction dir:Direction.Plane.HORIZONTAL) {
+   int n=ROAD_ARM_START;
+   if(n>ROAD_ARM_END) continue;
+   BlockPos road=c.relative(dir,n);
+   if(!de.villagerplus.world.LoadedColumns.ready(level, road)) continue;
+   int height=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, road.getX(), road.getZ());
+   int target=c.getY()-(n-PLAZA_RADIUS);
+   if(height>target+1) continue;
+   if(!(p.roofStair() instanceof StairBlock stair)) continue;
+   BlockPos stairPos=new BlockPos(road.getX(),target,road.getZ());
+   var cur=level.getBlockState(stairPos);
+   if(cur.isAir()||cur.canBeReplaced()||VillageStyle.natural(cur)) {
+    level.setBlock(stairPos,stair.defaultBlockState().setValue(StairBlock.FACING,dir.getOpposite()),3);
+   }
   }
-  BlockPos board=c.offset(-2,0,-5);
-  DorftafelBlock.placeAll(level,board,ModBlocks.DORFTAFEL_GROSS.defaultBlockState().setValue(DorftafelBlock.FACING,Direction.SOUTH));
-  ref.data().extra.board=Optional.of(board); ref.dirty();
+  BlockPos old=ref.chestPos(level), chest=relocateChest(level, ref, c);
+  var oldBox=old!=null&&old.equals(chest)?null:ref.chest(level);
+  if(oldBox==null && old!=null) {
+   var prior=Lager.publicContainerAt(level,old);
+   if(prior!=null) oldBox=prior;
+  }
+  transferChestContents(level, ref, old, chest, oldBox);
+  retireStarterChest(level, ref, old, chest);
+  ref.data().chest=Optional.of(chest);
+  BlockPos board=placeBoardAndFlagpole(level, ref, c, p, true);
+  buildImmediateCivicDecor(level, ref, c, p, roadGrounds);
   MarketData m=Market.of(ref); Market.save(ref,new MarketData(Optional.of(c),m.shops(),m.nextPlan(),m.sales()));
   decorate(level,ref,hint,c,level.getGameTime());
-  Journal.add(level,ref,"Bauen","Dorfgemeinschaft","Dorfschrein und Plaza errichtet bei "+c.toShortString(),0);
+  BoardWayfinding.announcePlaza(level, c, board);
+  Roads.integratePlazaFootprint(level, ref, c);
+  Journal.add(level,ref,"Bauen","Dorfgemeinschaft","Dorfplatz und Tafel bei "+c.toShortString(),0);
   org.slf4j.LoggerFactory.getLogger("villagerplus").info("Plaza errichtet bei {} (alte Dorfkiste {})",c,old);
+ }
+
+ private static boolean poiBlocksSite(ServerLevel level, BlockPos site, int half, int clearance, BlockPos bell) {
+  return level.getPoiManager().getInRange(h -> true, site, half + clearance + 3,
+    net.minecraft.world.entity.ai.village.poi.PoiManager.Occupancy.ANY).anyMatch(record -> {
+    BlockPos poi = record.getPos();
+    int dx = Math.abs(poi.getX() - site.getX());
+    int dz = Math.abs(poi.getZ() - site.getZ());
+    if (dx <= half && dz <= half) {
+     if (bell != null && poi.distSqr(bell) <= 9) return false;
+     return true;
+    }
+    return dx <= half + 2 && dz <= half + 2;
+  });
+ }
+
+ private static boolean protectedFootprintBlock(ServerLevel level, VillageRef ref, BlockPos pos, BlockState state) {
+  if (state.isAir() || state.canBeReplaced()) return false;
+  if (state.getBlock() instanceof ChestBlock || state.getBlock() instanceof DorftafelBlock) return true;
+  if (state.getBlock() == Blocks.BELL) return true;
+  var built = ref == null ? null : ref.bellEntity().getAttachedOrElse(VillagerPlus.BUILDINGS, java.util.List.<de.villagerplus.build.Built>of());
+  if (built != null) {
+   for (de.villagerplus.build.Built house : built) {
+    if (house.origin().distSqr(pos) <= 256) return true;
+   }
+  }
+  if (ZonePolicy.blocksWork(ref, pos)) return true;
+  if (Lager.publicContainerAt(level, pos) != null) return false;
+  return !VillageStyle.natural(state) && !state.canBeReplaced() && state.getDestroySpeed(level, pos) >= 0.8f;
+ }
+
+ private static void nudgeEntitiesFromFootprint(ServerLevel level, BlockPos center, int radius) {
+  var box = new net.minecraft.world.phys.AABB(center).inflate(radius, 4, radius);
+  for (net.minecraft.world.entity.LivingEntity entity : level.getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class, box)) {
+   BlockPos feet = entity.blockPosition();
+   if (!inside(center, feet, -1)) continue;
+   net.minecraft.world.phys.Vec3 safe = edgeSafeSpot(level, center, radius, entity);
+   if (safe == null) continue;
+   entity.teleportTo(safe.x, safe.y, safe.z);
+  }
+ }
+
+ private static net.minecraft.world.phys.Vec3 edgeSafeSpot(ServerLevel level, BlockPos center, int radius,
+     net.minecraft.world.entity.LivingEntity entity) {
+  net.minecraft.core.Direction away = Sites.facingTowards(center, entity.blockPosition());
+  for (int dist = radius; dist <= radius + 3; dist++) {
+   BlockPos anchor = center.relative(away, dist);
+   for (int lateral = -2; lateral <= 2; lateral++) {
+    BlockPos column = away.getStepX() != 0 ? anchor.offset(0, 0, lateral) : anchor.offset(lateral, 0, 0);
+    if (!de.villagerplus.world.LoadedColumns.ready(level, column)) continue;
+    int surfaceY = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+      column.getX(), column.getZ());
+    BlockPos ground = new BlockPos(column.getX(), surfaceY, column.getZ());
+    if (inside(center, ground, 0)) continue;
+    var fluid = level.getBlockState(ground).getFluidState();
+    if (!fluid.isEmpty()) continue;
+    var safe = de.villagerplus.job.JobUtil.safeSpot(level, net.minecraft.world.phys.Vec3.atBottomCenterOf(ground));
+    if (safe != null && !inside(center, BlockPos.containing(safe), 0)) return safe;
+   }
+  }
+  return null;
+ }
+
+ static net.minecraft.world.level.block.Block villageBannerBlock(ServerLevel level, VillageRef ref, Villager hint) {
+  String type = villagerStyleKey(level, ref, hint);
+  return switch (type) {
+   case "desert" -> Blocks.BANNER.yellow();
+   case "savanna" -> Blocks.BANNER.orange();
+   case "snow" -> Blocks.BANNER.lightBlue();
+   case "taiga" -> Blocks.BANNER.green();
+   case "jungle" -> Blocks.BANNER.lime();
+   default -> Blocks.BANNER.white();
+  };
+ }
+
+ private static String villagerStyleKey(ServerLevel level, VillageRef ref, Villager hint) {
+  if (hint != null) {
+   return hint.getVillagerData().type().unwrapKey().map(k -> k.identifier().getPath()).orElse("plains");
+  }
+  for (net.minecraft.world.entity.npc.villager.Villager v : level.getEntitiesOfClass(
+      net.minecraft.world.entity.npc.villager.Villager.class,
+      new net.minecraft.world.phys.AABB(ref.bell()).inflate(64))) {
+   VillageRef home = Villages.find(level, v);
+   if (home != null && home.bell().equals(ref.bell())) {
+    return v.getVillagerData().type().unwrapKey().map(k -> k.identifier().getPath()).orElse("plains");
+   }
+  }
+  return level.getBiome(ref.bell()).unwrapKey().map(k -> {
+   String path = k.identifier().getPath();
+   if (path.contains("desert") || path.contains("badlands")) return "desert";
+   if (path.contains("savanna")) return "savanna";
+   if (path.contains("snow") || path.contains("frozen")) return "snow";
+   if (path.contains("taiga") || path.contains("grove")) return "taiga";
+   if (path.contains("jungle") || path.contains("bamboo")) return "jungle";
+   return "plains";
+  }).orElse("plains");
+ }
+
+ static BlockPos placeBoardAndFlagpole(ServerLevel level, VillageRef ref, BlockPos plaza, Palette p, boolean pin) {
+  if (ref.data().extra.boardPinned && ref.data().extra.board.isPresent()) {
+   BlockPos pinned = ref.data().extra.board.get();
+   if (level.getBlockState(pinned).getBlock() instanceof DorftafelBlock) {
+    placeFlagpole(level, ref, plaza, pinned, p);
+    return pinned;
+   }
+  }
+  BlockPos edge = plaza.offset(0, 0, -(PLAZA_RADIUS + 1));
+  int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, edge.getX(), edge.getZ());
+  edge = new BlockPos(edge.getX(), y, edge.getZ());
+  Direction facing = Sites.facingTowards(edge, plaza);
+  if (ref.data().extra.board.isPresent()) {
+   BlockPos b = ref.data().extra.board.get();
+   var bs = level.getBlockState(b);
+   if (bs.getBlock() instanceof DorftafelBlock) {
+    for (BlockPos q : DorftafelBlock.parts(bs, b)) {
+     for (BlockPos t : new BlockPos[] {q, q.above()}) {
+      if (level.getBlockState(t).getBlock() instanceof DorftafelBlock) level.setBlock(t, Blocks.AIR.defaultBlockState(), 3);
+     }
+    }
+   }
+  }
+  if (!DorftafelBlock.complete(level, edge, ModBlocks.DORFTAFEL_GROSS.defaultBlockState().setValue(DorftafelBlock.FACING, facing))) {
+   DorftafelBlock.placeAll(level, edge, ModBlocks.DORFTAFEL_GROSS.defaultBlockState().setValue(DorftafelBlock.FACING, facing));
+  }
+  ref.data().extra.board = Optional.of(edge);
+  if (pin) ref.data().extra.boardPinned = false;
+  ref.dirty();
+  placeFlagpole(level, ref, plaza, edge, p);
+  return edge;
+ }
+
+ private static void placeFlagpole(ServerLevel level, VillageRef ref, BlockPos plaza, BlockPos board, Palette p) {
+  BlockPos pole = board.relative(Sites.facingTowards(board, plaza).getClockWise(), 2);
+  int height = 10;
+  var support = p.fence() != null ? p.fence() : p.frame() != null ? p.frame() : Blocks.OAK_FENCE;
+  for (int dy = 0; dy < height; dy++) level.setBlock(pole.above(dy), support.defaultBlockState(), 3);
+  level.setBlock(pole.above(height), villageBannerBlock(level, ref, null).defaultBlockState(), 3);
+ }
+
+ static void buildImmediateCivicDecor(ServerLevel level, VillageRef ref, BlockPos c, Palette p, Set<Long> roadGrounds) {
+  Block[] flowers = flowerPalette(p, c);
+  Block lampSupport = p.frame() == null ? p.base() : p.frame();
+  int flowerIndex = 0;
+  for (CivicDetail detail : CIVIC_DETAILS) {
+   if (Math.abs(detail.dx()) > PLAZA_RADIUS - 1 || Math.abs(detail.dz()) > PLAZA_RADIUS - 1) continue;
+   if (!civicDetailOffsetSafe(detail.dx(), detail.dz(), detail.kind() == CivicDetailKind.LAMP)) continue;
+   if (protectedZoneIntersects(ref, c.offset(detail.dx(), 0, detail.dz()), 0)) continue;
+   placeFreeCivicDetail(level, ref, c, p, flowers, flowerIndex, roadGrounds, detail, lampSupport);
+   if (detail.kind() == CivicDetailKind.FLOWER) flowerIndex++;
+  }
+  for (int[] basin : RAIN_BASINS) {
+   BlockPos at = c.offset(basin[0], 0, basin[1]);
+   if (decorationCellFree(level, at, roadGrounds)) level.setBlock(at, Blocks.CAULDRON.defaultBlockState(), 3);
+  }
+  CIVIC_DETAILS_COMPLETE.add(cacheKey(level, ref) + "/plaza-" + c.asLong() + "/server-" + System.identityHashCode(level.getServer()));
+ }
+
+ private static void placeFreeCivicDetail(ServerLevel level, VillageRef ref, BlockPos c, Palette p, Block[] flowers, int flowerIndex,
+   Set<Long> roadGrounds, CivicDetail detail, Block lampSupport) {
+  BlockPos at = c.offset(detail.dx(), 0, detail.dz());
+  if (!decorationCellFree(level, at, roadGrounds)) return;
+  switch (detail.kind()) {
+   case BENCH -> {
+    if (p.roofStair() instanceof StairBlock stair) {
+     level.setBlock(at, stair.defaultBlockState().setValue(StairBlock.FACING, benchFacing(detail.facing())), 3);
+    }
+   }
+   case PLANTER -> {
+    level.setBlock(at.below(), p.base().defaultBlockState(), 3);
+    level.setBlock(at, shrubLeaves(p).defaultBlockState(), 3);
+   }
+   case FLOWER -> level.setBlock(at, flowers[flowerIndex % flowers.length].defaultBlockState(), 3);
+   case LAMP -> {
+    level.setBlock(at, lampSupport.defaultBlockState(), 3);
+    level.setBlock(at.above(), Blocks.LANTERN.defaultBlockState(), 3);
+   }
+   case RAIN_BASIN -> level.setBlock(at, Blocks.CAULDRON.defaultBlockState(), 3);
+  }
+ }
+
+ private static BlockPos relocateChest(ServerLevel level, VillageRef ref, BlockPos plaza) {
+  Direction face = Sites.facingTowards(plaza, ref.bell());
+  BlockPos chest = plaza.relative(face.getOpposite(), 2);
+  return chest.immutable();
+ }
+
+ private static void transferChestContents(ServerLevel level, VillageRef ref, BlockPos old, BlockPos chest, Container oldBox) {
+  if (old == null || old.equals(chest) || oldBox == null) return;
+  ensureChestPair(level, chest);
+  var box = net.minecraft.world.level.block.entity.HopperBlockEntity.getContainerAt(level, chest);
+  if (box == null) return;
+  for (int i = 0; i < oldBox.getContainerSize() && i < box.getContainerSize(); i++) {
+   if (!oldBox.getItem(i).isEmpty()) box.setItem(i, oldBox.getItem(i).copy());
+  }
+  oldBox.clearContent();
+ }
+
+ private static void ensureChestPair(ServerLevel level, BlockPos left) {
+  var state = Blocks.CHEST.defaultBlockState().setValue(ChestBlock.FACING, Direction.NORTH);
+  level.setBlock(left, state.setValue(ChestBlock.TYPE, ChestType.LEFT), 3);
+  level.setBlock(left.east(), state.setValue(ChestBlock.TYPE, ChestType.RIGHT), 3);
+ }
+
+ private static void retireStarterChest(ServerLevel level, VillageRef ref, BlockPos old, BlockPos chest) {
+  if (old == null || old.equals(chest)) return;
+  for (Direction face : Direction.Plane.HORIZONTAL) {
+   BlockPos part = old;
+   BlockState s = level.getBlockState(part);
+   if (s.getBlock() instanceof ChestBlock) {
+    level.setBlock(part, Blocks.AIR.defaultBlockState(), 3);
+    BlockPos other = part.relative(ChestBlock.getConnectedDirection(s));
+    if (level.getBlockState(other).getBlock() instanceof ChestBlock) level.setBlock(other, Blocks.AIR.defaultBlockState(), 3);
+   }
+  }
+  Villages.compactWheat(level, ref);
  }
 }

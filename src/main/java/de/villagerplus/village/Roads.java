@@ -845,7 +845,7 @@ public final class Roads {
  }
 
  private static boolean villageGapValid(ServerLevel level,VillageRef ref,BlockPos target) {
-  if(!gapTerrain(level,target)||!trustedVillagePathCell(level,ref,target)||Lighting.protectedVillageCell(level,ref,target)
+  if(!gapTerrain(level,target)||!trustedVillagePathCell(level,ref,target)||de.villagerplus.village.ZonePolicy.blocksWork(ref, target)
    ||isProtectedLaneCell(level,target))return false;
   BlockPos plaza=Market.of(ref).plaza().orElse(null);if(plaza==null)return false;
   Map<String,Long> state=ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of());
@@ -859,7 +859,7 @@ public final class Roads {
     var direction=alongX?net.minecraft.core.Direction.EAST:net.minecraft.core.Direction.NORTH;
     final int lane=side; final boolean horizontal=alongX;
     if(gapAnchored(level,target,direction,p -> straightVillageLaneCell(plaza,ref.bell(),length,built,p,horizontal,lane)
-      && !Lighting.protectedVillageCell(level,ref,p) && !isProtectedLaneCell(level,p)))return true;
+      && !de.villagerplus.village.ZonePolicy.blocksWork(ref, p) && !isProtectedLaneCell(level,p)))return true;
    }
   }
   return false;
@@ -1222,10 +1222,55 @@ public final class Roads {
  static int routeLength(BlockPos a,BlockPos b) { return Math.abs(b.getX()-a.getX())+Math.abs(b.getZ()-a.getZ()); }
 
  /** True only for cells on the already-built, persistent plaza-to-bell village path corridor. */
+ public static void integratePlazaFootprint(ServerLevel level,VillageRef ref,BlockPos plaza) {
+  if(level==null||ref==null||plaza==null||ref.bellEntity()==null)return;
+  Map<String,Long> state=new HashMap<>(ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of()));
+  int length=routeLength(plaza,ref.bell());
+  long built=state.getOrDefault("center",0L);
+  int integrated=0;
+  for(int cursor=0;cursor<=length;cursor++) {
+   if(!routeCursorInsidePlaza(level,plaza,ref.bell(),cursor,length))break;
+   integrated=cursor+1;
+  }
+  if(integrated>0)state.put("center",Math.max(built,(long)integrated));
+  for(int cursor=0;cursor<integrated;cursor++) {
+   state.remove(gradeYKey("center",cursor));state.remove(gradeTouchedKey("center",cursor));
+   state.remove("light:center:"+cursor);
+   for(int stage=1;stage<=3;stage++)state.remove("light:center:"+cursor+":"+stage);
+  }
+  ref.bellEntity().setAttached(VillagerPlus.ROADS,Map.copyOf(state));
+  ref.dirty();
+ }
+
+ private static boolean routeCursorInsidePlaza(ServerLevel level,BlockPos plaza,BlockPos bell,int cursor,int length) {
+  BlockPos route=routePoint(plaza,bell,cursor,length);
+  boolean alongX=alongXAt(plaza,bell,cursor,length);
+  for(int side=-1;side<=1;side++) {
+   int x=route.getX()+(alongX?0:side),z=route.getZ()+(alongX?side:0);
+   BlockPos column=new BlockPos(x,route.getY(),z);
+   if(!de.villagerplus.world.LoadedColumns.ready(level,column))return false;
+   int groundY=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)-1;
+   BlockPos ground=new BlockPos(x,groundY,z);
+   if(!Plaza.inside(plaza,ground,0))return false;
+   BlockState surface=level.getBlockState(ground);
+   if(!surface.getFluidState().isEmpty())return false;
+   if(surface.is(Blocks.DIRT_PATH)||isRoadSurface(surface))continue;
+   if(!VillageStyle.natural(surface)&&surface.isFaceSturdy(level,ground,net.minecraft.core.Direction.UP))continue;
+   return false;
+  }
+  return true;
+ }
+
  public static boolean trustedVillagePathCell(ServerLevel level,VillageRef ref,BlockPos cell) {
   if(ref==null||cell==null||!de.villagerplus.world.LoadedColumns.ready(level, cell))return false;
   BlockPos plaza=Market.of(ref).plaza().orElse(null);
   if(plaza==null)return false;
+  if(Plaza.inside(plaza,cell,0)) {
+   BlockState surface=level.getBlockState(cell);
+   if(!surface.getFluidState().isEmpty())return false;
+   return surface.is(Blocks.DIRT_PATH)||isRoadSurface(surface)
+    ||(!VillageStyle.natural(surface)&&surface.isFaceSturdy(level,cell,net.minecraft.core.Direction.UP));
+  }
   Map<String,Long> state=ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of());
   long saved=state.getOrDefault("center",0L);
   int length=routeLength(plaza,ref.bell());
@@ -1673,6 +1718,7 @@ public final class Roads {
   int length=routeLength(a,b);if(length==0)return;
   int last=overland?length/2+1:length; // Überland: nur die eigene Hälfte
   int cursor=cursorFor(state,key,a,b);
+  boolean plazaCenterRoute=!overland&&"center".equals(key);
   for(int count=0;cursor<=last&&count<budget;cursor++,count++) {
    boolean alongX=alongXAt(a,b,cursor,length);
    BlockPos route=routePoint(a,b,cursor,length);int x=route.getX(),z=route.getZ();
@@ -1687,7 +1733,9 @@ public final class Roads {
     int px=x+(alongX?0:side),pz=z+(alongX?side:0);
     if(overland) paveOverland(level,px,pz,side==0);
     else {
-     int targetY=surface(level,px,pz).getY();
+     BlockPos ground=surface(level,px,pz);
+     if(plazaCenterRoute&&Plaza.inside(a,new BlockPos(px,ground.getY(),pz),0))continue;
+     int targetY=ground.getY();
      if(previous!=null) {
       int previousX=previous.getX()+(alongX?0:side),previousZ=previous.getZ()+(alongX?side:0);
       int previousY=pathY(level,previousX,previousZ);

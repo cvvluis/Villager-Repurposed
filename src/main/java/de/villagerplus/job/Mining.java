@@ -6,6 +6,7 @@ import de.villagerplus.VillagerPlus;
 import de.villagerplus.village.VillageData;
 import de.villagerplus.village.Lager;
 import de.villagerplus.village.VillageRef;
+import de.villagerplus.village.RecipeIndex;
 import de.villagerplus.village.VillageStyle;
 import de.villagerplus.build.Palette;
 import de.villagerplus.build.Supply;
@@ -1733,6 +1734,8 @@ public final class Mining {
 
 	static boolean breakBlock(Ctx c, BlockPos p, ItemStack tool) {
 		ServerLevel level = c.level();
+		VillageRef ref = c.village();
+		if (ref != null && de.villagerplus.village.ZonePolicy.blocksWork(ref, p)) return false;
 		BlockState s = level.getBlockState(p);
 		if (!usablePickaxe(tool)
 			|| s.isAir() || !s.getFluidState().isEmpty() || !mineable(s)) {
@@ -1924,8 +1927,8 @@ public final class Mining {
 
 	private static int largestMineSupplyRecipeBatch(Ctx c, net.minecraft.world.item.Item item) {
 		int largest = 0;
-		for (var holder : c.level().recipeAccess().getRecipes()) {
-			if (!(holder.value() instanceof net.minecraft.world.item.crafting.CraftingRecipe recipe)) continue;
+		for (var holder : RecipeIndex.crafting()) {
+			net.minecraft.world.item.crafting.CraftingRecipe recipe = holder.value();
 			ItemStack preview = RecipeCrafting.preview(recipe);
 			if (preview != null && preview.is(item)) largest = Math.max(largest, preview.getCount());
 		}

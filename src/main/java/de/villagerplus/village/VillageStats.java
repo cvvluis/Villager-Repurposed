@@ -105,6 +105,11 @@ public final class VillageStats {
 		long fest = Festival.daysUntil(level);
 		out.add("Dorffest: " + (fest == 0 ? "heute Abend!" : "in " + fest + " Tagen") + " (alle " + de.villagerplus.Config.FESTIVAL_PERIOD_DAYS + " Tage, ab " + de.villagerplus.Config.FESTIVAL_MIN_POP + " Einwohnern)");
 		out.addAll(Market.lines(ref));
+		SiteSearchDiagnostics siteSearch = SiteSearchDiagnostics.of(ref);
+		if (siteSearch != null) {
+			String detail = siteSearch.detailLine(level);
+			if (detail != null && !detail.isBlank()) out.add("Bauplatzsuche: " + detail);
+		}
 		return out;
 	}
 

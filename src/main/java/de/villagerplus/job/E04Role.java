@@ -1,9 +1,9 @@
 package de.villagerplus.job;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.core.Holder;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
-import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.npc.villager.VillagerProfession;
 
 /** Server-authoritative profession identities that receive the E04 visual treatment. */
@@ -14,14 +14,21 @@ public enum E04Role {
 	ENGINEER,
 	ADVENTURER;
 
+	private static final Map<Identifier, E04Role> BY_PROFESSION = new ConcurrentHashMap<>();
+
 	public static E04Role fromProfession(Holder<VillagerProfession> profession) {
-		if (hasJobTag(profession, "adventurer")) return ADVENTURER;
-		if (hasJobTag(profession, "guard") || hasJobTag(profession, "lookout")) return GUARD;
-		if (hasJobTag(profession, "rail_builder")) return ENGINEER;
-		if (hasJobTag(profession, "trader") || hasJobTag(profession, "merchant")) return TRADER;
+		if (profession == null) return NONE;
 		return profession.unwrapKey()
-			.map(key -> fromProfessionId(key.identifier()))
+			.map(key -> BY_PROFESSION.computeIfAbsent(key.identifier(), id -> classify(profession, id)))
 			.orElse(NONE);
+	}
+
+	private static E04Role classify(Holder<VillagerProfession> profession, Identifier id) {
+		if (JobTags.has(profession, "adventurer")) return ADVENTURER;
+		if (JobTags.has(profession, "guard") || JobTags.has(profession, "lookout")) return GUARD;
+		if (JobTags.has(profession, "rail_builder")) return ENGINEER;
+		if (JobTags.has(profession, "trader") || JobTags.has(profession, "merchant")) return TRADER;
+		return fromProfessionId(id);
 	}
 
 	/** Classifies the registry key only; this also makes the role rules directly checkable. */
@@ -49,11 +56,5 @@ public enum E04Role {
 			if (value.contains(needle)) return true;
 		}
 		return false;
-	}
-
-	private static boolean hasJobTag(Holder<VillagerProfession> profession, String job) {
-		TagKey<VillagerProfession> tag = TagKey.create(Registries.VILLAGER_PROFESSION,
-			Identifier.fromNamespaceAndPath("villagerplus", "job/" + job));
-		return profession.is(tag);
 	}
 }

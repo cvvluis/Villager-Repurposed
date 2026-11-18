@@ -9,6 +9,9 @@ import de.villagerplus.job.JobManager;
 import de.villagerplus.job.Mining;
 
 import de.villagerplus.village.Board;
+import de.villagerplus.village.BoardWayfinding;
+import de.villagerplus.village.Market;
+import de.villagerplus.village.Plaza;
 
 import de.villagerplus.village.Names;
 
@@ -52,6 +55,11 @@ public final class StatusCommand {
 
 	}
 
+	private static boolean canTeleport(CommandSourceStack src) {
+		return src.getPlayer() != null && src.getServer() != null
+			&& src.getServer().getPlayerList().isOp(src.getPlayer().nameAndId());
+	}
+
 	public static void register() {
 
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> register(dispatcher));
@@ -67,6 +75,12 @@ public final class StatusCommand {
 		String shown = tab.equals("details") || tab.equals("expeditionen") ? tab : "uebersicht";
 		VillageRef ref = Villages.villageNear(level, at, 160);
 		if (ref == null) return 0;
+		BlockPos board = BoardWayfinding.officialBoard(ref);
+		if (board != null) {
+			boolean op = canTeleport(src);
+			src.sendSuccess(() -> Component.translatable("message.villagerplus.board_coords_line",
+				BoardWayfinding.coordinatesComponent(board, op)), false);
+		}
 		Board.show(line -> src.sendSuccess(() -> line, false), level, ref, shown);
 		return 1;
 
@@ -438,7 +452,10 @@ public final class StatusCommand {
 						VillageData d = bell.getAttached(VillagerPlus.VILLAGE);
 						VillageRef ref = new VillageRef(p.immutable(), d, bell);
 
-						String info = "Dorf an Glocke " + p.toShortString() + " [" + de.villagerplus.village.VillageAdmin.summary(ref) + "]: Kiste " + d.chest.map(BlockPos::toShortString).orElse("-")
+						BlockPos boardPos = d.extra.board.orElse(null);
+						String boardPart = boardPos == null ? "-" : boardPos.toShortString();
+						String info = "Dorf an Glocke " + p.toShortString() + " [" + de.villagerplus.village.VillageAdmin.summary(ref) + "]: Dorftafel " + boardPart
+							+ ", Kiste " + d.chest.map(BlockPos::toShortString).orElse("-")
 
 							+ ", Häuser gebaut " + d.houses + ", Felder " + d.farms + ", Brunnen " + (d.wellBuilt ? "ja" : "nein") + ", Rathaus " + (d.townHallBuilt ? "ja" : "nein") + ", Mauer " + (d.wallBuilt ? "ja" : "nein")
 
@@ -454,6 +471,11 @@ public final class StatusCommand {
 							+ ", Reichtum-Aufbauten " + d.extra.decor + ", Mine " + Mining.describe(d)
 							+ ", Baumaterial " + VillageStats.materialSummary(level, ref);
 
+						if (boardPos != null) {
+							BlockPos coords = boardPos;
+							src.sendSuccess(() -> Component.translatable("message.villagerplus.board_coords_line",
+								BoardWayfinding.coordinatesComponent(coords, canTeleport(src))), false);
+						}
 						src.sendSuccess(() -> Component.literal(info), false);
 
 					}
@@ -462,7 +484,25 @@ public final class StatusCommand {
 
 				return count;
 
-			})));
+			})
+			.then(Commands.literal("platz").then(Commands.literal("neu")
+				.requires(src -> Commands.LEVEL_GAMEMASTERS.check(src.permissions())).executes(ctx -> {
+				ServerLevel level = ctx.getSource().getLevel();
+				BlockPos at = BlockPos.containing(ctx.getSource().getPosition());
+				VillageRef ref = Villages.villageNear(level, at, 160);
+				if (ref == null) {
+					ctx.getSource().sendFailure(Component.translatable("message.villagerplus.platz_neu_none"));
+					return 0;
+				}
+				boolean built = Plaza.rebuildAtCentroid(level, ref, null);
+				if (!built) {
+					ctx.getSource().sendFailure(Component.translatable("message.villagerplus.platz_neu_failed"));
+					return 0;
+				}
+				ctx.getSource().sendSuccess(() -> Component.translatable("message.villagerplus.platz_neu_ok",
+					Market.of(ref).plaza().map(BlockPos::toShortString).orElse("?")), true);
+				return 1;
+			})))));
 
 	}
 

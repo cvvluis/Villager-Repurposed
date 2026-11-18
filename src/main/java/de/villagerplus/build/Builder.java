@@ -15,8 +15,12 @@ import de.villagerplus.village.Sites;
 import de.villagerplus.village.Roads;
 import de.villagerplus.village.VillageData;
 import de.villagerplus.village.VillageRef;
+import de.villagerplus.village.SiteSearchDiagnostics;
+import de.villagerplus.village.VillagePoiCache;
 import de.villagerplus.village.VillageStyle;
+import de.villagerplus.village.VillageStyleCache;
 import de.villagerplus.village.Villages;
+import de.villagerplus.world.LoadedPoi;
 import de.villagerplus.village.NaturalSitePreparation;
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -33,11 +37,13 @@ import java.util.WeakHashMap;
 import java.util.stream.Collectors;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.Level;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
@@ -191,6 +197,15 @@ public final class Builder {
 		return siteCandidateAnchor(c, ref, type, variant, design, style, candidate, facingAnchor) != null;
 	}
 
+	private static boolean templateAnchorPlotFits(ServerLevel level, BlockPos anchor, Direction outward,
+			Architect.Design design, int clearance) {
+		HouseTemplate template = TemplateLibrary.get(templateTypeFor(design), TemplateLibrary.family(biomeAt(level, anchor)));
+		if (template == null) return false;
+		boolean mirrored = (Long.hashCode(anchor.asLong()) & 1) == 1;
+		HouseTemplate.Bounds bounds = template.bounds(outward, mirrored);
+		return Sites.housePlot(level, anchor, bounds.minX(), bounds.maxX(), bounds.minZ(), bounds.maxZ(), clearance, outward);
+	}
+
 	private static BlockPos siteCandidateAnchor(Ctx c, VillageRef ref, String type, int variant, Architect.Design design,
 			VillageStyle style, BlockPos candidate, BlockPos facingAnchor) {
 		SITE_REJECT[0]++;
@@ -198,9 +213,24 @@ public final class Builder {
 		if (anchor == null) { SITE_REJECT[1]++; return null; }
 		if (!Sites.villageLevel(c.level(), ref.bell(), anchor.getY())) { SITE_REJECT[2]++; return null; }
 		Direction outward = Sites.facingTowards(anchor, facingAnchor);
-		List<Step> candidateSteps = newHouseTemplatePreview(c.level(), ref, type, design, anchor, outward);
-		boolean templateCandidate = candidateSteps != null;
-		if (!templateCandidate) candidateSteps = sitingSteps(c, ref, type, variant, design, style, anchor, facingAnchor);
+		boolean templateHouse = Blueprints.HOUSE.equals(type) && templateEligible(design);
+		List<Step> candidateSteps;
+		boolean templateCandidate = false;
+		if (templateHouse) {
+			int clearance = Math.max(siteHeadroom(type, variant, design), templateHeadroom(design));
+			if (!templateAnchorPlotFits(c.level(), anchor, outward, design, clearance)) {
+				SITE_REJECT[3]++;
+				return null;
+			}
+			candidateSteps = newHouseTemplatePreview(c.level(), ref, type, design, anchor, outward);
+			templateCandidate = candidateSteps != null;
+			if (!templateCandidate) {
+				SITE_REJECT[3]++;
+				return null;
+			}
+		} else {
+			candidateSteps = sitingSteps(c, ref, type, variant, design, style, anchor, facingAnchor);
+		}
 		List<Step> candidatePlan = candidateSteps;
 		if (type.equals(Blueprints.HOUSE)) {
 			int clearance = design == null ? Blueprints.headroom(type) : siteHeadroom(type, variant, design);
@@ -1073,8 +1103,7 @@ public final class Builder {
 			boolean needHouse = false;
 			if (fullStoreNeedsExpansion && firstPublicStorageMissing) {
 				long homeless = currentResidents.stream().filter(v -> !Housing.hasHome(v)).count();
-				long homes = c.level().getPoiManager().getCountInRange(h -> h.is(PoiTypes.HOME), ref.bell(), Config.VILLAGE_RADIUS,
-					PoiManager.Occupancy.ANY);
+				long homes = VillagePoiCache.homeCount(c.level(), ref.bell());
 				needHouse = needsHouse(currentResidents.size(), homeless, homes);
 			}
 			if (!helper && shouldExpandStorageUnderPressure(d.planType, pendingSpecial, fullStoreNeedsExpansion,
@@ -2913,8 +2942,8 @@ public final class Builder {
 	}
 
 	private static int houseExpansionMinRadius(ServerLevel level, VillageRef ref) {
-		List<BlockPos> homePois = level.getPoiManager().getInRange(home -> home.is(PoiTypes.HOME), ref.bell(),
-			Config.VILLAGE_RADIUS, PoiManager.Occupancy.ANY).map(poi -> poi.getPos().immutable()).toList();
+		List<BlockPos> homePois = LoadedPoi.positionsInRange(level, home -> home.is(PoiTypes.HOME), ref.bell(),
+			Config.VILLAGE_RADIUS, PoiManager.Occupancy.ANY);
 		int outerHomeRadius = 0;
 		for (BlockPos home : homePois) {
 			long dx = (long) home.getX() - ref.bell().getX();
@@ -2983,9 +3012,8 @@ public final class Builder {
 			if (c.now() - lastPlanDiag > 2400) {
 				lastPlanDiag = c.now();
 				if (homeless > 0) {
-					var pois = level.getPoiManager();
-					long beds = pois.getCountInRange(h -> h.is(PoiTypes.HOME), ref.bell(), Config.VILLAGE_RADIUS, PoiManager.Occupancy.ANY);
-					long freeBeds = pois.getCountInRange(h -> h.is(PoiTypes.HOME), ref.bell(), Config.VILLAGE_RADIUS, PoiManager.Occupancy.HAS_SPACE);
+					long beds = VillagePoiCache.homeCount(level, ref.bell());
+					long freeBeds = VillagePoiCache.freeHomeCount(level, ref.bell());
 					long homelessAdults = all.stream().filter(v -> !v.isBaby() && !Housing.hasHome(v)).count();
 					LOGGER.info("Villagers: Repurposed: Betten-Diagnose bei {} (Tick {}): Betten {}, freie POI-Tickets {}, Erwachsene ohne HOME {}, insgesamt ohne HOME {}, Hausbedarf {}",
 						ref.bell().toShortString(), c.now(), beds, freeBeds, homelessAdults, homeless, needsHouse(pop, homeless, beds));
@@ -2998,8 +3026,7 @@ public final class Builder {
 			if (cooldownBlocksBuild(ref, pop, homeless, c.now())) {
 				return false;
 			}
-			long homes = level.getPoiManager().getCountInRange(h -> h.is(PoiTypes.HOME), ref.bell(), Config.VILLAGE_RADIUS,
-				PoiManager.Occupancy.ANY);
+			long homes = VillagePoiCache.homeCount(level, ref.bell());
 			if (d.popAtLastHouse == 0) { d.popAtLastHouse = pop; ref.dirty(); }
 			boolean needHouse = needsHouse(pop, homeless, homes);
 			// Dev hook only: without bed demand (CTOV villages start with more beds than residents) no house is ever planned.
@@ -3087,7 +3114,7 @@ public final class Builder {
 		// The POI edge and managed house count are sampled once for this complete, synchronous placement attempt.
 		int houseMinRadiusForPlan = type.equals(Blueprints.HOUSE) ? houseExpansionMinRadius(level, ref) : 0;
 
-		VillageStyle style = VillageStyle.detect(level, ref.bell(), c.v());
+		VillageStyle style = VillageStyleCache.detect(level, ref.bell(), c.v());
 		Direction dir = null;
 		BlockPos site = null;
 		BlockPos source = null;
@@ -3103,8 +3130,8 @@ public final class Builder {
 			Architect.SizeTier requestedTier = nextSizeTier(ref, type);
 			int templateMin = type.equals(Blueprints.HOUSE) ? houseMinRadiusForPlan : 6;
 			int templateMax = type.equals(Blueprints.HOUSE) ? Math.min(88, Config.VILLAGE_RADIUS - 8) : 28;
-			List<BlockPos> beds = level.getPoiManager().getInRange(h -> h.is(PoiTypes.HOME), ref.bell(), Config.VILLAGE_RADIUS,
-				PoiManager.Occupancy.ANY).map(r -> r.getPos().immutable()).collect(Collectors.toCollection(ArrayList::new));
+			List<BlockPos> beds = new ArrayList<>(LoadedPoi.positionsInRange(level, h -> h.is(PoiTypes.HOME), ref.bell(),
+				Config.VILLAGE_RADIUS, PoiManager.Occupancy.ANY));
 			for (int attempt = 0; attempt < 40 && site == null && !beds.isEmpty(); attempt++) {
 				BlockPos cand = ZoneAwareSites.candidate(level, ref, type, c.v().getRandom(), templateMin, templateMax);
 				if (cand == null) {
@@ -3189,7 +3216,7 @@ public final class Builder {
 						});
 				}
 				if (site == null) {
-					c.st().buildCheckAt = Math.max(c.st().buildCheckAt, c.now() + FAILED_SITE_SWEEP_RETRY_TICKS);
+					noteFailedSiteSweep(c, ref);
 					return false;
 				}
 				if (steps == null) {
@@ -3237,14 +3264,19 @@ public final class Builder {
 				civicReject[22]++;
 				return true;
 			};
-			Sites.margin = 2;
-			Sites.SearchPage page = Sites.findSystematicPage(level, ref.bell(), min, max,
-				-half, half, -half, half, headroom + (search.tolerant ? 1 : 0), search.terraced ? Sites.TERRACED_CIVIC_RELIEF : search.tolerant ? 1 : 0, search.terraced, search.nextCandidate,
-				CIVIC_SITE_CANDIDATE_BUDGET, search.phaseSeed, search.visitedColumns(), fits, civicAnchor.getY());
+			int civicMargin = Sites.margin;
+			Sites.SearchPage page;
+			try {
+				Sites.margin = 2;
+				page = Sites.findSystematicPage(level, ref.bell(), min, max,
+					-half, half, -half, half, headroom + (search.tolerant ? 1 : 0), search.terraced ? Sites.TERRACED_CIVIC_RELIEF : search.tolerant ? 1 : 0, search.terraced, search.nextCandidate,
+					CIVIC_SITE_CANDIDATE_BUDGET, search.phaseSeed, search.visitedColumns(), fits, civicAnchor.getY());
+			} finally {
+				Sites.margin = civicMargin;
+			}
 			for (int i = 0; i < 16; i++) civicReject[i] += Sites.SCAN_REJECT[i] - scanBefore[i];
 			search.nextCandidate = page.nextCandidate();
 			persistCivicSiteSearch(ref, search);
-			Sites.margin = 3;
 			if (page.site() == null) {
 				noteSpecialSiteSearchFailure(ref, c.now());
 				boolean completedCycle = page.complete() && search.advancePass(c.now());
@@ -3328,6 +3360,8 @@ public final class Builder {
 					headroom = Landmarks.headroom(type);
 				}
 				// Die ersten Versuche halten 3 Bloecke Abstand zu Nachbarn, erst der letzte nimmt mit 2 vorlieb (sehr enge Doerfer).
+				int attemptMargin = Sites.margin;
+				try {
 				// Aufgelockerte Parzellen: die ersten Versuche halten 5 Bloecke Abstand (Vorgarten, Freiflaeche), spaeter 3, zuletzt 2.
 				Sites.margin = attempt >= 3 ? 2 : attempt >= 2 ? 3 : 5;
 				int searchMax = Math.min(Config.VILLAGE_RADIUS - 8, max + attempt * 8);
@@ -3375,28 +3409,34 @@ public final class Builder {
 					// bounded candidates with the rooted-tree-aware house preflight before giving up on this design.
 					site = findHouseLot(c, ref, variant, design, style, min, searchMax, normalAttempts);
 				}
-				Sites.margin = 3;
+				} finally {
+					Sites.margin = attemptMargin;
+				}
 
 			}
 			if (site == null && architect(type) && !needsNaturalHousePreparation(type, variant, source != null)) {
 				// Dense CTOV fortifications can defeat random placement even when a safe outer plot exists.
 				// Search the loaded village area systematically once before postponing this milestone.
-				Sites.margin = 2;
-				int systematicMax = Config.VILLAGE_RADIUS - 8;
-				int systematicHalf = half;
-				int systematicHeadroom = headroom;
-				int systematicVariant = variant;
-				Architect.Design systematicDesign = design;
-				java.util.function.Predicate<BlockPos> systematicFits = p -> {
-					return siteCandidateFits(c, ref, type, systematicVariant, systematicDesign, style, p, ref.bell());
-				};
-				site = ZoneAwareSites.findSystematic(level, ref, type, c.v().getRandom(), min, systematicMax,
-					-systematicHalf, systematicHalf, -systematicHalf, systematicHalf, systematicHeadroom, systematicFits);
-				if (site == null) {
-					site = ZoneAwareSites.findTolerantSystematic(level, ref, type, c.v().getRandom(), min, systematicMax,
-						-systematicHalf, systematicHalf, -systematicHalf, systematicHalf, systematicHeadroom + 1, systematicFits);
+				int systematicMargin = Sites.margin;
+				try {
+					Sites.margin = 2;
+					int systematicMax = Config.VILLAGE_RADIUS - 8;
+					int systematicHalf = half;
+					int systematicHeadroom = headroom;
+					int systematicVariant = variant;
+					Architect.Design systematicDesign = design;
+					java.util.function.Predicate<BlockPos> systematicFits = p -> {
+						return siteCandidateFits(c, ref, type, systematicVariant, systematicDesign, style, p, ref.bell());
+					};
+					site = ZoneAwareSites.findSystematic(level, ref, type, c.v().getRandom(), min, systematicMax,
+						-systematicHalf, systematicHalf, -systematicHalf, systematicHalf, systematicHeadroom, systematicFits);
+					if (site == null) {
+						site = ZoneAwareSites.findTolerantSystematic(level, ref, type, c.v().getRandom(), min, systematicMax,
+							-systematicHalf, systematicHalf, -systematicHalf, systematicHalf, systematicHeadroom + 1, systematicFits);
+					}
+				} finally {
+					Sites.margin = systematicMargin;
 				}
-				Sites.margin = 3;
 			}
 			if (site == null && needsNaturalHousePreparation(type, variant, source != null)) {
 				HouseSiteStep step = stepHouseSiteSearch(c, ref, style, type, ongoingHouseSearch, variant, houseMinRadiusForPlan);
@@ -3418,18 +3458,21 @@ public final class Builder {
 			if (site == null) {
 				if (c.now() - lastDiag > 1200) {
 					lastDiag = c.now();
-					LOGGER.info("Villagers: Repurposed: Kein Bauplatz fuer '{}' (halbe Kante {}, Hoehe {}); Kandidaten/Ablehnung [geprueft, Anker, Hoehenlage, Grundstueck, Hof, Parzelle, Zone, Konflikt, Vorbereitung, Weg] = {}", type, half, headroom, java.util.Arrays.toString(SITE_REJECT));
-					LOGGER.info("Villagers: Repurposed: Bauplatz-Spaltenablehnung {} {}", Sites.SCAN_REJECT_LEGEND, java.util.Arrays.toString(Sites.SCAN_REJECT));
-					LOGGER.info("Villagers: Repurposed: Bauplatz-Diagnose Gelaende {} Grundstueck [Gebaeude, Abstand, Zugang-Boden, Zugang-Hoehe, Strasse, Ungeladen] {}", GRADE_REJECT, java.util.Arrays.toString(Sites.PLOT_REJECT));
+					SiteSearchDiagnostics.record(ref, c.now(), type, SITE_REJECT, GRADE_REJECT, Sites.PLOT_BLOCKERS);
+					if (Config.DEBUG) {
+						LOGGER.info("Villagers: Repurposed: Kein Bauplatz fuer '{}' (halbe Kante {}, Hoehe {}); Kandidaten/Ablehnung [geprueft, Anker, Hoehenlage, Grundstueck, Hof, Parzelle, Zone, Konflikt, Vorbereitung, Weg] = {}", type, half, headroom, java.util.Arrays.toString(SITE_REJECT));
+						LOGGER.info("Villagers: Repurposed: Bauplatz-Spaltenablehnung {} {}", Sites.SCAN_REJECT_LEGEND, java.util.Arrays.toString(Sites.SCAN_REJECT));
+						LOGGER.info("Villagers: Repurposed: Bauplatz-Diagnose Gelaende {} Grundstueck [Gebaeude, Abstand, Zugang-Boden, Zugang-Hoehe, Strasse, Ungeladen] {}", GRADE_REJECT, java.util.Arrays.toString(Sites.PLOT_REJECT));
+						if (!Sites.PLOT_BLOCKERS.isEmpty()) {
+							LOGGER.info("Villagers: Repurposed: Bauplatz-Blocker {} (Beispiele {})", Sites.PLOT_BLOCKERS, Sites.PLOT_BLOCKER_EXAMPLES);
+						}
+					}
 					java.util.Arrays.fill(SITE_REJECT, 0);
 					java.util.Arrays.fill(Sites.SCAN_REJECT, 0);
 					GRADE_REJECT.clear();
 					java.util.Arrays.fill(Sites.PLOT_REJECT, 0);
-					if (!Sites.PLOT_BLOCKERS.isEmpty()) {
-						LOGGER.info("Villagers: Repurposed: Bauplatz-Blocker {} (Beispiele {})", Sites.PLOT_BLOCKERS, Sites.PLOT_BLOCKER_EXAMPLES);
-						Sites.PLOT_BLOCKERS.clear();
-						Sites.PLOT_BLOCKER_EXAMPLES.clear();
-					}
+					Sites.PLOT_BLOCKERS.clear();
+					Sites.PLOT_BLOCKER_EXAMPLES.clear();
 				}
 				if (type.equals(Blueprints.PEN)) {
 					PEN_SITE_BLOCKED_UNTIL.put(ref.bell().asLong(), c.now() + PEN_SITE_RETRY_TICKS);
@@ -3440,7 +3483,7 @@ public final class Builder {
 				// A full random + tolerant + systematic sweep that found nothing is expensive (hundreds of
 				// milliseconds on a hilly CTOV village) and the terrain will not change within seconds.
 				if (ongoingHouseSearch != null) c.st().buildCheckAt = Math.max(c.st().buildCheckAt, ongoingHouseSearch.retryAt);
-				else c.st().buildCheckAt = Math.max(c.st().buildCheckAt, c.now() + FAILED_SITE_SWEEP_RETRY_TICKS);
+				else noteFailedSiteSweep(c, ref);
 				return false;
 			}
 			if (dir == null) {
@@ -3705,34 +3748,39 @@ public final class Builder {
 			: type.equals(Blueprints.STORAGE) || type.equals(Blueprints.SCHOOL) || Blueprints.special(type) ? 72 : 36;
 		BlockPos facingAnchor = civicSite(type) ? civicSiteAnchor(level, ref) : ref.bell();
 		java.util.function.Predicate<BlockPos> fits = p -> siteCandidateFits(c, ref, type, variant, design, style, p, facingAnchor);
-		Sites.margin = 2;
-		int searchMax = Math.min(Config.VILLAGE_RADIUS - 8, max);
-		BlockPos site = null;
-		if (civicSite(type)) {
-			// After rejecting a walking-inaccessible plot, try remaining civic plots from near to far.
-			site = ZoneAwareSites.findSystematic(level, ref, type, c.v().getRandom(), min, searchMax,
-				-half, half, -half, half, headroom, fits);
-			if (site == null) {
-				site = ZoneAwareSites.findTolerantSystematic(level, ref, type, c.v().getRandom(), min, searchMax,
-					-half, half, -half, half, headroom + 1, fits);
+		int replotMargin = Sites.margin;
+		BlockPos site;
+		try {
+			Sites.margin = 2;
+			int searchMax = Math.min(Config.VILLAGE_RADIUS - 8, max);
+			site = null;
+			if (civicSite(type)) {
+				// After rejecting a walking-inaccessible plot, try remaining civic plots from near to far.
+				site = ZoneAwareSites.findSystematic(level, ref, type, c.v().getRandom(), min, searchMax,
+					-half, half, -half, half, headroom, fits);
+				if (site == null) {
+					site = ZoneAwareSites.findTolerantSystematic(level, ref, type, c.v().getRandom(), min, searchMax,
+						-half, half, -half, half, headroom + 1, fits);
+				}
 			}
-		}
-		if (site == null) site = ZoneAwareSites.find(level, ref, type, c.v().getRandom(), min, searchMax, half, headroom, 24, fits);
-		if (site == null) {
-			site = ZoneAwareSites.findTolerant(level, ref, type, c.v().getRandom(), min, searchMax, -half, half, -half, half, headroom + 1, 48, fits);
-		}
-		if (site == null && needsNaturalHousePreparation(type, variant, false)) {
-			site = findHouseLot(c, ref, variant, design, style, min, searchMax, 96);
-		}
-		if (site == null && architect(type) && !needsNaturalHousePreparation(type, variant, false)) {
-			int systematicMax = Config.VILLAGE_RADIUS - 8;
-			site = ZoneAwareSites.findSystematic(level, ref, type, c.v().getRandom(), min, systematicMax, -half, half, -half, half, headroom, fits);
+			if (site == null) site = ZoneAwareSites.find(level, ref, type, c.v().getRandom(), min, searchMax, half, headroom, 24, fits);
 			if (site == null) {
-				site = ZoneAwareSites.findTolerantSystematic(level, ref, type, c.v().getRandom(), min, systematicMax,
-					-half, half, -half, half, headroom + 1, fits);
+				site = ZoneAwareSites.findTolerant(level, ref, type, c.v().getRandom(), min, searchMax, -half, half, -half, half, headroom + 1, 48, fits);
 			}
+			if (site == null && needsNaturalHousePreparation(type, variant, false)) {
+				site = findHouseLot(c, ref, variant, design, style, min, searchMax, 96);
+			}
+			if (site == null && architect(type) && !needsNaturalHousePreparation(type, variant, false)) {
+				int systematicMax = Config.VILLAGE_RADIUS - 8;
+				site = ZoneAwareSites.findSystematic(level, ref, type, c.v().getRandom(), min, systematicMax, -half, half, -half, half, headroom, fits);
+				if (site == null) {
+					site = ZoneAwareSites.findTolerantSystematic(level, ref, type, c.v().getRandom(), min, systematicMax,
+						-half, half, -half, half, headroom + 1, fits);
+				}
+			}
+		} finally {
+			Sites.margin = replotMargin;
 		}
-		Sites.margin = 3;
 		return site == null ? null : naturalHouseAnchor(level, type, variant, site);
 	}
 
@@ -4818,7 +4866,7 @@ public final class Builder {
 		Identifier biome = biomeAt(level, origin);
 		HouseTemplate template = TemplateLibrary.get(type, TemplateLibrary.family(biome));
 		if (template == null) return null;
-		VillageStyle finalStyle = VillageStyle.detect(level, ref.bell(), null);
+		VillageStyle finalStyle = VillageStyleCache.detect(level, ref.bell(), null);
 		boolean mirrored = (Long.hashCode(origin.asLong()) & 1) == 1;
 		return template.steps(origin, dir, Config.MATERIAL_COST_PERCENT, mirrored,
 			bl -> Supply.substitute(bl, finalStyle, biome), true);
@@ -4884,7 +4932,7 @@ public final class Builder {
 			if (t == null) {
 				return null;
 			}
-			VillageStyle style = STYLES.computeIfAbsent(origin.asLong(), k -> VillageStyle.detect(level, ref.bell(), c == null ? null : c.v()));
+			VillageStyle style = STYLES.computeIfAbsent(origin.asLong(), k -> VillageStyleCache.detect(level, ref.bell(), c == null ? null : c.v()));
 			// Bit 0 = gespiegelt, Bit 1 = Ersatzmaterial (erst wenn die Haendler das Fehlende nicht liefern konnten).
 			boolean substitute = (d.planVariant & 2) != 0;
 			steps = t.steps(origin, dir, Config.MATERIAL_COST_PERCENT, (d.planVariant & 1) != 0,
@@ -4892,7 +4940,7 @@ public final class Builder {
 					.map(k -> k.identifier()).orElse(Identifier.withDefaultNamespace("plains"))) : bl,
 				d.planType.equals(Blueprints.HOUSE));
 		} else {
-			VillageStyle style = STYLES.computeIfAbsent(origin.asLong(), k -> VillageStyle.detect(level, ref.bell(), c == null ? null : c.v()));
+			VillageStyle style = STYLES.computeIfAbsent(origin.asLong(), k -> VillageStyleCache.detect(level, ref.bell(), c == null ? null : c.v()));
 			steps = Blueprints.create(d.planType, style, origin, dir, d.planVariant);
 		}
 		if (d.planType.equals(Blueprints.HOUSE) && steps != null && !templated) {
@@ -5349,6 +5397,8 @@ public final class Builder {
 
 	private static final java.util.Map<Long, java.util.Set<Long>> REJECTED_PLOTS = new java.util.HashMap<>();
 	private static final long FAILED_SITE_SWEEP_RETRY_TICKS = 1800L;
+	/** Per-village backoff after an expensive failed random/tolerant/systematic site sweep. */
+	private static final java.util.Map<Long, Long> FAILED_SITE_SWEEP_RETRY_UNTIL = new java.util.HashMap<>();
 	/** Since when the civic site search of the open milestone finds nothing (per village bell); houses may jump the queue after a while. */
 	private static final java.util.Map<Long, Long> SPECIAL_SEARCH_FAILING_SINCE = new java.util.HashMap<>();
 	static final long SPECIAL_SITE_STALL_TICKS = 3600L;
@@ -5378,8 +5428,15 @@ public final class Builder {
 	}
 
 	/** True while a failed first-pen site search is waiting for its retry; the farmer then plans fields instead of shadowing them with the pen. */
-	public static boolean penSiteRetryPending(VillageRef ref, long now) {
+	public 	static boolean penSiteRetryPending(VillageRef ref, long now) {
 		return ref != null && now < PEN_SITE_BLOCKED_UNTIL.getOrDefault(ref.bell().asLong(), 0L);
+	}
+
+	private static void noteFailedSiteSweep(Ctx c, VillageRef ref) {
+		long bell = ref.bell().asLong();
+		long until = Math.max(FAILED_SITE_SWEEP_RETRY_UNTIL.getOrDefault(bell, 0L), c.now() + FAILED_SITE_SWEEP_RETRY_TICKS);
+		FAILED_SITE_SWEEP_RETRY_UNTIL.put(bell, until);
+		c.st().buildCheckAt = Math.max(c.st().buildCheckAt, until);
 	}
 	/** A plan without material progress for this long swaps unobtainable palette blocks for local ones without a caravan. */
 	private static final long STALLED_PLAN_PALETTE_FALLBACK_TICKS = 3000L;
@@ -5854,6 +5911,11 @@ public final class Builder {
 	}
 	private record SavedBlock(BlockPos pos, BlockState state) { }
 
+	private static final long VILLAGE_STREET_CACHE_TICKS = 200L;
+	private record VillageStreetKey(ResourceKey<Level> dimension, long bell) { }
+	private record VillageStreetEntry(BlockPos street, long until) { }
+	private static final Map<VillageStreetKey, VillageStreetEntry> VILLAGE_STREET_CACHE = new HashMap<>();
+
 	/** Bell towers are not terrain: depth limits use the verified village street. */
 	public static int villageGroundY(ServerLevel level, BlockPos bell) {
 		BlockPos street = villageReturn(level, bell);
@@ -5862,6 +5924,18 @@ public final class Builder {
 
 	/** A street-level spot beside the bell, not the tower roof and not a cave under it. */
 	public static BlockPos villageReturn(ServerLevel level, BlockPos bell) {
+		long now = level.getGameTime();
+		VillageStreetKey key = new VillageStreetKey(level.dimension(), bell.asLong());
+		VillageStreetEntry cached = VILLAGE_STREET_CACHE.get(key);
+		if (cached != null && now < cached.until()) {
+			return cached.street();
+		}
+		BlockPos street = computeVillageReturn(level, bell);
+		VILLAGE_STREET_CACHE.put(key, new VillageStreetEntry(street, now + VILLAGE_STREET_CACHE_TICKS));
+		return street;
+	}
+
+	private static BlockPos computeVillageReturn(ServerLevel level, BlockPos bell) {
 		BlockPos best = null;
 		for (int dx = -4; dx <= 4; dx++) {
 			for (int dz = -4; dz <= 4; dz++) {
@@ -5879,6 +5953,63 @@ public final class Builder {
 			}
 		}
 		return best;
+	}
+
+	public static void clearWorldCaches() {
+		STEPS.clear();
+		PALETTES.clear();
+		TEMPLATES.clear();
+		STYLES.clear();
+		PREP_RECORD.clear();
+		FOOT.clear();
+		WALL_STYLES.clear();
+		WALL_CHECKED.clear();
+		STORAGE_BLOCKED.clear();
+		REJECTED_PLOTS.clear();
+		FAILED_SITE_SWEEP_RETRY_UNTIL.clear();
+		SPECIAL_SEARCH_FAILING_SINCE.clear();
+		PEN_SITE_BLOCKED_UNTIL.clear();
+		PLAN_STALLS.clear();
+		PLAN_DIAGNOSTICS.clear();
+		EARLY_PALETTE_SITES.clear();
+		BOOTSTRAP_BUILDERS.clear();
+		CIVIC_SITE_SEARCHES.clear();
+		CIVIC_DIAG_AT.clear();
+		CIVIC_REJECT_BY_VILLAGE.clear();
+		CIVIC_CLEARED.clear();
+		CIVIC_PREP_STATUS.clear();
+		forgetHouseSiteSearchMemory();
+		VILLAGE_STREET_CACHE.clear();
+		STAND_MOVE_ANCHOR.clear();
+		STAND_BEST_NODES.clear();
+		STAND_REPORTS.clear();
+		STAND_BEST.clear();
+		STAND_SEEN_AT.clear();
+		STAND_PROGRESS_AT.clear();
+		STAND_HANDOVERS.clear();
+		STAND_LAST.clear();
+		STAND_DIAG_AT.clear();
+		STAND_FAILURE_SINCE.clear();
+		routeCheckTick = Long.MIN_VALUE;
+		routeChecksThisTick = 0;
+		lastDiag = 0;
+		lastPlanDiag = -100000;
+		PUBLIC_STOCK_SCANS.clear();
+		BUILD_CREW_SNAPSHOTS.clear();
+		BUILD_CREW_STANDS.clear();
+		ROUTE_WAYPOINTS.clear();
+		BUILD_PROJECT_STAFFING_RETRIES.clear();
+	}
+
+	public static void onWorldUnload(ServerLevel level) {
+		String dimensionPrefix = level.dimension().identifier().toString() + ":";
+		HOUSE_SITE_SEARCHES.entrySet().removeIf(entry -> entry.getKey().startsWith(dimensionPrefix));
+		PUBLIC_STOCK_SCANS.remove(level);
+		BUILD_CREW_SNAPSHOTS.remove(level);
+		BUILD_CREW_STANDS.remove(level);
+		ROUTE_WAYPOINTS.remove(level);
+		BUILD_PROJECT_STAFFING_RETRIES.remove(level);
+		VILLAGE_STREET_CACHE.keySet().removeIf(key -> key.dimension() == level.dimension());
 	}
 
 	static BlockPos civicSiteAnchor(ServerLevel level, VillageRef ref) {

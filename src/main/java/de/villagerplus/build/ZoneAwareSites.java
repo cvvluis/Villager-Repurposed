@@ -48,6 +48,9 @@ public final class ZoneAwareSites {
 	/** Includes every planned decoration/roof/porch block, not only the Architect's main floor. */
 	public static boolean allowsPlan(VillageRef ref, String type, List<Step> steps) {
 		if (steps == null || steps.isEmpty()) return false;
+		for (Step step : steps) {
+			if (ZonePolicy.blocksWork(ref, step.pos())) return false;
+		}
 		int minX = steps.stream().mapToInt(s -> s.pos().getX()).min().orElseThrow();
 		int maxX = steps.stream().mapToInt(s -> s.pos().getX()).max().orElseThrow();
 		int minZ = steps.stream().mapToInt(s -> s.pos().getZ()).min().orElseThrow();
@@ -63,9 +66,9 @@ public final class ZoneAwareSites {
 			int homeKeepout = 6 + HOUSE_TO_HOUSE_CLEARANCE;
 			BlockPos center = new BlockPos((minX + maxX) / 2, ref.bell().getY(), (minZ + maxZ) / 2);
 			int searchRadius = homeKeepout + Math.max(maxX - minX, maxZ - minZ) / 2;
-			for (BlockPos home : level.getPoiManager().getInRange(h -> h.is(net.minecraft.world.entity.ai.village.poi.PoiTypes.HOME),
-				center, searchRadius, net.minecraft.world.entity.ai.village.poi.PoiManager.Occupancy.ANY)
-				.map(p -> p.getPos().immutable()).toList()) {
+			for (BlockPos home : de.villagerplus.world.LoadedPoi.positionsInRange(level,
+				h -> h.is(net.minecraft.world.entity.ai.village.poi.PoiTypes.HOME), center, searchRadius,
+				net.minecraft.world.entity.ai.village.poi.PoiManager.Occupancy.ANY)) {
 				int gapX = home.getX() < minX ? minX - home.getX() : home.getX() > maxX ? home.getX() - maxX : 0;
 				int gapZ = home.getZ() < minZ ? minZ - home.getZ() : home.getZ() > maxZ ? home.getZ() - maxZ : 0;
 				if (gapX < homeKeepout && gapZ < homeKeepout) return false;
