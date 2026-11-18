@@ -2,6 +2,13 @@
 
 **Aktuelle Übergabe, 30.10.2026.** GitHub-Repository: https://github.com/LvisXVI/Villager-Repurposed (privat, Branch `main`). Aktueller Code und die folgenden Nachweise gehen älteren Abschnitten vor.
 
+## Lauf 18.11.2026 – drei Vorlagenhäuser (0.10.5)
+
+- Nutzer lieferte drei NBT-Dateien (Dorfhaus, Rathaus mit Veranda, Schmiede mit Wohnhaus). Als `haus_dorf`, `rathaus_dorf`, `schmiede_dorf` in `data/villagerplus/templates` (Originaldateien, ein File für alle Biome). `TemplateLibrary`: Meta je Datei (Haupttür, Bodenlage), Ausrichtung nach dem Türfacing (die Türen sind von innen gesetzt, also Facing = außen), Fundamentschicht unter dem Boden entfällt, Filter `skipped` (Lava, Glocke, Leiter, Topf, Teppich, Schild, Arbeitsblöcke ...). Treppen-Ersatz kommt aus `Supply.stairsFor` (bis zu Bruchsteintreppen), per Check belegt.
+- Builder: neue Pläne mit hohem Entwurf (Wandhöhe 6, hw 4) nehmen `haus_dorf` (halbe Kante 7, Kopffreiheit 14). Persistenz: Marker `origin` bleibt kleines Haus, Dorfhaus zusätzlich `~origin` in TEMPLATE_PLANS (nie eine gültige Weltposition). Laufende Pläne unverändert.
+- Geprüft (je 1 Lauf): houses 37794, templatebuild 15, builderchecks 318, builderpaths 86, firstbuilding 12, housesearch 596, houseplot 140, housesign 7, farmexpand 172, stockpolicy 58. NICHT geprüft: Bau im Naturlauf, Optik, Rathaus/Schmiede im Spiel (nur Bibliothek), Standortsuche für das größere Haus in dichten Dörfern.
+- Nächster Schritt: Naturlauf, in dem ein hohes Haus entsteht (Seed 4242), und dann entscheiden, ob Rathaus/Schmiede statt der Landmark-Entwürfe verwendet werden (Standort und Kopffreiheit 23).
+
 ## Lauf 16.11.2026 (2) – Can't keep up trotz Budget (0.10.3)
 
 - Nutzer-Log (366 Mods, frische Welt, 0.10.2): direkt nach "Village footprint ... forced-loading the nearest 100 only" folgt "Can't keep up! 6323ms behind"; weitere Spitzen 5,5 s und 17 s. Ursache laut Log/Code: auch ein einzelnes Dorf zwang per `setChunkForced` bis zu 100 Chunks, in einer frischen Welt mit schwerer Weltgenerierung (Tectonic, Biolith, Wild-Mods) heisst das Chunk-Generierung. Teile der Spitzen (8,6 s beim Weltstart) stammen nicht von der Mod (Weltgenerierung, Voxy), das ist nicht belegt getrennt.

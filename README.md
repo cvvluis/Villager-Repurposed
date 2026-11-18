@@ -4,6 +4,14 @@ Dorfbewohner haben Namen, feste Häuser mit Schild, einen festen Tagesplan und e
 mit Doppelkiste und wächst selbstständig. Server- und Client-Mod (der Info-Knopf braucht die Mod auch beim Spieler; Einzelspieler funktioniert), benötigt Fabric Loader 0.20.1+,
 Fabric API und Java 25.
 
+## Neu in 0.10.5: drei handgebaute Vorlagenhäuser (Playtest 8)
+
+Nur auf dem Dev-Server geprüft (Prüfgruppen), nicht im Client und nicht in einem Naturlauf gebaut.
+
+- Neue Bauvorlagen mit den Originalmaterialien: Dorfhaus (`haus_dorf`, 14x13), Rathaus mit Veranda (`rathaus_dorf`, 22x23) und Schmiede mit Wohnhaus (`schmiede_dorf`, 19x15). Die Bauer setzen sie Block für Block aus dem Dorfvorrat. Was ein Dorf nicht herstellen kann, wird ersetzt; fehlen Treppenmaterial oder Dachziegel, weichen die Treppen auf Bruchsteintreppen aus.
+- Nicht gebaut werden Lava, Glocken, Leitern, Töpfe, Teppiche, Schilder, Arbeitsblöcke und Ähnliches, damit keine fremden Arbeitsplätze oder Füllblöcke entstehen; ein verstecktes Fundament unter dem Boden entfällt.
+- Im Spiel verwendet wird bisher nur das Dorfhaus: neue Pläne mit hohem zweigeschossigem Entwurf (rund jedes sechste neue Haus) nehmen es statt des kleinen 9x9-Hauses. Laufende Pläne behalten ihre Form. Rathaus und Schmiede liegen nur in der Bibliothek; der Bau des Rathauses läuft weiter über den bisherigen Entwurf.
+
 ## Neu in 0.10.4: Dorf-Toast stürzt nicht mehr ab (Playtest 7)
 
 Das animierte Dorf-Toast (Einblendung rechts oben bei Dorfmeldungen) fängt jetzt jeden Fehler ab und schaltet sich dann selbst aus, die Chatnachricht bleibt. Mit `-Dvillagerplus.toast=false` lässt es sich ganz abschalten. Die Absturzursache selbst ist noch nicht gefunden (kein Absturzbericht vorhanden); nur auf dem Dev-Server kompiliert, nicht im Client geprüft.
