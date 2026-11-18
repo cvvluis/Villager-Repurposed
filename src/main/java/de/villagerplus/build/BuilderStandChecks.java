@@ -48,6 +48,7 @@ public final class BuilderStandChecks {
 		if(box==null)throw new IllegalStateException("BUILDER STAND CHECK FAILED: fixture chest missing");
 		List<ItemStack> stock=new ArrayList<>();for(int i=0;i<box.getContainerSize();i++)stock.add(box.getItem(i).copy());
 		var oldLager=d.extra.lager;var oldMore=new ArrayList<>(d.extra.lagerMore);var oldChests=new ArrayList<>(d.extra.lagerChests);
+		var oldProjects=new ArrayList<>(d.buildProjects);int oldProjectVersion=d.buildProjectVersion;
 		var oldDemolition=ref.bellEntity().getAttached(VillagerPlus.DEMOLITION);
 		var oldConstruction=ref.bellEntity().getAttached(VillagerPlus.CONSTRUCTION);
 		BlockPos floor=ref.bell().offset(65,0,65), origin=floor.above(13), preferred=floor.east(5);
@@ -60,7 +61,14 @@ public final class BuilderStandChecks {
 		Map<String,Object> stagedCacheValues=new LinkedHashMap<>();
 		BlockPos stagedOrigin=floor.east(30).above(13);
 		Villager worker=null,standBlocker=null;int passed=0;
+		// Builder.workStand/acceptStand only probe a far stand when every chunk of the walk corridor (plus one chunk margin) is
+		// already loaded and never loads chunks itself, so the fixture keeps the whole corridor loaded.
+		List<long[]> forcedByFixture=new ArrayList<>();
 		try {
+			for(int cx=((floor.getX()-8)>>4)-1;cx<=((floor.getX()+72)>>4)+1;cx++)for(int cz=((floor.getZ()-8)>>4)-1;cz<=((floor.getZ()+8)>>4)+1;cz++) {
+				level.getChunk(cx,cz);
+				if(level.setChunkForced(cx,cz,true))forcedByFixture.add(new long[]{cx,cz});
+			}
 			// Every touched column is on the runner's remote test plateau, and restored even after a failed assertion.
 			for(int x=-8;x<=72;x++)for(int z=-8;z<=8;z++)for(int y=-1;y<=16;y++) {
 				BlockPos p=floor.offset(x,y,z);level.getChunkAt(p);
@@ -81,9 +89,8 @@ public final class BuilderStandChecks {
 			// Repeated steps keep the test away from finish(), while still paying for exactly one real placement.
 			List<Step> steps=java.util.Collections.nCopies(100,Step.block(origin,Blocks.COBBLESTONE));
 			caches.get("STEPS").put(origin.asLong(),steps);caches.get("FOOT").remove(origin.asLong());caches.get("PREP_RECORD").remove(origin.asLong());
-			d.planType=Blueprints.TOOLSHED;d.planOrigin=Optional.of(origin);d.planDir=Direction.EAST.get2DDataValue();
-			d.planStep=0;d.planVariant=0;d.planSource=Optional.empty();d.planProgress=now;d.claimPlanBuilder(worker.getUUID());d.wanted.clear();
-			box.clearContent();box.setItem(0,new ItemStack(Items.COBBLESTONE,64));box.setItem(1,new ItemStack(Items.COBBLESTONE,64));
+			box.clearContent();
+			plan(d,worker.getUUID(),origin,now,new ItemStack(Items.COBBLESTONE,64),new ItemStack(Items.COBBLESTONE,64));
 			BlockPos distant=floor.east(64);
 			worker.setPos(distant.getX()+0.5,distant.getY(),distant.getZ()+0.5);worker.setOnGround(true);
 			var defaultPath=worker.getNavigation().createPath(preferred,0);
@@ -123,12 +130,12 @@ public final class BuilderStandChecks {
 			worker.setPos(distant.getX()+0.5,distant.getY(),distant.getZ()+0.5);
 			var distantBefore=worker.position();Builder.tick(c,true);
 			var walk=worker.getBrain().getMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
-			check(walk.isPresent()&&d.planStep==0&&JobUtil.count(box,s->s.is(Items.COBBLESTONE))==128
+			check(walk.isPresent()&&d.planStep==0&&site(d,origin,s->s.is(Items.COBBLESTONE))==128
 				&&worker.position().equals(distantBefore)
 				&&worker.position().distanceToSqr(net.minecraft.world.phys.Vec3.atBottomCenterOf(walk.get().getTarget().currentBlockPosition()))<=100.0,
 				"distant builder receives a short route waypoint without advancing, paying or teleporting"
 					+ " [walk=" + walk.map(value -> value.getTarget().currentBlockPosition().toShortString()).orElse("none")
-					+ ", step=" + d.planStep + ", cobble=" + JobUtil.count(box,s->s.is(Items.COBBLESTONE))
+					+ ", step=" + d.planStep + ", cobble=" + site(d,origin,s->s.is(Items.COBBLESTONE))
 					+ ", moved=" + !worker.position().equals(distantBefore)
 					+ ", distance=" + (walk.isPresent() ? worker.position().distanceToSqr(net.minecraft.world.phys.Vec3.atBottomCenterOf(walk.get().getTarget().currentBlockPosition())) : -1) + "]");passed++;
 			var waypointPath=worker.getNavigation().createPath(walk.orElseThrow().getTarget().currentBlockPosition(),0);
@@ -153,7 +160,7 @@ public final class BuilderStandChecks {
 			worker.setPos(preferred.getX()+0.5,preferred.getY(),preferred.getZ()+0.5);
 			var before=worker.position();Builder.tick(c,true);
 			check(d.planStep>0&&level.getBlockState(origin).is(Blocks.COBBLESTONE)
-				&&JobUtil.count(box,s->s.is(Items.COBBLESTONE))==127&&worker.position().equals(before),
+				&&site(d,origin,s->s.is(Items.COBBLESTONE))==127&&worker.position().equals(before),
 				"real builder tick advances on uneven frontage, pays one placement and does not teleport");passed++;
 
 			level.setBlock(preferred.below(),Blocks.WATER.defaultBlockState(),FLAGS);
@@ -192,16 +199,19 @@ public final class BuilderStandChecks {
 				level.setBlock(floor.offset(x,-1,z),Blocks.WATER.defaultBlockState(),FLAGS);
 			check(Builder.villageReturn(level,floor.above(7))==null,
 				"no dry arrival returns null instead of falling back onto the bell");passed++;
-			d.planStep=0;int count=JobUtil.count(box,s->s.is(Items.COBBLESTONE));
+			plan(d,worker.getUUID(),origin,now,new ItemStack(Items.COBBLESTONE,64),new ItemStack(Items.COBBLESTONE,64));int count=site(d,origin,s->s.is(Items.COBBLESTONE));
 			check(Builder.workStand(c,origin,Direction.EAST,steps)==null,"all wet perimeter candidates yield no work stand");passed++;
 			level.setBlock(preferred.above(8),Blocks.STONE.defaultBlockState(),FLAGS);
 			check(Builder.safeWorkFloor(level,preferred.above(9))&&Builder.workStand(c,origin,Direction.EAST,steps)==null,
 				"a clear dry supported but unreachable high pillar is rejected by real navigation");passed++;
 			Builder.tick(new Ctx(level,worker,st,c.mem(),ref,now+1),true);
-			check(d.planStep==0&&JobUtil.count(box,s->s.is(Items.COBBLESTONE))==count&&worker.position().equals(before)
+			check(d.planStep==0&&site(d,origin,s->s.is(Items.COBBLESTONE))==count&&worker.position().equals(before)
 				&&st.cooldownUntil==now+41,"no safe stand preserves cursor, materials and worker position with bounded retry cooldown");passed++;
+			// Absences longer than Builder.STAND_ABSENCE_TICKS restart the failure timer (the owner is then assumed to have been busy
+			// elsewhere), so the window is walked with consecutive ticks no further apart than that.
+			for(long dt=201;dt<=1201;dt+=Builder.STAND_ABSENCE_TICKS)Builder.tick(new Ctx(level,worker,st,c.mem(),ref,now+dt),true);
 			Builder.tick(new Ctx(level,worker,st,c.mem(),ref,now+1302),true);
-			check(!d.hasPlan()&&d.wanted.isEmpty()&&JobUtil.count(box,s->s.is(Items.COBBLESTONE))==count,
+			check(!d.hasPlan()&&d.wanted.isEmpty()&&site(d,origin,s->s.is(Items.COBBLESTONE))+JobUtil.count(box,s->s.is(Items.COBBLESTONE))==count,
 				"a persistently unreachable stand is rejected only after the bounded street-retry window");passed++;
 
 			// A later shortage must not hold the first blocks hostage. The cursor and plan owner are durable,
@@ -220,17 +230,13 @@ public final class BuilderStandChecks {
 			BlockPos stagedStand=Builder.workStand(c,stagedOrigin,Direction.EAST,staged);
 			check(stagedStand!=null,"incremental material fixture has a reachable stand");passed++;
 			worker.setPos(stagedStand.getX()+0.5,stagedStand.getY(),stagedStand.getZ()+0.5);
-			d.planType=Blueprints.TOOLSHED;d.planOrigin=Optional.of(stagedOrigin);d.planDir=Direction.EAST.get2DDataValue();
-			d.planStep=0;d.planVariant=0;d.planSource=Optional.empty();d.planProgress=now+2;d.claimPlanBuilder(worker.getUUID());
-			d.wanted.clear();box.clearContent();
-			box.setItem(0,new ItemStack(Items.COBBLESTONE,1));
-			box.setItem(1,new ItemStack(Items.STONE,1));
-			box.setItem(2,new ItemStack(Items.DIRT,64));
+			box.clearContent();
+			plan(d,worker.getUUID(),stagedOrigin,now+2,new ItemStack(Items.COBBLESTONE,1),new ItemStack(Items.STONE,1),new ItemStack(Items.DIRT,64));
 			Builder.tick(new Ctx(level,worker,st,c.mem(),ref,now+2),true);
 			check(d.planStep==2&&level.getBlockState(stagedOrigin.east(2).above()).is(Blocks.OAK_PLANKS)
 				&&level.getBlockState(stagedOrigin.east()).is(Blocks.COBBLESTONE)
-				&&JobUtil.count(box,s->s.is(Items.COBBLESTONE))==0
-				&&JobUtil.count(box,s->s.is(Items.STONE))==1&&JobUtil.count(box,s->s.is(Items.DIRT))==64,
+				&&site(d,stagedOrigin,s->s.is(Items.COBBLESTONE))==0
+				&&site(d,stagedOrigin,s->s.is(Items.STONE))==1&&site(d,stagedOrigin,s->s.is(Items.DIRT))==64,
 				"free and stocked paid steps place before the first missing input; cursor stops there without consuming future or unrelated stock");passed++;
 			check(d.wanted.size()==2&&d.wanted.contains("minecraft:oak_planks#1")
 				&&d.wanted.contains("minecraft:glass_pane#1"),
@@ -240,11 +246,11 @@ public final class BuilderStandChecks {
 			check(reloadedPlan.planStep==2&&reloadedPlan.planBuilder().equals(Optional.of(worker.getUUID()))
 				&&reloadedPlan.wanted.equals(d.wanted),
 				"cursor, active builder owner, and remaining wishlist survive a plan codec reload");passed++;
-			box.setItem(3,new ItemStack(Items.OAK_PLANKS,1));
+			addSite(d,stagedOrigin,new ItemStack(Items.OAK_PLANKS,1));
 			Builder.tick(new Ctx(level,worker,st,c.mem(),ref,now+3),true);
 			check(d.planStep==4&&level.getBlockState(stagedOrigin.east(2)).is(Blocks.OAK_PLANKS)
 				&&level.getBlockState(stagedOrigin.east(3)).is(Blocks.STONE)
-				&&JobUtil.count(box,s->s.is(Items.OAK_PLANKS))==0&&JobUtil.count(box,s->s.is(Items.DIRT))==64
+				&&site(d,stagedOrigin,s->s.is(Items.OAK_PLANKS))==0&&site(d,stagedOrigin,s->s.is(Items.DIRT))==64
 				&&d.wanted.size()==1&&d.wanted.contains("minecraft:glass_pane#1")
 				&&d.planBuilder().equals(Optional.of(worker.getUUID())),
 				"supplying the next block resumes the same owner at the saved cursor and refreshes demand after each payment");passed++;
@@ -262,42 +268,45 @@ public final class BuilderStandChecks {
 			BlockPos supportStand=Builder.workStand(c,stagedOrigin,Direction.EAST,supportSteps);
 			check(supportStand!=null,"incremental foundation fixture has a reachable stand");passed++;
 			worker.setPos(supportStand.getX()+0.5,supportStand.getY(),supportStand.getZ()+0.5);
-			d.planType=Blueprints.TOOLSHED;d.planOrigin=Optional.of(stagedOrigin);d.planDir=Direction.EAST.get2DDataValue();
-			d.planStep=0;d.planVariant=0;d.planSource=Optional.empty();d.planProgress=now+4;d.claimPlanBuilder(worker.getUUID());
-			d.wanted.clear();box.clearContent();box.setItem(0,new ItemStack(Items.COBBLESTONE,1));box.setItem(1,new ItemStack(Items.DIRT,2));
+			box.clearContent();
+			plan(d,worker.getUUID(),stagedOrigin,now+4,new ItemStack(Items.COBBLESTONE,1),new ItemStack(Items.DIRT,2));
 			Builder.tick(new Ctx(level,worker,st,c.mem(),ref,now+4),true);
 			check(d.planStep>0&&level.getBlockState(stagedOrigin).is(Blocks.COBBLESTONE)
 				&&level.getBlockState(stagedOrigin.below()).is(Blocks.DIRT)&&level.getBlockState(stagedOrigin.below(2)).is(Blocks.DIRT)
-				&&JobUtil.count(box,s->true)==0,
+				&&site(d,stagedOrigin,s->true)==0,
 				"two support blocks and the main block each consume exactly one matching item");passed++;
 
 			level.setBlock(stagedOrigin,Blocks.AIR.defaultBlockState(),FLAGS);
 			level.setBlock(stagedOrigin.below(),Blocks.AIR.defaultBlockState(),FLAGS);
 			level.setBlock(stagedOrigin.below(2),Blocks.AIR.defaultBlockState(),FLAGS);
 			level.setBlock(stagedOrigin.below(3),Blocks.STONE.defaultBlockState(),FLAGS);
-			d.planStep=0;d.planProgress=now+5;d.wanted.clear();box.clearContent();
-			box.setItem(0,new ItemStack(Items.COBBLESTONE,1));box.setItem(1,new ItemStack(Items.DIRT,1));
+			box.clearContent();
+			plan(d,worker.getUUID(),stagedOrigin,now+5,new ItemStack(Items.COBBLESTONE,1),new ItemStack(Items.DIRT,1));
 			worker.setPos(supportStand.getX()+0.5,supportStand.getY(),supportStand.getZ()+0.5);
 			Builder.tick(new Ctx(level,worker,st,c.mem(),ref,now+5),true);
+			// Builder.tick starts a placement only when the project site stock holds the whole next placement (support column plus
+			// main block, Builder.nextPlacementHasSiteMaterials); a short support item therefore places nothing, spends nothing and
+			// asks for exactly the missing base item plus the bounded main-block demand window.
+			int demandWindow=Builder.materialDemandWindowEnd(supportSteps,0);
 			check(d.planStep==0&&level.getBlockState(stagedOrigin).isAir()
-				&&level.getBlockState(stagedOrigin.below()).isAir()&&level.getBlockState(stagedOrigin.below(2)).is(Blocks.DIRT)
-				&&JobUtil.count(box,s->s.is(Items.COBBLESTONE))==1&&JobUtil.count(box,s->s.is(Items.DIRT))==0
-				&&d.wanted.contains("minecraft:dirt#1")&&d.wanted.contains("minecraft:cobblestone#100"),
-				"partial support supply fills bottom-up, preserves the main payment and cursor, and requests the remaining base item");passed++;
-			box.setItem(1,new ItemStack(Items.DIRT,1));
+				&&level.getBlockState(stagedOrigin.below()).isAir()&&level.getBlockState(stagedOrigin.below(2)).isAir()
+				&&site(d,stagedOrigin,s->s.is(Items.COBBLESTONE))==1&&site(d,stagedOrigin,s->s.is(Items.DIRT))==1
+				&&d.wanted.contains("minecraft:dirt#1")&&d.wanted.contains("minecraft:cobblestone#"+(demandWindow-1)),
+				"partial support supply places nothing, keeps cursor and site stock, and requests the remaining base item and the bounded main demand");passed++;
+			addSite(d,stagedOrigin,new ItemStack(Items.DIRT,1));
 			Builder.tick(new Ctx(level,worker,st,c.mem(),ref,now+6),true);
 			check(d.planStep>0&&level.getBlockState(stagedOrigin).is(Blocks.COBBLESTONE)
 				&&level.getBlockState(stagedOrigin.below()).is(Blocks.DIRT)&&level.getBlockState(stagedOrigin.below(2)).is(Blocks.DIRT)
-				&&JobUtil.count(box,s->true)==0,
+				&&site(d,stagedOrigin,s->true)==0,
 				"adding the missing support item resumes the same main step and consumes each material once");passed++;
 
 			level.setBlock(stagedOrigin,Blocks.AIR.defaultBlockState(),FLAGS);
 			level.setBlock(stagedOrigin.below(),Blocks.STONE.defaultBlockState(),FLAGS);
-			d.planStep=0;d.planProgress=now+7;d.wanted.clear();box.clearContent();box.setItem(0,new ItemStack(Items.COBBLESTONE,1));
+			box.clearContent();plan(d,worker.getUUID(),stagedOrigin,now+7,new ItemStack(Items.COBBLESTONE,1));
 			worker.setPos(supportStand.getX()+0.5,supportStand.getY(),supportStand.getZ()+0.5);
 			Builder.tick(new Ctx(level,worker,st,c.mem(),ref,now+7),true);
 			check(d.planStep>0&&level.getBlockState(stagedOrigin).is(Blocks.COBBLESTONE)
-				&&level.getBlockState(stagedOrigin.below()).is(Blocks.STONE)&&JobUtil.count(box,s->true)==0,
+				&&level.getBlockState(stagedOrigin.below()).is(Blocks.STONE)&&site(d,stagedOrigin,s->true)==0,
 				"existing solid support advances the main step without charging or replacing support");passed++;
 
 			Palette cobbleBase=new Palette(Blocks.STONE,Blocks.STONE,Blocks.OAK_PLANKS,Blocks.COBBLESTONE,Blocks.STONE,
@@ -308,21 +317,21 @@ public final class BuilderStandChecks {
 			level.setBlock(stagedOrigin.below(),Blocks.AIR.defaultBlockState(),FLAGS);
 			level.setBlock(stagedOrigin.below(2),Blocks.AIR.defaultBlockState(),FLAGS);
 			level.setBlock(stagedOrigin.below(3),Blocks.STONE.defaultBlockState(),FLAGS);
-			d.planStep=0;d.planProgress=now+8;d.wanted.clear();box.clearContent();box.setItem(0,new ItemStack(Items.COBBLESTONE,2));
+			box.clearContent();plan(d,worker.getUUID(),stagedOrigin,now+8,new ItemStack(Items.COBBLESTONE,2));
 			worker.setPos(supportStand.getX()+0.5,supportStand.getY(),supportStand.getZ()+0.5);
 			Builder.tick(new Ctx(level,worker,st,c.mem(),ref,now+8),true);
 			check(d.planStep==0&&level.getBlockState(stagedOrigin).isAir()
 				&&level.getBlockState(stagedOrigin.below()).is(Blocks.COBBLESTONE)
 				&&level.getBlockState(stagedOrigin.below(2)).is(Blocks.COBBLESTONE)
-				&&JobUtil.count(box,s->s.is(Items.COBBLESTONE))==0
+				&&site(d,stagedOrigin,s->s.is(Items.COBBLESTONE))==0
 				&&d.wanted.size()==1&&d.wanted.getFirst().equals("minecraft:cobblestone#1"),
 				"wishlist merges same-item support and main-step needs, subtracts current stock, and requests only the unpaid main block");passed++;
 			for(int depth=1;depth<=14;depth++)level.setBlock(stagedOrigin.below(depth),Blocks.AIR.defaultBlockState(),FLAGS);
-			d.planStep=0;d.planProgress=now+9;d.wanted.clear();box.clearContent();box.setItem(0,new ItemStack(Items.COBBLESTONE,1));
+			box.clearContent();plan(d,worker.getUUID(),stagedOrigin,now+9,new ItemStack(Items.COBBLESTONE,1));
 			worker.setPos(supportStand.getX()+0.5,supportStand.getY(),supportStand.getZ()+0.5);
 			Builder.tick(new Ctx(level,worker,st,c.mem(),ref,now+9),true);
 			check(!d.hasPlan()&&d.wanted.isEmpty()&&level.getBlockState(stagedOrigin).isAir()
-				&&JobUtil.count(box,s->s.is(Items.COBBLESTONE))==1,
+				&&site(d,stagedOrigin,s->s.is(Items.COBBLESTONE))+JobUtil.count(box,s->s.is(Items.COBBLESTONE))==1,
 				"unanchored support rejects the plot without spending materials or leaving a plan in endless retry");passed++;
 
 			BlockPos prepOrigin=stagedOrigin.east(10);
@@ -341,10 +350,12 @@ public final class BuilderStandChecks {
 			return passed;
 		} finally {
 			Builder.clearBuildCrewSnapshotForCheck(level,ref);
+			for(long[] cc:forcedByFixture)level.setChunkForced((int)cc[0],(int)cc[1],false);
 			if(standBlocker!=null){standBlocker.discard();de.villagerplus.village.Villages.forget(standBlocker.getUUID());}
 			if(worker!=null){Builder.clearCrewRuntimeCachesForCheck(level,worker.getUUID());worker.discard();de.villagerplus.village.Villages.forget(worker.getUUID());}
 			world.forEach((p,state)->level.setBlock(p,state,FLAGS));
 			box.clearContent();for(int i=0;i<stock.size();i++)box.setItem(i,stock.get(i));
+			d.buildProjects.clear();d.buildProjects.addAll(oldProjects);d.buildProjectVersion=oldProjectVersion;
 			previous.restore(d);d.extra.lager=oldLager;d.extra.lagerMore.clear();d.extra.lagerMore.addAll(oldMore);
 			d.extra.lagerChests.clear();d.extra.lagerChests.addAll(oldChests);
 			if(oldDemolition==null)ref.bellEntity().removeAttached(VillagerPlus.DEMOLITION);else ref.bellEntity().setAttached(VillagerPlus.DEMOLITION,oldDemolition);
@@ -355,6 +366,30 @@ public final class BuilderStandChecks {
 			});
 			ref.dirty();
 		}
+	}
+	/**
+	 * The builder runs on per-project cursors (buildProjectVersion 1) and pays every placement from the project's own site
+	 * stock; the legacy singleton plan fields and the village chest are not read for that. The fixture therefore installs a
+	 * real active project whose site stock holds exactly the listed items.
+	 */
+	private static void plan(VillageData d,java.util.UUID owner,BlockPos origin,long progress,ItemStack... site) {
+		var project=new VillageData.BuildProject(Blueprints.TOOLSHED,origin,Direction.EAST.get2DDataValue(),0,0,Optional.empty(),progress,
+			Optional.of(owner),0L,List.of(),new VillageData.ProjectHaul(List.of(site),List.of()),Optional.empty(),Optional.empty(),
+			Optional.of(new VillageData.PlanBounds(origin.getX()-3,origin.getX()+3,origin.getZ()-3,origin.getZ()+3)),false,false);
+		d.buildProjects.clear();d.putBuildProject(project);d.syncPrimaryProjectView();d.wanted.clear();
+	}
+	private static void addSite(VillageData d,BlockPos origin,ItemStack stack) {
+		var p=d.buildProject(origin).orElseThrow();
+		List<ItemStack> rows=new ArrayList<>(p.haul().siteStock());rows.add(stack);
+		d.putBuildProject(new VillageData.BuildProject(p.type(),p.origin(),p.dir(),p.step(),p.variant(),p.source(),p.progress(),p.owner(),
+			p.ownerUnavailableSince(),p.wanted(),new VillageData.ProjectHaul(rows,p.haul().cargoManifest()),p.materialWait(),p.construction(),
+			p.bounds(),p.repair(),p.cleanupOnly()));
+		d.syncPrimaryProjectView();
+	}
+	private static int site(VillageData d,BlockPos origin,java.util.function.Predicate<ItemStack> filter) {
+		int n=0;
+		for(ItemStack st:d.buildProject(origin).map(p->p.haul().siteStock()).orElse(List.of()))if(filter.test(st))n+=st.getCount();
+		return n;
 	}
 	private static void check(boolean condition,String message) {
 		if(!condition)throw new IllegalStateException("BUILDER STAND CHECK FAILED: "+message);
