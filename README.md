@@ -4,6 +4,10 @@ Dorfbewohner haben Namen, feste Häuser mit Schild, einen festen Tagesplan und e
 mit Doppelkiste und wächst selbstständig. Server- und Client-Mod (der Info-Knopf braucht die Mod auch beim Spieler; Einzelspieler funktioniert), benötigt Fabric Loader 0.20.1+,
 Fabric API und Java 25.
 
+## Neu in 0.10.4: Dorf-Toast stürzt nicht mehr ab (Playtest 7)
+
+Das animierte Dorf-Toast (Einblendung rechts oben bei Dorfmeldungen) fängt jetzt jeden Fehler ab und schaltet sich dann selbst aus, die Chatnachricht bleibt. Mit `-Dvillagerplus.toast=false` lässt es sich ganz abschalten. Die Absturzursache selbst ist noch nicht gefunden (kein Absturzbericht vorhanden); nur auf dem Dev-Server kompiliert, nicht im Client geprüft.
+
 ## Neu in 0.10.3: kein Zwangsladen mehr (Playtest 6)
 
 Zweiter Hotfix gegen "Can't keep up" im großen Modpack. Nicht im Modpack gemessen, nur auf dem Dev-Server geprüft.
