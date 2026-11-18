@@ -23,14 +23,29 @@ final class VillageMessageToast implements HudElement {
 	private static final Deque<Toast> QUEUE = new ArrayDeque<>();
 	private static final VillageMessageToast INSTANCE = new VillageMessageToast();
 
+	private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
+	/** Off switch: -Dvillagerplus.toast=false, and automatic after the first failure so a modpack conflict never crashes the game. */
+	private static volatile boolean disabled = "false".equalsIgnoreCase(System.getProperty("villagerplus.toast", "true"));
+
 	private record Toast(String text, long createdAt) { }
+
+	private static void fail(Throwable error) {
+		if (!disabled) LOGGER.error("Villagers: Repurposed: Dorf-Toast ausgeschaltet nach Fehler (Chatnachricht bleibt erhalten)", error);
+		disabled = true;
+		synchronized (VillageMessageToast.class) { QUEUE.clear(); }
+	}
 
 	private VillageMessageToast() { }
 
 	static void register() {
 		ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
-			String text = message.getString();
-			if (text.startsWith(VillageMessages.CHAT_MARKER)) add(text.substring(VillageMessages.CHAT_MARKER.length()));
+			if (disabled) return true;
+			try {
+				String text = message.getString();
+				if (text.startsWith(VillageMessages.CHAT_MARKER)) add(text.substring(VillageMessages.CHAT_MARKER.length()));
+			} catch (Throwable error) {
+				fail(error);
+			}
 			return true;
 		});
 		HudElementRegistry.addLast(Identifier.fromNamespaceAndPath(VillagerPlus.MOD_ID, "village_message_toast"), INSTANCE);
@@ -43,6 +58,15 @@ final class VillageMessageToast implements HudElement {
 
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor graphics, DeltaTracker deltaTracker) {
+		if (disabled) return;
+		try {
+			render(graphics);
+		} catch (Throwable error) {
+			fail(error);
+		}
+	}
+
+	private void render(GuiGraphicsExtractor graphics) {
 		Minecraft client = Minecraft.getInstance();
 		if (client.player == null || client.font == null) return;
 		List<Toast> active;
