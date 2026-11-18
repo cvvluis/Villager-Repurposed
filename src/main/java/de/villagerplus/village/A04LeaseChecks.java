@@ -85,6 +85,7 @@ public final class A04LeaseChecks {
 		require(!level.isPositionEntityTicking(r.leasedPos) && !level.isPositionEntityTicking(r.controlPos),
 			"precondition: neither fixture chunk is entity-ticking without a player or lease");
 		r.startedAt = level.getGameTime();
+		Anchor.OVERLOAD_OVERRIDE = false;
 		Anchor.markKeptForTest(level, ref);
 		JobManager.state(r.leased).nextHousing = Long.MAX_VALUE;
 		JobManager.tickForDevelopment(level, r.leased);
@@ -102,6 +103,7 @@ public final class A04LeaseChecks {
 	}
 
 	private static void cleanup(ServerLevel level) {
+		Anchor.OVERLOAD_OVERRIDE = null;
 		Run r = run;
 		run = null;
 		if (r == null) return;

@@ -355,8 +355,12 @@ public final class Anchor {
 
 	/** True when the server is already struggling: pinning more chunks would only make it worse. */
 	static boolean overloaded(ServerLevel level) {
+		if (OVERLOAD_OVERRIDE != null) return OVERLOAD_OVERRIDE;
 		return level.getServer().getAverageTickTimeNanos() > OVERLOAD_TICK_NANOS;
 	}
+
+	/** Test hook: fixes the overload decision so a fixture does not depend on how busy the server was while it loaded. */
+	static Boolean OVERLOAD_OVERRIDE;
 
 	/** True when a player is close enough that the village is simulated by the game itself (simulation distance minus 3 chunks). */
 	static boolean attended(ServerLevel level, BlockPos bell) {
