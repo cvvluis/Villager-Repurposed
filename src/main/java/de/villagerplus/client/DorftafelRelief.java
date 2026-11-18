@@ -25,6 +25,8 @@ final class DorftafelRelief {
 
 	// terrain code -> RGB: meadow, forest, path, water, field, building, sand, stone, snow, clay, plaza, unknown
 	private static final int[] COLORS = {0x7FA650, 0x3F7A3A, 0xB89A64, 0x4F86B8, 0xC9B450, 0xA2452F, 0xE2D08A, 0x8D8D8D, 0xF2F5F7, 0xB86F50, 0xD6C79A, 0xE0C995};
+	private static int[] lastRelief = new int[0];
+	private static int lastFingerprint;
 
 	private DorftafelRelief() { }
 
@@ -32,6 +34,14 @@ final class DorftafelRelief {
 		if (relief.length != W * H) {
 			return;
 		}
+		int fingerprint = java.util.Arrays.hashCode(relief);
+		boolean unchanged = fingerprint == lastFingerprint && relief.length == lastRelief.length
+			&& java.util.Arrays.equals(relief, lastRelief);
+		if (!unchanged) {
+			lastFingerprint = fingerprint;
+			lastRelief = relief.clone();
+		}
+		final int[] mesh = lastRelief;
 		matrices.pushPose();
 		matrices.translate(0.5, 0.0, 0.5);
 		matrices.mulPose(Axis.YP.rotationDegrees(switch (facing) {
@@ -44,7 +54,7 @@ final class DorftafelRelief {
 		queue.submitCustomGeometry(matrices, RenderTypes.entityTranslucent(WHITE), (pose, vc) -> {
 			for (int j = 1; j < H - 1; j++) {
 				for (int i = 1; i < W - 1; i++) {
-					column(pose, vc, relief, i, j);
+					column(pose, vc, mesh, i, j);
 				}
 			}
 		});

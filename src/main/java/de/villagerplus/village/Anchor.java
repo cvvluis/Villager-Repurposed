@@ -219,6 +219,11 @@ public final class Anchor {
 		});
 	}
 
+	/** Clears static anchor/footprint caches when the server stops (see {@link WorldCaches}). */
+	public static void clearCachesOnStop() {
+		clearWorldCaches();
+	}
+
 	private static void clearWorldCaches() {
 		LAST.clear();
 		LAST_BY_VILLAGE.clear();

@@ -862,10 +862,7 @@ public final class Lighting {
 	/** True when a physical build footprint must not be placed in this village cell. */
 	public static boolean protectedVillageCell(ServerLevel level, VillageRef ref, BlockPos ground) {
 		if (ref == null || ground == null) return false;
-		for (ZonePolicy.Zone zone : ref.bellEntity().getAttachedOrElse(VillagerPlus.ZONES, List.of())) {
-			if (ground.getX() >= zone.minX() && ground.getX() <= zone.maxX()
-				&& ground.getZ() >= zone.minZ() && ground.getZ() <= zone.maxZ()) return true;
-		}
+		if (ZonePolicy.blocksWork(ref, ground)) return true;
 		if (ground.distSqr(ref.bell()) <= 9) return true;
 		for (Built built : ref.bellEntity().getAttachedOrElse(VillagerPlus.BUILDINGS, List.of())) {
 			int half = Blueprints.half(built.type()) + 1;

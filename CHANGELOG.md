@@ -2,6 +2,18 @@
 
 Alle genannten Versionen gelten für Fabric, Minecraft 26.2 und Java 25. Die JAR heißt `villagers-repurposed-<version>.jar`.
 
+## 0.11.0
+
+Dorftafel: fünfte Zonenart **Sperrzone** (`protected`). Darin dürfen Villager nicht bauen, Bäume fällen, graben, minen oder Hauptdorfwege ausweiten. Auf der Karte rot/markiert; Löschen wie bei den anderen Zonen.
+
+- **Bauplatzdiagnose:** Letzte Hausplatz-Suche wird an der Glocke gespeichert und auf der Dorftafel unter den Statistikzeilen zusammengefasst.
+- **Weltwechsel:** `WorldCaches` leert Anchor-, Builder-, Job-, Dorf- und Schutz-Zustände beim Serverstopp.
+- **Dorfglocke:** Umzug mit Schleich-Abruch und Bestätigung; Explosionsschutz per Mixin; Relokationsdaten auf dem Glocken-Item.
+- **Relief:** Große Dorftafel überspringt Relief-Neuaufbau solange sich das Kartenraster nicht ändert.
+- **Release-JAR:** `*Checks` und `de/villagerplus/dev/**` bleiben außen vor; `AutoTest` nur in der Entwicklungsumgebung.
+
+`gradle build` ist auf diesem Stand durchgelaufen.
+
 ## 0.10.9
 
 Leistung: ein Modell pro Rollen-Villager statt doppeltem Geometrie-Pass; Bauplan-Spitzhacken-Checks nicht mehr jeden Tick bei unverändertem Dorflager.

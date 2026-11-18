@@ -961,6 +961,7 @@ public final class Woodcutting {
 				PoiManager.Occupancy.ANY).findAny().isPresent()) return false;
 		for (BlockPos log : logs) {
 			if (!de.villagerplus.world.LoadedColumns.ready(level, log) || level.getBlockEntity(log) != null
+				|| de.villagerplus.village.ZonePolicy.blocksWork(ref, log)
 				|| de.villagerplus.job.Lighting.protectedVillageCell(level, ref, log)
 				|| de.villagerplus.village.Roads.trustedVillagePathCell(level, ref, log)) return false;
 		}

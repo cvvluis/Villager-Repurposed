@@ -1734,6 +1734,8 @@ public final class Mining {
 
 	static boolean breakBlock(Ctx c, BlockPos p, ItemStack tool) {
 		ServerLevel level = c.level();
+		VillageRef ref = c.village();
+		if (ref != null && de.villagerplus.village.ZonePolicy.blocksWork(ref, p)) return false;
 		BlockState s = level.getBlockState(p);
 		if (!usablePickaxe(tool)
 			|| s.isAir() || !s.getFluidState().isEmpty() || !mineable(s)) {

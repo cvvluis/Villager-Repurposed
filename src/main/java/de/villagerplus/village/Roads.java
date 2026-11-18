@@ -845,7 +845,7 @@ public final class Roads {
  }
 
  private static boolean villageGapValid(ServerLevel level,VillageRef ref,BlockPos target) {
-  if(!gapTerrain(level,target)||!trustedVillagePathCell(level,ref,target)||Lighting.protectedVillageCell(level,ref,target)
+  if(!gapTerrain(level,target)||!trustedVillagePathCell(level,ref,target)||de.villagerplus.village.ZonePolicy.blocksWork(ref, target)
    ||isProtectedLaneCell(level,target))return false;
   BlockPos plaza=Market.of(ref).plaza().orElse(null);if(plaza==null)return false;
   Map<String,Long> state=ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of());
@@ -859,7 +859,7 @@ public final class Roads {
     var direction=alongX?net.minecraft.core.Direction.EAST:net.minecraft.core.Direction.NORTH;
     final int lane=side; final boolean horizontal=alongX;
     if(gapAnchored(level,target,direction,p -> straightVillageLaneCell(plaza,ref.bell(),length,built,p,horizontal,lane)
-      && !Lighting.protectedVillageCell(level,ref,p) && !isProtectedLaneCell(level,p)))return true;
+      && !de.villagerplus.village.ZonePolicy.blocksWork(ref, p) && !isProtectedLaneCell(level,p)))return true;
    }
   }
   return false;

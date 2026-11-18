@@ -3,5 +3,11 @@
  "block.villagerplus.dorftafel_gross": "Village Board",
  "block.villagerplus.dorfschild": "House Plaque",
  "item.villagerplus.dorfkarte": "Village Map",
- "entity.villagerplus.caravan_trader": "Caravan Trader"
+ "entity.villagerplus.caravan_trader": "Caravan Trader",
+ "message.villagerplus.bell_break_warning": "Managed village bell: break again to confirm, or sneak to relocate.",
+ "message.villagerplus.bell_relocated_pickup": "Bell picked up with village data — place it at a new location.",
+ "message.villagerplus.bell_place_too_close": "Too close to another village — placement cancelled.",
+ "message.villagerplus.bell_relocated_place": "Bell placed; village data restored.",
+ "board.villagerplus.site_search.none": "No recent house-site search.",
+ "board.villagerplus.site_search.summary": "Last search (%s): %s%% slope, %s%% outside zones, %s%% blocked, %s%% other reasons (%s s ago)."
 }

@@ -65,6 +65,11 @@ java {
 	targetCompatibility = JavaVersion.VERSION_25
 }
 
+tasks.named('jar', Jar).configure {
+	exclude 'de/villagerplus/dev/**'
+	exclude '**/*Checks.class'
+}
+
 // Preserve editor/agent conflict snapshots in the workspace without compiling duplicate classes.
 sourceSets.main.java.exclude '**/*(# Edit conflict*', '**/*(# Name clash*'
 

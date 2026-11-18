@@ -51,10 +51,10 @@ public class BoardScreen extends Screen {
 	private static final int ZONE_MAX_AREA = 4096;
 	private static final char DETAIL_INDENT_MARKER = '\u0001';
 	private static final Pattern RAW_SECONDS = Pattern.compile("(?i)(?<![\\p{L}\\p{N}])(\\d{1,12})\\s*(?:s|sec|sek(?:unden?)?)\\b");
-	private static final int ZONE_DELETE_KIND = 4;
+	private static final int ZONE_DELETE_KIND = 5;
 	private static int zoneRequestSequence;
-	private static final String[] ZONE_KIND_IDS = {"farm", "housing", "work", "pasture"};
-	private static final String[] ZONE_KIND_NAMES = {"Feld", "Wohnen", "Arbeit", "Weide"};
+	private static final String[] ZONE_KIND_IDS = {"farm", "housing", "work", "pasture", "protected"};
+	private static final String[] ZONE_KIND_NAMES = {"Feld", "Wohnen", "Arbeit", "Weide", "Sperrzone"};
 	private static final String ACTION_ROUTE = "route";
 	private static final String ACTION_GREET = "greet";
 	private static final String[] NETWORK_ACTIONS = {"swap", ACTION_ROUTE, "invite", ACTION_GREET};
@@ -621,7 +621,9 @@ public class BoardScreen extends Screen {
 				? null : "Die Kennung der zu löschenden Zone ist ungültig.";
 		}
 		if (!("farm".equals(request.kind()) || "housing".equals(request.kind())
-			|| "work".equals(request.kind()) || "pasture".equals(request.kind()))) return "Die Zonenkategorie ist ungültig.";
+			|| "work".equals(request.kind()) || "pasture".equals(request.kind()) || "protected".equals(request.kind()))) {
+			return "Die Zonenkategorie ist ungültig.";
+		}
 		long width = (long)request.maxX() - request.minX() + 1L;
 		long height = (long)request.maxZ() - request.minZ() + 1L;
 		if (width <= 0 || height <= 0 || width > ZONE_MAX_AREA || height > ZONE_MAX_AREA
@@ -834,6 +836,7 @@ public class BoardScreen extends Screen {
 			case "farm" -> 0xAAE0D050;
 			case "housing" -> 0xAA5090E0;
 			case "pasture" -> 0xAA70B860;
+			case "protected" -> 0xAACC5050;
 			default -> 0xAAD07050;
 		};
 	}

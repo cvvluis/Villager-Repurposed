@@ -78,7 +78,7 @@ public final class ZonePolicy {
 			return exists ? null : "Diese Zone existiert nicht mehr oder wurde bereits gelöscht.";
 		}
 		if (!("farm".equals(payload.kind()) || "housing".equals(payload.kind())
-			|| "work".equals(payload.kind()) || "pasture".equals(payload.kind()))) {
+			|| "work".equals(payload.kind()) || "pasture".equals(payload.kind()) || "protected".equals(payload.kind()))) {
 			return "Die ausgewählte Zonenkategorie ist ungültig.";
 		}
 		int minX = Math.min(payload.minX(), payload.maxX()), maxX = Math.max(payload.minX(), payload.maxX());
@@ -105,6 +105,7 @@ public final class ZonePolicy {
 			case "housing" -> "Wohnzone";
 			case "work" -> "Arbeitszone";
 			case "pasture" -> "Weidezone";
+			case "protected" -> "Sperrzone";
 			default -> "Zone";
 		};
 		int minX = Math.min(payload.minX(), payload.maxX()), maxX = Math.max(payload.minX(), payload.maxX());
@@ -130,11 +131,30 @@ public final class ZonePolicy {
 		ref.bellEntity().setAttached(VillagerPlus.ZONES, List.copyOf(zones)); ref.dirty(); return true;
 	}
 	public static boolean validBounds(VillageRef ref, String kind, int minX, int minZ, int maxX, int maxZ) {
-		if (ref == null || !("farm".equals(kind) || "housing".equals(kind) || "work".equals(kind) || "pasture".equals(kind)) || minX > maxX || minZ > maxZ) return false;
+		if (ref == null || !("farm".equals(kind) || "housing".equals(kind) || "work".equals(kind) || "pasture".equals(kind)
+			|| "protected".equals(kind)) || minX > maxX || minZ > maxZ) return false;
 		return Math.abs((long)minX - ref.bell().getX()) <= MAX_RADIUS && Math.abs((long)maxX - ref.bell().getX()) <= MAX_RADIUS
 			&& Math.abs((long)minZ - ref.bell().getZ()) <= MAX_RADIUS && Math.abs((long)maxZ - ref.bell().getZ()) <= MAX_RADIUS
 			&& (long)(maxX - minX + 1) * (maxZ - minZ + 1) <= 4096;
 	}
+
+	/** True when the horizontal cell lies in a valid player-drawn Sperrzone ({@code protected}). */
+	public static boolean protectedCell(VillageRef ref, int x, int z) {
+		if (ref == null) return false;
+		for (Zone zone : ref.bellEntity().getAttachedOrElse(VillagerPlus.ZONES, List.of())) {
+			if (!"protected".equals(zone.kind()) || !validBounds(ref, zone.kind(), zone.minX(), zone.minZ(), zone.maxX(), zone.maxZ())) {
+				continue;
+			}
+			if (x >= zone.minX() && x <= zone.maxX() && z >= zone.minZ() && z <= zone.maxZ()) return true;
+		}
+		return false;
+	}
+
+	/** Village jobs must not build, fell, mine, dig or pave inside a Sperrzone. */
+	public static boolean blocksWork(VillageRef ref, BlockPos pos) {
+		return pos != null && protectedCell(ref, pos.getX(), pos.getZ());
+	}
+
 	private static boolean delete(VillageRef ref, String id) {
 		if (id == null || id.length() > 36) return false;
 		List<Zone> zones = new ArrayList<>(ref.bellEntity().getAttachedOrElse(VillagerPlus.ZONES, List.of()));

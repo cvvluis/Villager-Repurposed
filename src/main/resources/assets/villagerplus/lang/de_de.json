@@ -3,5 +3,11 @@
  "block.villagerplus.dorftafel_gross": "Dorftafel",
  "block.villagerplus.dorfschild": "Hausschild",
  "item.villagerplus.dorfkarte": "Dorfkarte",
- "entity.villagerplus.caravan_trader": "Karawanenhändler"
+ "entity.villagerplus.caravan_trader": "Karawanenhändler",
+ "message.villagerplus.bell_break_warning": "Verwaltete Dorfglocke: Nochmals abbauen zum Bestätigen, oder Schleichen für Umzug.",
+ "message.villagerplus.bell_relocated_pickup": "Dorfglocke mit Dorfdaten aufgenommen — an neuem Ort platzieren.",
+ "message.villagerplus.bell_place_too_close": "Zu nah an einem anderen Dorf — Platzierung abgebrochen.",
+ "message.villagerplus.bell_relocated_place": "Dorfglocke platziert; Dorfdaten übernommen.",
+ "board.villagerplus.site_search.none": "Keine aktuelle Bauplatzsuche.",
+ "board.villagerplus.site_search.summary": "Letzte Suche (%s): %s%% Hang, %s%% außerhalb Zone, %s%% blockiert, %s%% übrige Gründe (vor %s s)."
 }

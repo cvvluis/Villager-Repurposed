@@ -1208,8 +1208,8 @@ final class ClientChecks {
 
 	/** Pins the type/name mapping and release rules used by the real zone-drag event handler. */
 	private static void mapZones(BoardScreen screen) throws ReflectiveOperationException {
-		String[] ids = {"farm", "housing", "work", "pasture"};
-		String[] labels = {"Zone: Feld", "Zone: Wohnen", "Zone: Arbeit", "Zone: Weide"};
+		String[] ids = {"farm", "housing", "work", "pasture", "protected"};
+		String[] labels = {"Zone: Feld", "Zone: Wohnen", "Zone: Arbeit", "Zone: Weide", "Zone: Sperrzone"};
 		for (int kind = 0; kind < ids.length; kind++) {
 			check(ids[kind].equals(BoardScreen.zoneKindId(kind)) && labels[kind].equals(BoardScreen.zoneButtonText(kind)),
 				"zone selection keeps the visible name and stored category aligned for " + ids[kind]);
