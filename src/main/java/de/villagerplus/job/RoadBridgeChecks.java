@@ -17,17 +17,44 @@ import net.minecraft.world.level.block.Blocks;
 public final class RoadBridgeChecks {
  private RoadBridgeChecks() { }
  public static int run(ServerLevel level,BlockPos at) {
-  var ref=Checks090.fixtureForEquipment(level,at);var box=ref.chest(level);box.clearContent();
+  var ref=Checks090.fixtureForEquipment(level,at);
+  // The fixture depot lies inside the road corridor built below, so the depot moves beside it (as in RoadConstructionChecks).
+  BlockPos fixtureDepot=ref.chestPos(level);
+  level.removeBlockEntity(fixtureDepot);level.setBlock(fixtureDepot,Blocks.AIR.defaultBlockState(),3);
+  BlockPos isolatedDepot=at.south(8);level.removeBlockEntity(isolatedDepot);
+  level.setBlock(isolatedDepot,Blocks.AIR.defaultBlockState(),3);
+  level.setBlock(isolatedDepot.below(),Blocks.STONE.defaultBlockState(),3);
+  level.setBlock(isolatedDepot,Blocks.CHEST.defaultBlockState(),3);
+  ref.data().chest=java.util.Optional.of(isolatedDepot);ref.dirty();
+  var box=ref.chest(level);box.clearContent();
   BlockPos other=at.east(80),deck=at.offset(12,-1,0);String key=Network.dim(level)+other.asLong();
   Network.save(ref.bellEntity(),new TradeNetwork(List.of(),List.of(new TradeNetwork.Link(Network.dim(level),other,"Bridge check",30,true,8,0)),Map.of(),0,0));
   ref.bellEntity().setAttached(VillagerPlus.ROADS,Map.of(key,12L,key+":start",12L));
+  // A route needs real, loaded terrain: the planner (RoadRoute) refuses to plan across the natural land below this sky fixture.
+  // Like RoadConstructionChecks, build a flat three-lane corridor at ground level (y-1) all the way to the link, so that the
+  // production planner stores the route; the water gap below is cut into it. The flanks are flush with the lanes so the
+  // bridge worker's ledge stays at bank height (a lower flank would be the nearest ledge to the pier foot).
+  for(int x=1;x<=80;x++)for(int side=-2;side<=2;side++) {
+   BlockPos p=at.offset(x,-1,side);level.getChunkAt(p);
+   level.setBlock(p.below(),Blocks.STONE.defaultBlockState(),3);
+   level.setBlock(p,Blocks.GRASS_BLOCK.defaultBlockState(),3);
+   level.setBlock(p.above(),Blocks.AIR.defaultBlockState(),3);level.setBlock(p.above(2),Blocks.AIR.defaultBlockState(),3);
+  }
   for(int side=-1;side<=1;side++) {
    BlockPos p=deck.offset(0,0,side);level.getChunkAt(p);level.setBlock(p.below(3),Blocks.STONE.defaultBlockState(),3);
    for(int depth=0;depth<3;depth++)level.setBlock(p.below(depth),Blocks.WATER.defaultBlockState(),3);
    level.setBlock(p.above(),Blocks.AIR.defaultBlockState(),3);level.setBlock(p.above(2),Blocks.AIR.defaultBlockState(),3);
-   level.setBlock(p.west(),Blocks.STONE.defaultBlockState(),3);level.setBlock(p.west().above(),Blocks.AIR.defaultBlockState(),3);level.setBlock(p.west().above(2),Blocks.AIR.defaultBlockState(),3);
-   level.setBlock(p.east().below(),Blocks.STONE.defaultBlockState(),3);level.setBlock(p.east(),Blocks.FARMLAND.defaultBlockState(),3);
-   level.setBlock(p.east().above(),Blocks.AIR.defaultBlockState(),3);level.setBlock(p.east().above(2),Blocks.AIR.defaultBlockState(),3);
+  }
+  Map<String,Long> savedRoads=new java.util.HashMap<>(ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of()));
+  Roads.syncRouteGeometry(level,ref.bell(),other,savedRoads,key,null,null);
+  ref.bellEntity().setAttached(VillagerPlus.ROADS,Map.copyOf(savedRoads));ref.dirty();
+  // The route planner (and Roads.nextConstruction's grade look-ahead over cursor-1..cursor+1) accepts only natural, repairable
+  // ground next to a deck: the banks stay grass, and the protected farmland starts one cell behind the far bank. It is placed
+  // after the route is stored, as in RoadConstructionChecks, because the planner would otherwise route around it.
+  for(int side=-1;side<=1;side++) {
+   BlockPos farm=deck.offset(2,0,side);
+   level.setBlock(farm.below(),Blocks.STONE.defaultBlockState(),3);level.setBlock(farm,Blocks.FARMLAND.defaultBlockState(),3);
+   level.setBlock(farm.above(),Blocks.AIR.defaultBlockState(),3);level.setBlock(farm.above(2),Blocks.AIR.defaultBlockState(),3);
   }
   var v=EntityTypes.VILLAGER.spawn(level,at.south(2),EntitySpawnReason.COMMAND);v.setNoAi(true);v.setInvulnerable(true);v.addTag("vp090_fixture");
   var mem=v.getAttachedOrCreate(VillagerPlus.MEMORY);var st=new JobState();long now=level.getGameTime()+1000;int checks=0;
