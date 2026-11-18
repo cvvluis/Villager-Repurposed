@@ -30,7 +30,18 @@ public final class DorftafelGrossChecks {
 
 	public static int run(ServerLevel level, BlockPos origin, VillageRef ref) {
 		checks = 0;
+		// Relief sampling reads only columns that are already loaded (it never generates terrain), so the fixture loads the
+		// whole sampled square first; otherwise two samples could see different sets of loaded chunks.
+		int[] gridOrigin = VillageMap.gridOrigin(level, ref);
+		int gridSize = VillageMap.GRID * Math.max(1, VillageMap.gridCellSize(level, ref));
+		for (int x = gridOrigin[0]; x <= gridOrigin[0] + gridSize + 15; x += 16) {
+			for (int z = gridOrigin[1]; z <= gridOrigin[1] + gridSize + 15; z += 16) level.getChunk(x >> 4, z >> 4);
+		}
+		// The terrain grid is built incrementally (a fixed number of cells per call); sample until it has converged.
 		int[] relief = DorftafelNameBlockEntity.sampleRelief(level, ref);
+		for (int i = 0; i < 400 && !java.util.Arrays.equals(relief, DorftafelNameBlockEntity.sampleRelief(level, ref)); i++) {
+			relief = DorftafelNameBlockEntity.sampleRelief(level, ref);
+		}
 		check(relief.length == DorftafelNameBlockEntity.MAP_W * DorftafelNameBlockEntity.MAP_H,
 			"Relief samples cover the full 32 by 23 map");
 		check(java.util.Arrays.stream(relief).allMatch(value -> (value & ~0x1f3f) == 0 && (value & 15) <= 11),
