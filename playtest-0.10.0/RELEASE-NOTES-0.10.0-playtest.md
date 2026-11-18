@@ -2,17 +2,17 @@
 
 Minecraft 26.2, Fabric, Java 25. Jar: `villagers-repurposed-0.10.0.jar`
 SHA-256: `f093eee054ddf384abb0d3d9bb5621a543b64e2c4f0b4d009f596b2058ca265d`
-Quelle: Branch `claude/village-growth-1111` (aufbauend auf `codex/playtest-2026-11-11`).
+Source: branch `claude/village-growth-1111` (built on `codex/playtest-2026-11-11`).
 
-**Wichtig:** Nur auf dem Dev-Server geprüft (43 Prüfgruppen grün, einzeln gelaufen, plus Naturläufe ohne Spieler).
-**Nicht** im Client oder Vollpack erprobt. In keinem Naturlauf (Seed 4242, 48 000 Ticks) wurde ein Bau fertig; Bruchstein und Holz sind der Engpass.
+**Important:** Tested on the development server only (43 check groups green, run individually, plus natural runs without a player).
+**Not** tried in the client or a full modpack. In no natural run (seed 4242, 48,000 ticks) was a building finished; cobblestone and wood are the bottleneck.
 
-## Neu
-- Rückholung von Bewohnern ohne Weg zur Dorfstraße (Zaunpfosten, Mulden); tiefes Gelände erst nach 3600 Ticks oder nach einem Sturz.
-- Steinbruch und Mine: nächste Steinzellen zuerst, Bruchstein-Lieferung nach Bedarf, Mine ohne Eiche-Brett-Blockade, Bewegungssperre nur im Stollen, Bäume nur mit Rückweg.
-- Bauplätze: terrassierter Platz mit Baumräumung für Kornspeicher und Zivilbauten, Pläne starten mit beschaffbarer Palette, Haussuche mit gespeichertem Cursor.
-- Berufe: Metzger räuchert Rohfleisch aus dem Kornspeicher; Hausschilder werden nicht doppelt gesetzt; Farmer beachtet Serene Seasons (erstes Feld darf Weizen auch außerhalb der Saison säen).
-- Modpack: Laufzeit-Prüfung für More Villagers, Village Taverns, Serene Seasons und Towns and Towers; Server läuft ohne Farmer's Delight, Chef's Delight und Serene Seasons ohne Klassenladefehler.
+## New
+- Rescue of residents with no route to the village street (fence posts, hollows); deep terrain counts only after 3,600 ticks or after a fall.
+- Quarry and mine: nearest stone cells first, cobblestone delivery on demand, mine without the oak-plank blockade, movement lock only inside the tunnel, trees only with a way back.
+- Building sites: terraced site with tree clearing for granary and civic buildings, plans start with an obtainable palette, house search with a saved cursor.
+- Professions: the butcher smokes raw meat from the granary; house signs are no longer placed twice; the farmer respects Serene Seasons (the first field may sow wheat outside the season).
+- Modpack: runtime checks for More Villagers, Village Taverns, Serene Seasons and Towns and Towers; the server runs without Farmer's Delight, Chef's Delight and Serene Seasons without class-loading errors.
 
-## Bekannte Lücken
-Kein fertiges Gebäude im Naturlauf, Dschungel-Kornspeicher, Client/Optik, Vollpack. Details: CLOUD-LOG.md im Branch.
+## Known gaps
+No finished building in a natural run, jungle granary, client/visuals, full modpack. Details: CLOUD-LOG.md in the branch.
