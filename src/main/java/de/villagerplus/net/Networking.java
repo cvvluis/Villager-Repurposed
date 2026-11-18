@@ -27,6 +27,8 @@ public final class Networking {
 		PayloadTypeRegistry.serverboundPlay().register(RenameVillage.TYPE, RenameVillage.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(SetQuota.TYPE, SetQuota.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(BuildingAction.TYPE, BuildingAction.CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(RelocateBoard.TYPE, RelocateBoard.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(RelocateBoard.Result.TYPE, RelocateBoard.Result.CODEC);
 		ServerPlayNetworking.registerGlobalReceiver(BuildingAction.TYPE, (payload, context) -> {
 			ServerPlayer player = context.player();
 			if (!payload.supportedAction() || player.isSpectator() || !(player.level() instanceof ServerLevel level) || player.blockPosition().distSqr(payload.board()) > 24 * 24
@@ -173,6 +175,29 @@ public final class Networking {
 			de.villagerplus.block.DorftafelBlock.open(level, player, payload.board());
 		});
 		PayloadTypeRegistry.clientboundPlay().register(BoardData.TYPE, BoardData.CODEC);
+		ServerPlayNetworking.registerGlobalReceiver(RelocateBoard.TYPE, (payload, context) -> {
+			ServerPlayer player = context.player();
+			if (player.isSpectator() || !(player.level() instanceof ServerLevel level) || player.blockPosition().distSqr(payload.board()) > 24 * 24
+				|| !de.villagerplus.world.LoadedColumns.ready(level, payload.board())
+				|| !(level.getBlockState(payload.board()).getBlock() instanceof de.villagerplus.block.DorftafelBlock)) {
+				ServerPlayNetworking.send(player, new RelocateBoard.Result(payload.board(), payload.requestId(), false,
+					"Die Dorftafel ist gerade nicht erreichbar."));
+				return;
+			}
+			var ref = de.villagerplus.village.Villages.villageNear(level, payload.board(), 96);
+			if (ref == null) {
+				ServerPlayNetworking.send(player, new RelocateBoard.Result(payload.board(), payload.requestId(), false,
+					"Kein Dorf in der Nähe."));
+				return;
+			}
+			boolean ok = de.villagerplus.village.Board.relocateOfficial(level, ref, player, payload.board());
+			String message = ok ? "Offizielle Dorftafel hierher verlegt."
+				: "Tafel konnte hier nicht platziert werden.";
+			ServerPlayNetworking.send(player, new RelocateBoard.Result(payload.board(), payload.requestId(), ok, message));
+			if (ok) {
+				de.villagerplus.block.DorftafelBlock.open(level, player, payload.board());
+			}
+		});
 		ServerPlayNetworking.registerGlobalReceiver(BoardRequest.TYPE, (payload, context) -> {
 			ServerPlayer player = context.player();
 			if (!(player.level() instanceof ServerLevel level) || player.blockPosition().distSqr(payload.pos()) >= 24 * 24

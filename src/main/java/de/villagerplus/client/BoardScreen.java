@@ -119,6 +119,8 @@ public class BoardScreen extends Screen {
 	private String zoneNotice;
 	private int pendingZoneRequestId;
 	private int pendingZoneRequestTicks;
+	private int pendingBoardRelocateRequestId;
+	private int pendingBoardRelocateTicks;
 	private de.villagerplus.net.SetZone zonePreviewRequest;
 	private boolean zonePreviewAccepted;
 	private double dragCarryX, dragCarryY;
@@ -128,7 +130,7 @@ public class BoardScreen extends Screen {
 	private java.util.function.Consumer<NetworkAction> networkActionSender = ClientPlayNetworking::send;
 	/** Lets the map check exercise the actual zone drag dispatch without changing the connected world. */
 	private java.util.function.Consumer<de.villagerplus.net.SetZone> zoneActionSender = ClientPlayNetworking::send;
-	private Button approveProjectButton, mapCardButton;
+	private Button approveProjectButton, mapCardButton, boardRelocateButton;
 	private final Map<String, QuotaSlider> quotaSliders = new LinkedHashMap<>();
 	private ResidentJobSlider residentJobSlider;
 	private Button applyResidentJob;
@@ -139,6 +141,13 @@ public class BoardScreen extends Screen {
 			if (context.client().player != null) {
 				context.client().player.sendSystemMessage(de.villagerplus.village.VillageMessages.format(Component.literal(
 					zoneResultNotice(payload.success(), payload.message()))));
+			}
+		}));
+		ClientPlayNetworking.registerGlobalReceiver(de.villagerplus.net.RelocateBoard.Result.TYPE, (payload, context) -> context.client().execute(() -> {
+			if (context.client().gui.screen() instanceof BoardScreen open && open.acceptBoardRelocateResult(payload)) return;
+			if (context.client().player != null) {
+				context.client().player.sendSystemMessage(de.villagerplus.village.VillageMessages.format(Component.literal(
+					payload.success() ? "✓ " + payload.message() : "✕ " + payload.message())));
 			}
 		}));
 	}
@@ -156,6 +165,10 @@ public class BoardScreen extends Screen {
 			demolishButton.setMessage(Component.literal(picked != null && picked[6].equals("1") ? "Abriss läuft" : "Abrissauftrag"));
 		}
 		if (zoneButton != null) { zoneButton.visible = tab == 0; zoneButton.active = tab == 0 && pendingZoneRequestId == 0; }
+		if (boardRelocateButton != null) {
+			boardRelocateButton.visible = tab == 0;
+			boardRelocateButton.active = tab == 0 && pendingBoardRelocateRequestId == 0;
+		}
 		if (moveButton != null) {
 			moveButton.visible = tab == 0;
 			moveButton.active = picked != null || movePending;
@@ -315,6 +328,11 @@ public class BoardScreen extends Screen {
 	public void tick() {
 		super.tick();
 		ensureQuotaSliders();
+		if (pendingBoardRelocateRequestId != 0 && ++pendingBoardRelocateTicks >= 100) {
+			pendingBoardRelocateRequestId = 0;
+			pendingBoardRelocateTicks = 0;
+			networkVisibility();
+		}
 		if (pendingZoneRequestId != 0 && ++pendingZoneRequestTicks >= 100) {
 			pendingZoneRequestId = 0;
 			pendingZoneRequestTicks = 0;
@@ -430,6 +448,16 @@ public class BoardScreen extends Screen {
 			renameButton.visible = false;
 			setFocused(renameBox);
 		}).bounds(left + RENAME_BUTTON_X, top + 1, 100, 18).build());
+		boardRelocateButton = addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_relocate_here"), b -> {
+			if (pendingBoardRelocateRequestId != 0) return;
+			int requestId = nextZoneRequestId(zoneRequestSequence);
+			zoneRequestSequence = requestId;
+			pendingBoardRelocateRequestId = requestId;
+			pendingBoardRelocateTicks = 0;
+			ClientPlayNetworking.send(new de.villagerplus.net.RelocateBoard(data.board(), requestId));
+			zoneNotice = "Anfrage gesendet · Tafel wird verlegt …";
+			networkVisibility();
+		}).bounds(left + 8, top + MAP_ACTION_ROW_Y - 22, 168, 18).build());
 		demolishButton = addRenderableWidget(Button.builder(Component.literal("Abriss"), b -> {
 			String[] r = selectedBuildingRow();
 			if (r != null && !r[6].equals("1")) {
@@ -629,6 +657,16 @@ public class BoardScreen extends Screen {
 		if (width <= 0 || height <= 0 || width > ZONE_MAX_AREA || height > ZONE_MAX_AREA
 			|| width * height > ZONE_MAX_AREA) return "Die Zonenauswahl überschreitet 4096 Blöcke.";
 		return null;
+	}
+
+	public boolean acceptBoardRelocateResult(de.villagerplus.net.RelocateBoard.Result result) {
+		if (pendingBoardRelocateRequestId == 0 || result.requestId() != pendingBoardRelocateRequestId
+			|| !result.board().equals(data.board())) return false;
+		pendingBoardRelocateRequestId = 0;
+		pendingBoardRelocateTicks = 0;
+		zoneNotice = (result.success() ? "✓ " : "✕ ") + result.message();
+		networkVisibility();
+		return true;
 	}
 
 	public boolean acceptZoneResult(de.villagerplus.net.SetZone.Result result) {

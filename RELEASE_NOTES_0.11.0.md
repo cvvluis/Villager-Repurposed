@@ -14,7 +14,7 @@ Findet das Dorf keinen geeigneten Hausplatz, merkt es sich eine Kurzstatistik (H
 
 Neue Dörfer suchen den Platz am **Wohnschwerpunkt** (Glocke, Häuser, Betten), nicht am AABB-Rand. Der Platz ist kleiner, wird sofort mit Palettenpflaster, Brunnen, Bänken, Laternen und Blumen gestaltet; die **offizielle Dorftafel** steht am Platzeingang mit Blick zum Zentrum, daneben ein **Fahnenmast**. Die leere Starter-Kiste verschwindet nach dem Umzug auf den Platz; der Inhalt wandert in die neue Dorfkiste.
 
-**Wegweiser:** `/villagerplus tafel` und `status` zeigen klickbare Tafel-Koordinaten (OP: Teleport-Link). Beim Betreten des Dorfgebiets erscheint ein gedrosselter Actionbar-Hinweis (`-Dvillagerplus.boardWayfinding=false` zum Abschalten). **Tafel verlegen:** Schleichen + Rechtsklick an der Dorftafel (pinnt die Position). Bereits gebaute Plätze werden nur nachgerüstet (Tafel/Fahnenmast/Deko), nicht neu gegraben. **`/villagerplus platz neu`** (Gamemaster/OP) legt einen zusätzlichen Platz am neuen Kern an.
+**Wegweiser:** `/villagerplus tafel` und `status` zeigen klickbare Tafel-Koordinaten (OP: Teleport-Link). Beim Betreten des Dorfgebiets erscheint ein gedrosselter Actionbar-Hinweis (`-Dvillagerplus.boardWayfinding=false` zum Abschalten). **Tafel verlegen:** Schleichen + Rechtsklick an der Dorftafel oder auf der Karte der Dorftafel **„Tafel hierher verlegen“** (pinnt die Position; nur an einem sicheren Standort). Die **Fahnenfarbe** folgt Dorfstil/Biom. Überpflasterte Wege im Platz bleiben im Wegnetz registriert. Bereits gebaute Plätze werden nur nachgerüstet (Tafel/Fahnenmast/Deko), nicht neu gegraben. **`/villagerplus platz neu`** (Gamemaster/OP) legt einen zusätzlichen Platz am neuen Kern an.
 
 ## Dorfglocke und Datenhaltung
 

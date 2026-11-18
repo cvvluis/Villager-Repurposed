@@ -59,7 +59,13 @@ public final class Board {
 
 	/** Verlegt die offizielle Tafel an die Spielerposition (Schleich-Rechtsklick). */
 	public static boolean relocateOfficial(ServerLevel level, VillageRef ref, Player player, BlockPos from) {
-		BlockPos target = player.blockPosition();
+		var stand = de.villagerplus.job.JobUtil.safeSpot(level, player.position());
+		if (stand == null) {
+			VillageMessages.overlay((net.minecraft.server.level.ServerPlayer) player,
+				Component.translatable("message.villagerplus.board_relocate_unsafe"));
+			return false;
+		}
+		BlockPos target = BlockPos.containing(stand);
 		if (!Plaza.inside(level, ref, from, 64) && Market.of(ref).plaza().isEmpty()) {
 			VillageMessages.overlay((net.minecraft.server.level.ServerPlayer) player,
 				Component.translatable("message.villagerplus.board_relocate_no_plaza"));

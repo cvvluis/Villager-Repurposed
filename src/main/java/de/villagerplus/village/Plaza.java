@@ -42,7 +42,7 @@ public final class Plaza {
  private static final int WORK_BATCH_INTERVAL_TICKS=1;
  private static final long CIVIC_RETRY_TICKS=200L;
  private static final int SURFACE_SIDE=PLAZA_RADIUS*2+1;
- private static final int SURFACE_CELLS=SURFACE_SIDE*SURFACE_SIDE;
+ public static final int SURFACE_CELLS=SURFACE_SIDE*SURFACE_SIDE;
  public static boolean inside(ServerLevel level, VillageRef ref, BlockPos p, int margin) {
   MarketData m=Market.of(ref); if(m.plaza().isEmpty()) return false;
   return inside(m.plaza().get(),p,margin);
@@ -264,7 +264,7 @@ public final class Plaza {
 		return Math.max(Math.abs(dx),Math.abs(dz))==5&&Math.min(Math.abs(dx),Math.abs(dz))>=3;
 	}
  static boolean outerSquareBorderOffset(int dx,int dz) {
-	  return Math.max(Math.abs(dx),Math.abs(dz))==10;
+	  return Math.max(Math.abs(dx),Math.abs(dz))==PLAZA_RADIUS-1;
  }
  /** The four five-wide road arms continue from the plaza edge through the bounded site apron. */
  static boolean roadArmOffset(int dx,int dz) {
@@ -284,7 +284,7 @@ public final class Plaza {
 	/** Palette-matched octagonal fountain court, double-diamond medallion, and diagonal rays form the central motif. */
  static boolean plazaInlayOffset(int dx,int dz) {
   int x=Math.abs(dx),z=Math.abs(dz);
-	  boolean diagonalRays=x==z&&x>=4&&x<=11;
+	  boolean diagonalRays=x==z&&x>=4&&x<=PLAZA_RADIUS;
 	  boolean fountainCourt=innerMedallionRingOffset(dx,dz)||outerMedallionRingOffset(dx,dz);
   boolean fountainMedallion=x+z==7&&x>=3&&z>=3;
 	  boolean innerDiamondBorder=x+z==12&&x>=3&&z>=3;
@@ -1053,6 +1053,7 @@ public final class Plaza {
   MarketData m=Market.of(ref); Market.save(ref,new MarketData(Optional.of(c),m.shops(),m.nextPlan(),m.sales()));
   decorate(level,ref,hint,c,level.getGameTime());
   BoardWayfinding.announcePlaza(level, c, board);
+  Roads.integratePlazaFootprint(level, ref, c);
   Journal.add(level,ref,"Bauen","Dorfgemeinschaft","Dorfplatz und Tafel bei "+c.toShortString(),0);
   org.slf4j.LoggerFactory.getLogger("villagerplus").info("Plaza errichtet bei {} (alte Dorfkiste {})",c,old);
  }
@@ -1089,10 +1090,68 @@ public final class Plaza {
  private static void nudgeEntitiesFromFootprint(ServerLevel level, BlockPos center, int radius) {
   var box = new net.minecraft.world.phys.AABB(center).inflate(radius, 4, radius);
   for (net.minecraft.world.entity.LivingEntity entity : level.getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class, box)) {
-   if (!box.contains(entity.position())) continue;
-   BlockPos away = center.relative(Sites.facingTowards(center, entity.blockPosition()), radius + 2);
-   entity.teleportTo(away.getX() + 0.5, entity.getY(), away.getZ() + 0.5);
+   BlockPos feet = entity.blockPosition();
+   if (!inside(center, feet, -1)) continue;
+   net.minecraft.world.phys.Vec3 safe = edgeSafeSpot(level, center, radius, entity);
+   if (safe == null) continue;
+   entity.teleportTo(safe.x, safe.y, safe.z);
   }
+ }
+
+ private static net.minecraft.world.phys.Vec3 edgeSafeSpot(ServerLevel level, BlockPos center, int radius,
+     net.minecraft.world.entity.LivingEntity entity) {
+  net.minecraft.core.Direction away = Sites.facingTowards(center, entity.blockPosition());
+  for (int dist = radius; dist <= radius + 3; dist++) {
+   BlockPos anchor = center.relative(away, dist);
+   for (int lateral = -2; lateral <= 2; lateral++) {
+    BlockPos column = away.getStepX() != 0 ? anchor.offset(0, 0, lateral) : anchor.offset(lateral, 0, 0);
+    if (!de.villagerplus.world.LoadedColumns.ready(level, column)) continue;
+    int surfaceY = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+      column.getX(), column.getZ());
+    BlockPos ground = new BlockPos(column.getX(), surfaceY, column.getZ());
+    if (inside(center, ground, 0)) continue;
+    var fluid = level.getBlockState(ground).getFluidState();
+    if (!fluid.isEmpty()) continue;
+    var safe = de.villagerplus.job.JobUtil.safeSpot(level, net.minecraft.world.phys.Vec3.atBottomCenterOf(ground));
+    if (safe != null && !inside(center, BlockPos.containing(safe), 0)) return safe;
+   }
+  }
+  return null;
+ }
+
+ static net.minecraft.world.level.block.Block villageBannerBlock(ServerLevel level, VillageRef ref, Villager hint) {
+  String type = villagerStyleKey(level, ref, hint);
+  return switch (type) {
+   case "desert" -> Blocks.BANNER.yellow();
+   case "savanna" -> Blocks.BANNER.orange();
+   case "snow" -> Blocks.BANNER.lightBlue();
+   case "taiga" -> Blocks.BANNER.green();
+   case "jungle" -> Blocks.BANNER.lime();
+   default -> Blocks.BANNER.white();
+  };
+ }
+
+ private static String villagerStyleKey(ServerLevel level, VillageRef ref, Villager hint) {
+  if (hint != null) {
+   return hint.getVillagerData().type().unwrapKey().map(k -> k.identifier().getPath()).orElse("plains");
+  }
+  for (net.minecraft.world.entity.npc.villager.Villager v : level.getEntitiesOfClass(
+      net.minecraft.world.entity.npc.villager.Villager.class,
+      new net.minecraft.world.phys.AABB(ref.bell()).inflate(64))) {
+   VillageRef home = Villages.find(level, v);
+   if (home != null && home.bell().equals(ref.bell())) {
+    return v.getVillagerData().type().unwrapKey().map(k -> k.identifier().getPath()).orElse("plains");
+   }
+  }
+  return level.getBiome(ref.bell()).unwrapKey().map(k -> {
+   String path = k.identifier().getPath();
+   if (path.contains("desert") || path.contains("badlands")) return "desert";
+   if (path.contains("savanna")) return "savanna";
+   if (path.contains("snow") || path.contains("frozen")) return "snow";
+   if (path.contains("taiga") || path.contains("grove")) return "taiga";
+   if (path.contains("jungle") || path.contains("bamboo")) return "jungle";
+   return "plains";
+  }).orElse("plains");
  }
 
  static BlockPos placeBoardAndFlagpole(ServerLevel level, VillageRef ref, BlockPos plaza, Palette p, boolean pin) {
@@ -1133,7 +1192,7 @@ public final class Plaza {
   int height = 10;
   var support = p.fence() != null ? p.fence() : p.frame() != null ? p.frame() : Blocks.OAK_FENCE;
   for (int dy = 0; dy < height; dy++) level.setBlock(pole.above(dy), support.defaultBlockState(), 3);
-  level.setBlock(pole.above(height), Blocks.BANNER.white().defaultBlockState(), 3);
+  level.setBlock(pole.above(height), villageBannerBlock(level, ref, null).defaultBlockState(), 3);
  }
 
  static void buildImmediateCivicDecor(ServerLevel level, VillageRef ref, BlockPos c, Palette p, Set<Long> roadGrounds) {

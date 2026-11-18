@@ -22,6 +22,8 @@
  "message.villagerplus.plaza_built": "The villagers built a village square — board at %s.",
  "message.villagerplus.board_relocated": "Official village board moved here.",
  "message.villagerplus.board_relocate_no_plaza": "No village nearby — board could not be moved.",
+ "message.villagerplus.board_relocate_unsafe": "No safe spot here for the village board.",
+ "gui.villagerplus.board_relocate_here": "Move board here",
  "message.villagerplus.platz_neu_none": "No village bell found nearby.",
  "message.villagerplus.platz_neu_failed": "No free site in the village core.",
  "message.villagerplus.platz_neu_ok": "New village square at %s (old square kept)."
