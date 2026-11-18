@@ -48,6 +48,7 @@ public final class WallConstructionChecks {
 	public static int run(ServerLevel level, VillageRef ref) throws Exception {
 		int passed = 0, radius = 40, cursor = 10;
 		VillageData d = ref.data(); Plan oldPlan = Plan.of(d);
+		var oldProjects = new ArrayList<>(d.buildProjects); int oldProjectVersion = d.buildProjectVersion;
 		var profiles = ref.bellEntity().getAttached(Wall.PROFILES);
 		var extent = ref.bellEntity().getAttached(VillagerPlus.VILLAGE_EXTENT);
 		var buildings = ref.bellEntity().getAttached(VillagerPlus.BUILDINGS);
@@ -100,6 +101,9 @@ public final class WallConstructionChecks {
 			worker.addTag("vp090_fixture");worker.setNoAi(true);worker.setInvulnerable(true);
 			de.villagerplus.village.Villages.bindResident(level,ref,worker,null);
 			box.clearContent();for(int i=0;i<3;i++)box.setItem(i,new ItemStack(Items.COBBLESTONE,64));
+			// The builder runs on per-project cursors and ignores the legacy singleton plan fields while any project list exists. An empty
+			// list with the persisted legacy marker (version 0) makes the next Builder.tick migrate this wall plan into an active project.
+			d.buildProjects.clear();d.buildProjectVersion=0;
 			long now=level.getGameTime()+1;d.planType=Blueprints.WALL;d.planOrigin=Optional.of(ref.bell());d.planVariant=radius;d.planStep=cursor;d.planProgress=now;
 			d.wanted.clear();d.claimPlanBuilder(worker.getUUID());
 			Ctx c=new Ctx(level,worker,JobManager.state(worker),worker.getAttachedOrCreate(VillagerPlus.MEMORY),ref,now);
@@ -134,7 +138,7 @@ public final class WallConstructionChecks {
 				"column geometry stays fixed after foundations replace water and raise the heightmap");passed++;
 			Wall.Cell changed=a.stream().filter(Wall.Cell::paid).findFirst().orElseThrow();level.setBlock(changed.pos(),Blocks.DIAMOND_BLOCK.defaultBlockState(),FLAGS);
 			check(!Builder.columnIntact(level,ref.bell(),style,radius,cursor),"foreign solid blocks cannot masquerade as completed wall material");passed++;
-			int remaining=JobUtil.count(box,s->s.is(Items.COBBLESTONE));d.planStep=cursor;d.planProgress=now+100;
+			int remaining=JobUtil.count(box,s->s.is(Items.COBBLESTONE));d.buildProjects.clear();d.buildProjectVersion=0;d.planStep=cursor;d.planProgress=now+100;
 			Builder.tick(new Ctx(level,worker,c.st(),c.mem(),ref,now+100),true);
 			check(d.planStep==cursor&&level.getBlockState(changed.pos()).is(Blocks.DIAMOND_BLOCK)&&JobUtil.count(box,s->s.is(Items.COBBLESTONE))==remaining,
 				"a blocked column preserves foreign property, the cursor and the material stock");passed++;
@@ -165,6 +169,7 @@ public final class WallConstructionChecks {
 			if(worker!=null){worker.discard();de.villagerplus.village.Villages.forget(worker.getUUID());}
 			world.forEach((pos,state)->level.setBlock(pos,state,FLAGS));
 			box.clearContent();for(int i=0;i<stock.size();i++)box.setItem(i,stock.get(i));
+			d.buildProjects.clear();d.buildProjects.addAll(oldProjects);d.buildProjectVersion=oldProjectVersion;
 			oldPlan.restore(d);d.extra.lager=oldLager;d.extra.lagerMore.clear();d.extra.lagerMore.addAll(oldMore);d.extra.lagerChests.clear();d.extra.lagerChests.addAll(oldChests);
 			if(oldStyle==null)styles.remove(ref.bell().asLong());else styles.put(ref.bell().asLong(),oldStyle);
 			if(profiles==null)ref.bellEntity().removeAttached(Wall.PROFILES);else ref.bellEntity().setAttached(Wall.PROFILES,profiles);
@@ -260,6 +265,8 @@ public final class WallConstructionChecks {
 			check((boolean)start.invoke(null,c,ref,box,List.of(worker))&&ref.data().planType.equals(Blueprints.WALL)
 				&&ref.data().planVariant==expandedRadius&&ref.data().planStep==0&&ref.data().wallBuilt,
 				"growth starts a persisted outer-ring cursor while the completed inner wall remains built");passed++;
+			// startWall writes only the legacy view (inside a real tick the project is persisted from it); let the next tick migrate it.
+			ref.data().buildProjects.clear();ref.data().buildProjectVersion=0;
 
 			for(int t=0;t<6;t++){
 				int[] offset=Wall.ringOffset(expandedRadius,t);var inward=Wall.inward(expandedRadius,t);
@@ -352,6 +359,8 @@ public final class WallConstructionChecks {
 			check((boolean)start.invoke(null,new Ctx(level,worker,c.st(),c.mem(),ref,restartAt),ref,box,List.of(worker))
 				&&ref.data().planVariant==expandedRadius&&ref.data().planStep==0&&ref.data().wallBuilt,
 				"a cancelled growth plan restarts at the same outer radius without replacing the completed inner ring");passed++;
+			// startWall writes only the legacy view (inside a real tick the project is persisted from it); let the next tick migrate it.
+			ref.data().buildProjects.clear();ref.data().buildProjectVersion=0;
 			List<Wall.Cell> resumedColumn=Wall.column(level,bell,style.wall(),style.stairs(),style.fence(),expandedRadius,cancelStep);
 			List<Wall.Cell> resumedNextColumn=Wall.column(level,bell,style.wall(),style.stairs(),style.fence(),expandedRadius,cancelStep+1);
 			int resumeCost=(int)(resumedColumn.stream().filter(Wall.Cell::paid).count()-3
