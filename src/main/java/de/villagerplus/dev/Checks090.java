@@ -590,6 +590,15 @@ public final class Checks090 {
    }
    source.sendSuccess(()->Component.literal("VP090 a04idle PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("stallwatchdog")) {
+   int count;
+   try { count=de.villagerplus.StallWatchdogChecks.run(); } catch(Exception e) { throw new IllegalStateException(e); }
+   source.sendSuccess(()->Component.literal("VP090 stallwatchdog PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("anchorbudget")) {
+   int count=de.villagerplus.village.AnchorBudgetChecks.run(level,new BlockPos(53000,201,53000));
+   source.sendSuccess(()->Component.literal("VP090 anchorbudget PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("a04lease")) {
    int count=de.villagerplus.village.A04LeaseChecks.run(level,new BlockPos(52000,201,52000));
    if(count<0) { source.sendSuccess(()->Component.literal("VP090 a04lease PREPARING; retry after server ticks"),false);return -1; }
@@ -606,6 +615,10 @@ public final class Checks090 {
    count+=de.villagerplus.build.FarmPlanSizingChecks.run();
    int total=count;
    source.sendSuccess(()->Component.literal("VP090 farmexpand PASS "+total+" checks"),false);return total;
+  }
+  if(mode.equals("foodchain")) {
+   int count=de.villagerplus.job.FoodChainChecks.run(level,new BlockPos(53000,201,53000));
+   source.sendSuccess(()->Component.literal("VP090 foodchain PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("stonehands")) {
    BlockPos at=new BlockPos(49200,201,49200);

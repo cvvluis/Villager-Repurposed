@@ -126,7 +126,7 @@ public record ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, 
 
 		// Keep still-owned temporary blocks across a retry/restart; forget only blocks that no longer match.
 		for (TemporaryBlock previous : site.temporary()) {
-			if (!level.hasChunkAt(previous.pos()) || ownsTemporary(level, previous)) placed.add(previous);
+			if (!de.villagerplus.world.LoadedColumns.ready(level, previous.pos()) || ownsTemporary(level, previous)) placed.add(previous);
 		}
 		BlockPos bench = findWorkbenchPosition(level, preferredBench, facing, steps, placed, targets);
 		if (bench != null) targets.add(new TemporaryBlock(bench, true));
@@ -175,7 +175,7 @@ public record ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, 
 	private static BlockPos findWorkbenchPosition(ServerLevel level, BlockPos preferred, Direction facing,
 			List<Step> steps, List<TemporaryBlock> existing, List<TemporaryBlock> scaffoldTargets) {
 		for (TemporaryBlock temp : existing) {
-			if (temp.workbench() && (!level.hasChunkAt(temp.pos()) || ownsTemporary(level, temp))) return temp.pos();
+			if (temp.workbench() && (!de.villagerplus.world.LoadedColumns.ready(level, temp.pos()) || ownsTemporary(level, temp))) return temp.pos();
 		}
 		List<BlockPos> candidates = new ArrayList<>();
 		candidates.add(preferred);
@@ -246,7 +246,7 @@ public record ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, 
 	}
 
 	private static boolean canPlace(ServerLevel level, BlockPos pos, boolean workbench) {
-		if (!level.hasChunkAt(pos) || !level.getBlockState(pos).isAir() || occupied(level, pos)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !level.getBlockState(pos).isAir() || occupied(level, pos)) return false;
 		BlockState state = workbench ? Blocks.CRAFTING_TABLE.defaultBlockState() : Blocks.SCAFFOLDING.defaultBlockState()
 			.setValue(ScaffoldingBlock.DISTANCE, 0);
 		return state.canSurvive(level, pos);
@@ -255,7 +255,7 @@ public record ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, 
 	/** Upper scaffold cells become placeable after their planned lower cell is paid for and erected. */
 	private static boolean canPrepare(ServerLevel level, TemporaryBlock target, List<TemporaryBlock> targets) {
 		if (canPlace(level, target.pos(), target.workbench())) return true;
-		if (target.workbench() || !level.hasChunkAt(target.pos()) || !level.getBlockState(target.pos()).isAir()
+		if (target.workbench() || !de.villagerplus.world.LoadedColumns.ready(level, target.pos()) || !level.getBlockState(target.pos()).isAir()
 			|| occupied(level, target.pos())) return false;
 		BlockPos below = target.pos().below();
 		boolean stagedSupport = targets.stream().anyMatch(candidate -> !candidate.workbench() && candidate.pos().equals(below));
@@ -305,7 +305,7 @@ public record ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, 
 			return Integer.compare(b.pos().getY(), a.pos().getY());
 		});
 		for (TemporaryBlock temp : removalOrder) {
-			if (!level.hasChunkAt(temp.pos())) { remaining.add(temp); continue; }
+			if (!de.villagerplus.world.LoadedColumns.ready(level, temp.pos())) { remaining.add(temp); continue; }
 			BlockState current = level.getBlockState(temp.pos());
 			if (current.is(temp.workbench() ? Blocks.CRAFTING_TABLE : Blocks.SCAFFOLDING)) {
 				level.setBlock(temp.pos(), Blocks.AIR.defaultBlockState(), 3);

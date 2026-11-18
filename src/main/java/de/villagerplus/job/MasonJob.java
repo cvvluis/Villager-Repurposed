@@ -76,10 +76,10 @@ public class MasonJob implements Job {
 		}
 		int x = c.v().getBlockX() + c.v().getRandom().nextInt(29) - 14;
 		int z = c.v().getBlockZ() + c.v().getRandom().nextInt(29) - 14;
-		if (!c.level().hasChunkAt(new BlockPos(x, c.v().getBlockY(), z))) {
+		if (!de.villagerplus.world.LoadedColumns.ready(c.level(), new BlockPos(x, c.v().getBlockY(), z))) {
 			return false;
 		}
-		BlockPos p = new BlockPos(x, c.level().getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
+		BlockPos p = new BlockPos(x, de.villagerplus.world.LoadedColumns.heightOrMinY(c.level(), Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
 		BlockPos below = p.below();
 		if (c.level().getBrightness(LightLayer.BLOCK, p) != 0 || !c.level().getBlockState(p).isAir()
 			|| !c.level().getBlockState(below).isFaceSturdy(c.level(), below, Direction.UP)

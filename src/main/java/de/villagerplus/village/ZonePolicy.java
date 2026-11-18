@@ -33,7 +33,7 @@ public final class ZonePolicy {
 		ServerPlayNetworking.registerGlobalReceiver(SetZone.TYPE, (payload, context) -> {
 			ServerPlayer player = context.player();
 			ServerLevel level = player.level() instanceof ServerLevel serverLevel ? serverLevel : null;
-			boolean boardChunkLoaded = level != null && level.hasChunkAt(payload.board());
+			boolean boardChunkLoaded = level != null && de.villagerplus.world.LoadedColumns.ready(level, payload.board());
 			boolean validBoard = boardChunkLoaded
 				&& level.getBlockState(payload.board()).getBlock() instanceof de.villagerplus.block.DorftafelBlock;
 			boolean withinBoardRange = validBoard && player.blockPosition().distSqr(payload.board()) <= 24L * 24L;

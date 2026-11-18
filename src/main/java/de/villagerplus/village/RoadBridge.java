@@ -18,12 +18,12 @@ public final class RoadBridge {
 
  /** Plans one paid bridge placement while retaining the village protection owners for revalidation. */
  public static Plan plan(ServerLevel level,BlockPos deck,BlockPos ownerBell,BlockPos peerBell) {
-  if(!level.hasChunkAt(deck)||!clear(level,deck.above())||!clear(level,deck.above(2)))return null;
+  if(!de.villagerplus.world.LoadedColumns.ready(level, deck)||!clear(level,deck.above())||!clear(level,deck.above(2)))return null;
   BlockState surface=level.getBlockState(deck);
   if(!(replaceableWater(surface)||surface.is(Blocks.SPRUCE_PLANKS)))return null;
   int depth=0;
   for(int d=1;d<=MAX_SUPPORT_DEPTH;d++) {
-   BlockPos p=deck.below(d);if(!level.hasChunkAt(p))return null;
+   BlockPos p=deck.below(d);if(!de.villagerplus.world.LoadedColumns.ready(level, p))return null;
    BlockState s=level.getBlockState(p);
    if(s.hasBlockEntity())return null;
    if(s.is(Blocks.SPRUCE_LOG))continue;
@@ -51,7 +51,7 @@ public final class RoadBridge {
 
  public static boolean validTask(ServerLevel level,Roads.Repair task) {
   BlockPos p=task.ground(),stand=task.worksite();
-  if(!level.hasChunkAt(p)||!level.hasChunkAt(stand))return false;
+  if(!de.villagerplus.world.LoadedColumns.ready(level, p)||!de.villagerplus.world.LoadedColumns.ready(level, stand))return false;
   if(!(task.paving().is(Blocks.SPRUCE_LOG)||task.paving().is(Blocks.SPRUCE_PLANKS)))return false;
   BlockState floor=level.getBlockState(p.below());
   if(!replaceableWater(level.getBlockState(p))||floor.hasBlockEntity()||floor.is(Blocks.FARMLAND)
@@ -72,7 +72,7 @@ public final class RoadBridge {
     for(int radius=1;radius<=3;radius++)for(int dx=-radius;dx<=radius;dx++)for(int dz=-radius;dz<=radius;dz++) {
      if(Math.max(Math.abs(dx),Math.abs(dz))!=radius)continue;
      BlockPos p=target.offset(dx,vertical,dz);
-     if(!level.hasChunkAt(p)||!level.hasChunkAt(p.below())||!level.hasChunkAt(p.above()))continue;
+     if(!de.villagerplus.world.LoadedColumns.ready(level, p)||!de.villagerplus.world.LoadedColumns.ready(level, p.below())||!de.villagerplus.world.LoadedColumns.ready(level, p.above()))continue;
      BlockState floor=level.getBlockState(p.below());
      if(floor.hasBlockEntity()||floor.is(Blocks.FARMLAND)||!supported(level,p.below())
        ||!clear(level,p)||!clear(level,p.above()))continue;

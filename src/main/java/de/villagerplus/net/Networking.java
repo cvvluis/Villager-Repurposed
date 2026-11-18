@@ -112,7 +112,7 @@ public final class Networking {
 			ServerPlayer player = context.player();
 			ServerLevel level = player.level() instanceof ServerLevel serverLevel ? serverLevel : null;
 			boolean sameLevel = level != null && player.level() == level;
-			boolean boardLoaded = sameLevel && level.hasChunkAt(payload.board());
+			boolean boardLoaded = sameLevel && de.villagerplus.world.LoadedColumns.ready(level, payload.board());
 			boolean inReach = sameLevel && player.blockPosition().distSqr(payload.board()) <= 24L * 24L;
 			boolean isBoard = boardLoaded && level.getBlockState(payload.board()).getBlock() instanceof de.villagerplus.block.DorftafelBlock;
 			String admissionFailure = networkActionAdmissionFailure(player.isSpectator(), sameLevel, boardLoaded, inReach, isBoard);
@@ -176,7 +176,7 @@ public final class Networking {
 		ServerPlayNetworking.registerGlobalReceiver(BoardRequest.TYPE, (payload, context) -> {
 			ServerPlayer player = context.player();
 			if (!(player.level() instanceof ServerLevel level) || player.blockPosition().distSqr(payload.pos()) >= 24 * 24
-				|| !level.hasChunkAt(payload.pos())
+				|| !de.villagerplus.world.LoadedColumns.ready(level, payload.pos())
 				|| !(level.getBlockState(payload.pos()).getBlock() instanceof de.villagerplus.block.DorftafelBlock)) return;
 			if (payload.talkResidentId().isBlank()) {
 				de.villagerplus.block.DorftafelBlock.open(level, player, payload.pos());

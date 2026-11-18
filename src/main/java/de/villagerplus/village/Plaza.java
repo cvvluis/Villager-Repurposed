@@ -292,7 +292,7 @@ public final class Plaza {
  /** Progress the civic composition in small, paid, restart-safe batches. */
  static void decorate(ServerLevel level, VillageRef ref, Villager hint, BlockPos c, long now) {
   String key=cacheKey(level,ref)+"/plaza-"+c.asLong();
-  if(!level.hasChunkAt(c)) return;
+  if(!de.villagerplus.world.LoadedColumns.ready(level, c)) return;
   Set<Long> roadGrounds=savedRoadGrounds(level,ref);
   Palette p=null;
   String surfaceKey=key+"/server-"+System.identityHashCode(level.getServer());
@@ -359,7 +359,7 @@ public final class Plaza {
    BlockPos at=c.offset(detail.dx(),0,detail.dz());
    if(!civicDetailSafe(detail)) { /* fixed geometry guard for future layout edits */ }
    else if(protectedZoneIntersects(ref,at,0)) { /* user zone remains untouched */ }
-   else if(!level.hasChunkAt(at.below())) { pending=true; }
+   else if(!de.villagerplus.world.LoadedColumns.ready(level, at.below())) { pending=true; }
    else if(reservedRoadCell(level,at.below(),roadGrounds)) { /* saved road/path remains untouched */ }
    else if(!civicDetailLoaded(level,at,detail.kind())) { pending=true; }
    else if(civicDetailOccupied(level,at,detail.kind())) { /* preserve existing plaza or player blocks */ }
@@ -400,13 +400,13 @@ public final class Plaza {
  }
 
  private static boolean reservedRoadCell(ServerLevel level,BlockPos ground,Set<Long> roadGrounds) {
-  return level.hasChunkAt(ground)&&(roadGrounds.contains(ground.asLong())||Roads.isProtectedLaneCell(level,ground)
+  return de.villagerplus.world.LoadedColumns.ready(level, ground)&&(roadGrounds.contains(ground.asLong())||Roads.isProtectedLaneCell(level,ground)
    ||level.getBlockState(ground).is(Blocks.DIRT_PATH));
  }
 
  private static boolean civicDetailLoaded(ServerLevel level,BlockPos at,CivicDetailKind kind) {
   int top=switch(kind) { case BENCH,PLANTER,LAMP -> 2; case FLOWER,RAIN_BASIN -> 0; };
-  for(int dy=-1;dy<=top;dy++) if(!level.hasChunkAt(at.above(dy))) return false;
+  for(int dy=-1;dy<=top;dy++) if(!de.villagerplus.world.LoadedColumns.ready(level, at.above(dy))) return false;
   return true;
  }
 
@@ -460,11 +460,11 @@ public final class Plaza {
    int dx=index/side-PLAZA_RADIUS,dz=index%side-PLAZA_RADIUS;
    if(!surfaceUpgradeOffsetSafe(dx,dz)) continue;
    BlockPos column=c.offset(dx,0,dz);
-   if(!level.hasChunkAt(column)) { pending=true;continue; }
-   int surfaceY=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,column.getX(),column.getZ());
+   if(!de.villagerplus.world.LoadedColumns.ready(level, column)) { pending=true;continue; }
+   int surfaceY=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column.getX(), column.getZ());
    if(surfaceY!=c.getY()) continue;
    BlockPos floor=c.offset(dx,-1,dz);
-   if(!level.hasChunkAt(floor)) { pending=true;continue; }
+   if(!de.villagerplus.world.LoadedColumns.ready(level, floor)) { pending=true;continue; }
    if(protectedZoneIntersects(ref,floor,0)||reservedRoadCell(level,floor,roadGrounds)) continue;
    var existing=level.getBlockState(floor);
 	  boolean inlay=accentPavingOffset(dx,dz);
@@ -475,7 +475,7 @@ public final class Plaza {
    boolean clear=true;
    for(int dy=1;dy<=3;dy++) {
     BlockPos head=floor.above(dy);
-    if(!level.hasChunkAt(head)||!level.getBlockState(head).isAir()||level.getBlockEntity(head)!=null) { clear=false;break; }
+    if(!de.villagerplus.world.LoadedColumns.ready(level, head)||!level.getBlockState(head).isAir()||level.getBlockEntity(head)!=null) { clear=false;break; }
    }
    if(!clear||!level.getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class,
     new net.minecraft.world.phys.AABB(floor).expandTowards(0,3,0)).isEmpty()) continue;
@@ -531,7 +531,7 @@ public final class Plaza {
  /** A real public water bucket funds the basin; its empty bucket returns to the same public slot. */
  static boolean ensureFountain(ServerLevel level,VillageRef ref,BlockPos center,Palette palette) {
   if(fountainComplete(level,center,palette.base())) return true;
-  if(!level.hasChunkAt(center)||level.getBlockEntity(center)!=null) return false;
+  if(!de.villagerplus.world.LoadedColumns.ready(level, center)||level.getBlockEntity(center)!=null) return false;
   BlockState centerBefore=level.getBlockState(center);
   boolean legacyMarker=centerBefore.is(palette.base())
    &&level.getBlockState(center.above()).is(palette.base())
@@ -540,13 +540,13 @@ public final class Plaza {
   if(!centerBefore.is(palette.base())||level.getBlockEntity(center.above())!=null) return false;
   for(int dx=-1;dx<=1;dx++) for(int dz=-1;dz<=1;dz++) {
    BlockPos poolCell=center.offset(dx,0,dz);
-   if(!level.hasChunkAt(poolCell)||level.getBlockEntity(poolCell)!=null
+   if(!de.villagerplus.world.LoadedColumns.ready(level, poolCell)||level.getBlockEntity(poolCell)!=null
     ||!level.getBlockState(poolCell).is(palette.base())||!noLivingEntity(level,poolCell)
     ||level.getPoiManager().getInRange(h->true,poolCell,1,
      net.minecraft.world.entity.ai.village.poi.PoiManager.Occupancy.ANY).findAny().isPresent()) return false;
    for(int dy=1;dy<=3;dy++) {
     BlockPos head=poolCell.above(dy);
-    if(!level.hasChunkAt(head)||level.getBlockEntity(head)!=null||!noLivingEntity(level,head)
+    if(!de.villagerplus.world.LoadedColumns.ready(level, head)||level.getBlockEntity(head)!=null||!noLivingEntity(level,head)
      ||level.getPoiManager().getInRange(h->true,head,1,
       net.minecraft.world.entity.ai.village.poi.PoiManager.Occupancy.ANY).findAny().isPresent()) return false;
     BlockState overhead=level.getBlockState(head);
@@ -560,7 +560,7 @@ public final class Plaza {
   for(int[] offset:FOUNTAIN_RING) {
    BlockPos rim=center.offset(offset[0],0,offset[1]);
    BlockPos floor=rim.below();
-   if(!level.hasChunkAt(rim)||!level.hasChunkAt(floor)||level.getBlockEntity(rim)!=null
+   if(!de.villagerplus.world.LoadedColumns.ready(level, rim)||!de.villagerplus.world.LoadedColumns.ready(level, floor)||level.getBlockEntity(rim)!=null
     ||!level.getBlockState(rim).is(palette.base())
     ||!level.getBlockState(rim).isCollisionShapeFullBlock(level,rim)
     ||!level.getBlockState(floor).isFaceSturdy(level,floor,Direction.UP)
@@ -607,10 +607,10 @@ public final class Plaza {
  }
 
  private static boolean fountainComplete(ServerLevel level,BlockPos center,Block basinBlock) {
-  if(!level.hasChunkAt(center)||!level.getBlockState(center).getFluidState().isSource()) return false;
+  if(!de.villagerplus.world.LoadedColumns.ready(level, center)||!level.getBlockState(center).getFluidState().isSource()) return false;
   for(int[] offset:FOUNTAIN_RING) {
    BlockPos rim=center.offset(offset[0],0,offset[1]);
-   if(!level.hasChunkAt(rim)||!level.getBlockState(rim).is(basinBlock)) return false;
+   if(!de.villagerplus.world.LoadedColumns.ready(level, rim)||!level.getBlockState(rim).is(basinBlock)) return false;
   }
   return true;
  }
@@ -806,14 +806,14 @@ public final class Plaza {
 
  static boolean decorationCellFree(ServerLevel level,BlockPos pos,Set<Long> roadGrounds) {
   BlockPos ground=pos.below();
-  if(!level.hasChunkAt(pos)||!level.hasChunkAt(ground)) return false;
+  if(!de.villagerplus.world.LoadedColumns.ready(level, pos)||!de.villagerplus.world.LoadedColumns.ready(level, ground)) return false;
   BlockState groundState=level.getBlockState(ground);
   return !reservedRoadCell(level,ground,roadGrounds)
    &&level.getBlockEntity(ground)==null&&!groundState.hasBlockEntity()
    &&decorationCellClear(level,pos)&&groundState.isFaceSturdy(level,ground,Direction.UP);
  }
  private static boolean decorationCellClear(ServerLevel level,BlockPos pos) {
-  return level.hasChunkAt(pos) && level.getBlockState(pos).isAir() && level.getBlockEntity(pos)==null
+  return de.villagerplus.world.LoadedColumns.ready(level, pos) && level.getBlockState(pos).isAir() && level.getBlockEntity(pos)==null
    &&noLivingEntity(level,pos)
    &&level.getPoiManager().getInRange(h->true,pos,1,
     net.minecraft.world.entity.ai.village.poi.PoiManager.Occupancy.ANY).findAny().isEmpty();
@@ -849,7 +849,7 @@ public final class Plaza {
  public static void refreshShrine(ServerLevel level,VillageRef ref,Villager hint) {
   String key=cacheKey(level,ref);
   MarketData m=Market.of(ref); if(m.plaza().isEmpty()||!SHRINE_FIXED.add(key)) return;
-  BlockPos c=m.plaza().get(); if(!level.hasChunkAt(c)) { SHRINE_FIXED.remove(key); return; }
+  BlockPos c=m.plaza().get(); if(!de.villagerplus.world.LoadedColumns.ready(level, c)) { SHRINE_FIXED.remove(key); return; }
   Palette p=Palette.detect(level,ref.bell(),hint,c.asLong(),c);
   // Altes Dach (Hoehe 4-6, x -2..2, z -1..1) nur entfernen, wenn es ein Dachblock ist (Treppe/Platte/Vollblock des Dorfes)
   for(int x=-2;x<=2;x++) for(int z=-1;z<=1;z++) for(int y=4;y<=6;y++) {
@@ -888,8 +888,8 @@ public final class Plaza {
    int x=center.getX()+(int)Math.round(Math.cos(angle)*radius);
    int z=center.getZ()+(int)Math.round(Math.sin(angle)*radius);
    BlockPos column=new BlockPos(x,center.getY(),z);
-   if(!level.hasChunkAt(column)) continue;
-   BlockPos at=new BlockPos(x,level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z),z);
+   if(!de.villagerplus.world.LoadedColumns.ready(level, column)) continue;
+   BlockPos at=new BlockPos(x,de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z),z);
    BlockPos plaza=site(level,at,PLAZA_RADIUS,PLAZA_EDGE_CLEARANCE,null,context);
    if(plaza==null||Math.abs(plaza.getY()-bell.getY())>12) continue;
    if(!level.getEntitiesOfClass(net.minecraft.world.entity.LivingEntity.class,
@@ -916,7 +916,7 @@ public final class Plaza {
  }
  private static BlockPos site(ServerLevel level,BlockPos at,int half,int clearance,BlockPos plaza,VillageRef context) {
   if(plaza!=null) at=clearApproachRoutes(plaza,at,half);
-  if(at==null||!level.hasChunkAt(at)) return null;
+  if(at==null||!de.villagerplus.world.LoadedColumns.ready(level, at)) return null;
   // A market may be planned before a civic plaza can find suitable terrain. Keep its
   // saved footprint reserved so a later plaza retry cannot pave over the paid shop site.
   if(Market.reserved(level,context,at,half+clearance)) return null;
@@ -930,8 +930,8 @@ public final class Plaza {
   for(int x=-half-clearance;x<=half+clearance;x++) for(int z=-half-clearance;z<=half+clearance;z++) {
    BlockPos col=at.offset(x,0,z);
    if(plaza!=null && (Math.abs(x)>half || Math.abs(z)>half) && inside(plaza,col,0))continue;
-   if(!level.hasChunkAt(col)) return null;
-   int y=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,col.getX(),col.getZ());
+   if(!de.villagerplus.world.LoadedColumns.ready(level, col)) return null;
+   int y=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, col.getX(), col.getZ());
    BlockPos ground=new BlockPos(col.getX(),y-1,col.getZ()); var state=level.getBlockState(ground);
    if(roadGrounds.contains(ground.asLong())||state.is(Blocks.DIRT_PATH)||Roads.isProtectedLaneCell(level,ground)) return null;
    boolean paving=state.is(Blocks.SANDSTONE)||state.is(Blocks.SMOOTH_SANDSTONE)||state.is(Blocks.CUT_SANDSTONE);
@@ -970,7 +970,7 @@ public final class Plaza {
   for(int x=-PLAZA_RADIUS;x<=PLAZA_RADIUS;x++) for(int z=-PLAZA_RADIUS;z<=PLAZA_RADIUS;z++) {
 	   if(Math.abs(x)+Math.abs(z)>PLAZA_DIAMOND_RADIUS) continue;
    BlockPos floor=c.offset(x,-1,z);
-   int y=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,floor.getX(),floor.getZ());
+   int y=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, floor.getX(), floor.getZ());
    for(int k=y;k<c.getY()-1;k++) level.setBlock(new BlockPos(floor.getX(),k,floor.getZ()),p.base().defaultBlockState(),3);
 	   boolean ring=Math.abs(x)==PLAZA_RADIUS || Math.abs(z)==PLAZA_RADIUS
 	    || Math.abs(x)+Math.abs(z)==PLAZA_DIAMOND_RADIUS;
@@ -987,7 +987,7 @@ public final class Plaza {
   if(p.roofStair() instanceof StairBlock) for(int side:new int[]{-1,1}) for(int z:new int[]{-3,3})
 	   level.setBlock(c.offset(side*6,0,z),p.roofStair().defaultBlockState().setValue(StairBlock.FACING,side<0?Direction.WEST:Direction.EAST),3);
   for(Direction dir:Direction.Plane.HORIZONTAL) for(int n=ROAD_ARM_START;n<=ROAD_ARM_END;n++) {
-   BlockPos road=c.relative(dir,n);int height=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,road.getX(),road.getZ());
+   BlockPos road=c.relative(dir,n);int height=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, road.getX(), road.getZ());
 	   int target=c.getY()-(n-PLAZA_RADIUS);if(height>target+1)break;
    for(int side=-2;side<=2;side++) {
     BlockPos stair=new BlockPos(road.getX(),target,road.getZ()).relative(dir.getClockWise(),side);

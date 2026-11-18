@@ -56,7 +56,7 @@ public final class Prep {
 			int x = (int) (e.getKey() >> 32);
 			int z = (int) (long) e.getKey();
 			int orig = e.getValue();
-			if (!level.hasChunkAt(new BlockPos(x, base, z))) {
+			if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, base, z))) {
 				continue;
 			}
 			if (orig > base) {
@@ -103,10 +103,10 @@ public final class Prep {
 				if (fp != null && !fp.contains(key(x, z))) {
 					continue;
 				}
-				if (!level.hasChunkAt(new BlockPos(x, base, z))) {
+				if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, base, z))) {
 					continue;
 				}
-				int h = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+				int h = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 				boolean changed = false;
 				for (int y = h - 1; y >= base; y--) {
 					BlockPos p = new BlockPos(x, y, z);

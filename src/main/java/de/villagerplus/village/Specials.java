@@ -68,7 +68,7 @@ public final class Specials {
 	/** Kiste/Fass des Meilenstein-Gebaeudes mit freiem Platz fuer diesen Gegenstand (sonst null). */
 	public static BlockPos depotWithRoom(net.minecraft.server.level.ServerLevel level, VillageRef ref, String type, net.minecraft.world.item.ItemStack sample) {
 		BlockPos origin = get(ref, type);
-		if (origin == null || !level.hasChunkAt(origin)) {
+		if (origin == null || !de.villagerplus.world.LoadedColumns.ready(level, origin)) {
 			return null;
 		}
 		BlockPos best = null;
@@ -97,7 +97,7 @@ public final class Specials {
 	public static java.util.List<net.minecraft.world.Container> containers(net.minecraft.server.level.ServerLevel level, VillageRef ref, String type) {
 		java.util.List<net.minecraft.world.Container> out = new java.util.ArrayList<>();
 		BlockPos origin = get(ref, type);
-		if (origin == null || !level.hasChunkAt(origin)) {
+		if (origin == null || !de.villagerplus.world.LoadedColumns.ready(level, origin)) {
 			return out;
 		}
 		for (BlockPos pos : BlockPos.betweenClosed(origin.offset(-9, -2, -9), origin.offset(9, 8, 9))) {
@@ -114,11 +114,11 @@ public final class Specials {
 	public static List<LocatedContainer> locatedContainers(ServerLevel level, VillageRef ref, String type) {
 		List<LocatedContainer> out = new ArrayList<>();
 		BlockPos origin = get(ref, type);
-		if (origin == null || !level.hasChunkAt(origin)) {
+		if (origin == null || !de.villagerplus.world.LoadedColumns.ready(level, origin)) {
 			return out;
 		}
 		for (BlockPos pos : BlockPos.betweenClosed(origin.offset(-9, -2, -9), origin.offset(9, 8, 9))) {
-			if (!level.hasChunkAt(pos) || !Lager.publicStorageAt(level, pos)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !Lager.publicStorageAt(level, pos)) continue;
 			Container box = Lager.publicContainerAt(level, pos);
 			if (box != null) {
 				out.add(new LocatedContainer(pos, box));

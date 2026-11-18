@@ -191,7 +191,7 @@ public final class Tavern {
 	}
 
 	private static boolean markerStillPresent(net.minecraft.server.level.ServerLevel level, BlockPos marker) {
-		return level.hasChunkAt(marker) && isTavernMarker(level.getBlockState(marker));
+		return de.villagerplus.world.LoadedColumns.ready(level, marker) && isTavernMarker(level.getBlockState(marker));
 	}
 
 	private static BlockPos reachableStand(net.minecraft.server.level.ServerLevel level, Villager villager, BlockPos marker) {
@@ -208,7 +208,7 @@ public final class Tavern {
 	/** A tavern destination must be a supported, empty feet/head position with an actual navigation path. */
 	static boolean reachableFloor(net.minecraft.server.level.ServerLevel level, Villager villager, BlockPos feet) {
 		BlockPos below = feet.below(), head = feet.above();
-		if (!level.hasChunkAt(feet) || !level.hasChunkAt(below) || !level.hasChunkAt(head)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, feet) || !de.villagerplus.world.LoadedColumns.ready(level, below) || !de.villagerplus.world.LoadedColumns.ready(level, head)) return false;
 		var floor = level.getBlockState(below);
 		if (!floor.isFaceSturdy(level, below, net.minecraft.core.Direction.UP) || !floor.getFluidState().isEmpty()) return false;
 		var body = level.getBlockState(feet);

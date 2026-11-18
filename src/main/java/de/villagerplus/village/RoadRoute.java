@@ -195,13 +195,13 @@ final class RoadRoute {
  /** Returns the loaded paved surface's feet cell only when the centerline is physically walkable. */
  static BlockPos walkablePavedFeet(ServerLevel level,BlockPos routePoint) {
   BlockPos probe=new BlockPos(routePoint.getX(),routePoint.getY(),routePoint.getZ());
-  if(!level.hasChunkAt(probe))return null;
-  int feetY=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,routePoint.getX(),routePoint.getZ());
+  if(!de.villagerplus.world.LoadedColumns.ready(level, probe))return null;
+  int feetY=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, routePoint.getX(), routePoint.getZ());
   if(feetY<=level.getMinY()||feetY>=level.getMaxY()-1)return null;
   BlockPos ground=new BlockPos(routePoint.getX(),feetY-1,routePoint.getZ());
   BlockPos feet=new BlockPos(routePoint.getX(),feetY,routePoint.getZ());
   BlockPos head=feet.above();
-  if(!level.hasChunkAt(ground)||!level.hasChunkAt(feet)||!level.hasChunkAt(head))return null;
+  if(!de.villagerplus.world.LoadedColumns.ready(level, ground)||!de.villagerplus.world.LoadedColumns.ready(level, feet)||!de.villagerplus.world.LoadedColumns.ready(level, head))return null;
   BlockState surface=level.getBlockState(ground);
   if(!isPavedRoad(surface)||surface.hasBlockEntity()||!surface.getFluidState().isEmpty()
    ||!surface.isFaceSturdy(level,ground,Direction.UP)
@@ -411,7 +411,7 @@ final class RoadRoute {
      if(delta<0&&!cuttable(floor)) {valid=false;break;}
      BlockPos deck=new BlockPos(sx,deckY,sz);
      if(delta>0) {
-      if(!level.hasChunkAt(deck)) {valid=false;break;}
+      if(!de.villagerplus.world.LoadedColumns.ready(level, deck)) {valid=false;break;}
       BlockState deckState=level.getBlockState(deck);
       if((!deckState.isAir()&&!deckState.is(Blocks.SPRUCE_PLANKS))||deckState.hasBlockEntity()
        ||!deckState.getFluidState().isEmpty()||!level.getBlockState(deck.above()).isAir()
@@ -456,9 +456,9 @@ final class RoadRoute {
  private static Cell cell(ServerLevel level,int x,int z,BlockPos start,BlockPos end,Map<Long,Cell> memo) {
   long key=key(x,z);Cell cached=memo.get(key);if(cached!=null)return cached;
   int endpointDistance=Math.min(Math.abs(x-start.getX())+Math.abs(z-start.getZ()),Math.abs(x-end.getX())+Math.abs(z-end.getZ()));
-  if(!level.hasChunkAt(new BlockPos(x,start.getY(),z))) {Cell c=new Cell(true,0,false);memo.put(key,c);return c;}
+  if(!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x,start.getY(),z))) {Cell c=new Cell(true,0,false);memo.put(key,c);return c;}
   if(endpointDistance<=8) {
-   int y=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z)-1;
+   int y=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)-1;
    Cell c=new Cell(true,y,true);memo.put(key,c);return c;
   }
   Column result=column(level,x,z,start);
@@ -467,7 +467,7 @@ final class RoadRoute {
 
  private record Column(boolean passable,int y,boolean known) { }
  private static Column column(ServerLevel level,int x,int z,BlockPos reference) {
-  BlockPos probe=new BlockPos(x,reference.getY(),z);if(!level.hasChunkAt(probe))return new Column(true,0,false);
+  BlockPos probe=new BlockPos(x,reference.getY(),z);if(!de.villagerplus.world.LoadedColumns.ready(level, probe))return new Column(true,0,false);
   Map<String,Long> scratch=new HashMap<>();RoadClearing.Column clearing=RoadClearing.column(level,null,x,z,scratch,"route");
   if(clearing==null)return new Column(false,0,true);
   BlockPos ground=clearing.ground();BlockState surface=level.getBlockState(ground);

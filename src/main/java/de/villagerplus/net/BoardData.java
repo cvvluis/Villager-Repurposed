@@ -148,7 +148,7 @@ public record BoardData(BlockPos board, String village, int size, int cellSize, 
 	private static PrivateChestContents privateChestContents(ServerLevel level, java.util.UUID owner, VillagerMemory memory) {
 		if (memory.homeChest.isEmpty()) return new PrivateChestContents("nicht gefunden", "");
 		BlockPos pos = memory.homeChest.get();
-		if (!level.hasChunkAt(pos)) return new PrivateChestContents("nicht geladen", "");
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return new PrivateChestContents("nicht geladen", "");
 		if (!(level.getBlockState(pos).getBlock() instanceof net.minecraft.world.level.block.ChestBlock)
 			|| !de.villagerplus.village.Ownership.isOwnedBy(level, pos, owner)) {
 			return new PrivateChestContents("keine nachweislich eigene Truhe", "");
@@ -157,7 +157,7 @@ public record BoardData(BlockPos board, String village, int size, int cellSize, 
 		if (state.getValue(net.minecraft.world.level.block.ChestBlock.TYPE)
 			!= net.minecraft.world.level.block.state.properties.ChestType.SINGLE) {
 			BlockPos other = pos.relative(net.minecraft.world.level.block.ChestBlock.getConnectedDirection(state));
-			if (!level.hasChunkAt(other)
+			if (!de.villagerplus.world.LoadedColumns.ready(level, other)
 				|| !(level.getBlockState(other).getBlock() instanceof net.minecraft.world.level.block.ChestBlock)
 				|| !de.villagerplus.village.Ownership.isOwnedBy(level, other, owner)) {
 				return new PrivateChestContents("Doppelkiste nicht vollständig bestätigt", "");

@@ -47,7 +47,7 @@ public final class CookJob implements Job {
 	private static boolean cookFromGranary(Ctx c) {
 		if (c.village() == null) return false;
 		BlockPos origin = Specials.get(c.village(), Blueprints.GRANARY);
-		if (origin == null || !c.level().hasChunkAt(origin)) return false;
+		if (origin == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), origin)) return false;
 		ServerLevel level = c.level();
 		BlockPos kitchen = Specials.get(c.village(), Blueprints.KITCHEN);
 		BlockPos stationAnchor = kitchen == null ? origin : kitchen;

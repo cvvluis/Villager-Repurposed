@@ -105,7 +105,7 @@ public final class Anim {
 			cancelBreaking(c.v(), "reset=" + mismatch);
 			work = null;
 		}
-		if (state.isAir() || !c.level().hasChunkAt(pos) || c.level().getBlockState(pos) != state) {
+		if (state.isAir() || !de.villagerplus.world.LoadedColumns.ready(c.level(), pos) || c.level().getBlockState(pos) != state) {
 			cancelBreaking(c.v(), "target-invalid pos=" + pos.toShortString());
 			return false;
 		}
@@ -218,7 +218,7 @@ public final class Anim {
 			JobState st = work.context.st();
 			Phase phase = Phase.of(level.getOverworldClockTime());
 			if (v.isRemoved() || !v.isAlive() || v.isSleeping() || v.isTrading() || phase.routine || phase == Phase.NIGHT
-				|| level.isThundering() || !level.hasChunkAt(work.pos) || level.getBlockState(work.pos) != work.state
+				|| level.isThundering() || !de.villagerplus.world.LoadedColumns.ready(level, work.pos) || level.getBlockState(work.pos) != work.state
 				|| now - work.touchedAt > BREAK_IDLE_TICKS || st.cooldownUntil > now + BREAK_IDLE_TICKS
 				|| !work.activity.equals(st.activity) || st.tool != work.tool) {
 				cancelBreaking(v);

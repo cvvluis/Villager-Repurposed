@@ -57,7 +57,7 @@ final class SmithSmelting {
 	static boolean workPlanStone(Ctx c, VillageRef ref, Container stock) {
 		if (ref == null || stock == null) return false;
 		BlockPos depot = ref.chestPos(c.level());
-		if (depot == null || !c.level().hasChunkAt(depot)) return false;
+		if (depot == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), depot)) return false;
 		BlockPos pos = findPlanFurnace(c.level(), depot);
 		if (pos == null) return false;
 		AbstractFurnaceBlockEntity furnace = furnaceAt(c.level(), pos, Worker.SMITH);
@@ -167,7 +167,7 @@ final class SmithSmelting {
 		BlockPos best = null;
 		double bestDistance = Double.MAX_VALUE;
 		for (BlockPos pos : BlockPos.betweenClosed(depot.offset(-8, -2, -8), depot.offset(8, 4, 8))) {
-			if (!level.hasChunkAt(pos) || !level.getBlockState(pos).is(Blocks.FURNACE)
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !level.getBlockState(pos).is(Blocks.FURNACE)
 				|| !(level.getBlockEntity(pos) instanceof AbstractFurnaceBlockEntity furnace)
 				|| furnace.getAttached(VillagerPlus.COMMUNAL_FURNACE) == null) continue;
 			ItemStack claim = furnace.getAttached(VillagerPlus.SMITH_FURNACE);
@@ -188,7 +188,7 @@ final class SmithSmelting {
 	private static boolean work(Ctx c, Worker worker) {
 		if (c.village() == null || !Specials.has(c.village(), Blueprints.KITCHEN)) return false;
 		BlockPos kitchen = Specials.get(c.village(), Blueprints.KITCHEN);
-		if (kitchen == null || !c.level().hasChunkAt(kitchen)) return false;
+		if (kitchen == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), kitchen)) return false;
 		BlockPos pos = c.st().target;
 		AbstractFurnaceBlockEntity furnace = pos == null ? null : furnaceAt(c.level(), pos, worker);
 		if (furnace == null || !insideKitchen(pos, kitchen)) {
@@ -435,7 +435,7 @@ final class SmithSmelting {
 	}
 
 	private static AbstractFurnaceBlockEntity furnaceAt(ServerLevel level, BlockPos pos, Worker worker) {
-		if (!level.hasChunkAt(pos)) return null;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return null;
 		BlockState state = level.getBlockState(pos);
 		if (recipeType(state) == null || smokes(worker) && !state.is(Blocks.SMOKER)
 			|| worker == Worker.SMITH && state.is(Blocks.SMOKER)) return null;

@@ -201,7 +201,7 @@ public final class Woodcutting {
 	private static boolean acquireStrippingAxe(Ctx c) {
 		VillageRef ref = c.village();
 		BlockPos shed = de.villagerplus.village.Specials.get(ref, de.villagerplus.build.Blueprints.TOOLSHED);
-		if (shed == null || !c.level().hasChunkAt(shed)) return false;
+		if (shed == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), shed)) return false;
 		for (Container tools : de.villagerplus.village.Specials.containers(c.level(), ref, de.villagerplus.build.Blueprints.TOOLSHED)) {
 			for (int slot = 0; slot < tools.getContainerSize(); slot++) {
 				ItemStack available = tools.getItem(slot);
@@ -394,7 +394,7 @@ public final class Woodcutting {
 			st.woodCheckAt = c.now() + 600;
 			return false;
 		}
-		if (base != null && !level.hasChunkAt(base)) return true;
+		if (base != null && !de.villagerplus.world.LoadedColumns.ready(level, base)) return true;
 		if (planWoodDemand && base != null && !matchesRequestedLog(level.getBlockState(base).getBlock(), demandedLogs)) {
 			// A saved cursor can outlive its original construction request. Preserve a replant location,
 			// but do not keep harvesting a species the active plan cannot use.
@@ -432,7 +432,7 @@ public final class Woodcutting {
 			}
 		}
 		// A saved cursor can outlive its canopy (leaves decay naturally); preserve the stump until every connected log is handled.
-		if (!level.hasChunkAt(base)) return true;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, base)) return true;
 		if (!level.getBlockState(base).is(BlockTags.OVERWORLD_NATURAL_LOGS) || !rootSoil(level.getBlockState(base.below()))) {
 			work = finishTrackedTree(work);
 			setWork(c, work);
@@ -594,10 +594,10 @@ public final class Woodcutting {
 				int d2 = dx * dx + dz * dz;
 				int x = center.getX() + dx;
 				int z = center.getZ() + dz;
-				if (!level.hasChunk(x >> 4, z >> 4)) {
+				if (!de.villagerplus.world.LoadedColumns.readyChunk(level, x >> 4, z >> 4)) {
 					continue;
 				}
-				int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+				int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
 				if (Math.abs(y - center.getY()) > 24 || !level.getBlockState(pos.set(x, y, z)).is(BlockTags.OVERWORLD_NATURAL_LOGS)) {
 					continue;
 				}
@@ -783,8 +783,8 @@ public final class Woodcutting {
 		int gx = stand.getX() + (int) Math.round(dx * factor), gz = stand.getZ() + (int) Math.round(dz * factor);
 		for (int ox = -2; ox <= 2; ox++) for (int oz = -2; oz <= 2; oz++) {
 			int x = gx + ox, z = gz + oz;
-			if (!level.hasChunk(x >> 4, z >> 4)) continue;
-			BlockPos feet = new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
+			if (!de.villagerplus.world.LoadedColumns.readyChunk(level, x >> 4, z >> 4)) continue;
+			BlockPos feet = new BlockPos(x, de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
 			if (standableCell(level, feet)) return feet;
 		}
 		return null;
@@ -793,7 +793,7 @@ public final class Woodcutting {
 	/** Two clear blocks, solid floor that is neither fluid nor a fence top (fences are not stood on: vanilla cannot path off them). */
 	private static boolean standableCell(ServerLevel level, BlockPos feet) {
 		BlockPos floor = feet.below(), head = feet.above();
-		if (!level.hasChunkAt(feet) || !level.hasChunkAt(floor) || !level.hasChunkAt(head)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, feet) || !de.villagerplus.world.LoadedColumns.ready(level, floor) || !de.villagerplus.world.LoadedColumns.ready(level, head)) return false;
 		BlockState ground = level.getBlockState(floor);
 		return ground.getFluidState().isEmpty() && ground.isFaceSturdy(level, floor, net.minecraft.core.Direction.UP)
 			&& level.getBlockState(feet).getFluidState().isEmpty() && level.getBlockState(head).getFluidState().isEmpty()
@@ -850,7 +850,7 @@ public final class Woodcutting {
 		WoodcutterWork work = c.v().getAttachedOrElse(de.villagerplus.VillagerPlus.WOODCUTTER_WORK, WoodcutterWork.empty());
 		BlockPos target = work.root().orElse(null);
 		if (target == null && c.st().targetEntity == null && c.st().target != null
-			&& c.level().hasChunkAt(c.st().target)
+			&& de.villagerplus.world.LoadedColumns.ready(c.level(), c.st().target)
 			&& c.level().getBlockState(c.st().target).is(BlockTags.OVERWORLD_NATURAL_LOGS)) target = c.st().target;
 		if (target == null) return null;
 		return c.v().position().distanceToSqr(net.minecraft.world.phys.Vec3.atBottomCenterOf(target)) < 160.0 * 160.0 ? target : null;
@@ -891,8 +891,8 @@ public final class Woodcutting {
 					long column = BlockPos.asLong(x, 0, z);
 					if (!checkedColumns.add(column)) continue;
 					if (++inspected > RESERVED_CANOPY_SEARCH_COLUMNS) return best;
-					if (!level.hasChunk(x >> 4, z >> 4)) continue;
-					int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+					if (!de.villagerplus.world.LoadedColumns.readyChunk(level, x >> 4, z >> 4)) continue;
+					int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
 					if (Math.abs(y - worker.getY()) > 64 || !level.getBlockState(new BlockPos(x, y, z)).is(BlockTags.OVERWORLD_NATURAL_LOGS)) continue;
 					int baseY = y;
 					while (y - baseY < 48 && level.getBlockState(new BlockPos(x, baseY - 1, z)).is(BlockTags.LOGS)) baseY--;
@@ -960,7 +960,7 @@ public final class Woodcutting {
 		if (level.getPoiManager().getInRange(point -> point.is(PoiTypes.HOME) || point.is(PoiTypes.MEETING), root, 8,
 				PoiManager.Occupancy.ANY).findAny().isPresent()) return false;
 		for (BlockPos log : logs) {
-			if (!level.hasChunkAt(log) || level.getBlockEntity(log) != null
+			if (!de.villagerplus.world.LoadedColumns.ready(level, log) || level.getBlockEntity(log) != null
 				|| de.villagerplus.job.Lighting.protectedVillageCell(level, ref, log)
 				|| de.villagerplus.village.Roads.trustedVillagePathCell(level, ref, log)) return false;
 		}
@@ -969,7 +969,7 @@ public final class Woodcutting {
 			for (int z = root.getZ() - 2; z <= root.getZ() + 2; z++) {
 				for (int y = root.getY() - 1; y <= topY + 2; y++) {
 					BlockPos pos = new BlockPos(x, y, z);
-					if (!level.hasChunkAt(pos) || level.getBlockEntity(pos) != null) return false;
+					if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || level.getBlockEntity(pos) != null) return false;
 				}
 			}
 		}
@@ -1141,7 +1141,7 @@ public final class Woodcutting {
 	private static boolean finishPendingRemoval(Ctx c, WoodcutterWork work) {
 		ServerLevel level = c.level();
 		BlockPos log = work.log().orElse(null);
-		if (log != null && !level.hasChunkAt(log)) return true;
+		if (log != null && !de.villagerplus.world.LoadedColumns.ready(level, log)) return true;
 		boolean matchingLog = log != null && level.getBlockState(log).is(BlockTags.OVERWORLD_NATURAL_LOGS)
 			&& BuiltInRegistries.BLOCK.getKey(level.getBlockState(log).getBlock()).toString().equals(work.pendingBlock());
 		if (!work.removalConfirmed() && matchingLog) {
@@ -1221,7 +1221,7 @@ public final class Woodcutting {
 			WoodcutterWork.ReplantSite site = remaining.get(i);
 			if (site.retryAt() > c.now()) continue;
 			BlockPos base = site.pos();
-			if (!c.level().hasChunkAt(base)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(c.level(), base)) continue;
 			Block sapling = saplingBlock(site.species());
 			if (sapling == null || !canPlantAt(c.level(), villageBounds, base, sapling)) {
 				remaining.remove(i--);
@@ -1291,9 +1291,9 @@ public final class Woodcutting {
 
 	/** A replant target is vacant, outside the village footprint, and on an allowed forest-soil block. */
 	static boolean canPlantAt(ServerLevel level, BoundingBox villageBounds, BlockPos pos, Block sapling) {
-		if (sapling == null || sapling == Blocks.AIR || !level.hasChunkAt(pos) || inBounds(villageBounds, pos)) return false;
+		if (sapling == null || sapling == Blocks.AIR || !de.villagerplus.world.LoadedColumns.ready(level, pos) || inBounds(villageBounds, pos)) return false;
 		BlockPos soilPos = pos.below();
-		if (!level.hasChunkAt(soilPos) || !level.hasChunkAt(pos.above()) || !level.hasChunkAt(pos.above(2))) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, soilPos) || !de.villagerplus.world.LoadedColumns.ready(level, pos.above()) || !de.villagerplus.world.LoadedColumns.ready(level, pos.above(2))) return false;
 		BlockState target = level.getBlockState(pos);
 		BlockState soil = level.getBlockState(soilPos);
 		if (!target.isAir() || target.hasBlockEntity() || level.getBlockEntity(pos) != null

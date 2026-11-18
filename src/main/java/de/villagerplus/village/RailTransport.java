@@ -182,7 +182,7 @@ public final class RailTransport {
     }
 
     private static VillageRef resolve(ServerLevel level, BlockPos bell) {
-        if (!level.hasChunkAt(bell) || !(level.getBlockEntity(bell) instanceof BellBlockEntity be)) return null;
+        if (!de.villagerplus.world.LoadedColumns.ready(level, bell) || !(level.getBlockEntity(bell) instanceof BellBlockEntity be)) return null;
         return new VillageRef(bell, be.getAttachedOrCreate(VillagerPlus.VILLAGE), be);
     }
 
@@ -193,7 +193,7 @@ public final class RailTransport {
             boolean link = Network.of(pair[0].bellEntity()).links().stream().anyMatch(l ->
                 l.dimension().equals(Network.dim(level)) && l.bell().equals(pair[1].bell()) && l.relation() >= Roads.METROPOLIS);
             if (!link || !Specials.has(pair[0], Blueprints.STATION)
-                || !level.hasChunkAt(Specials.get(pair[0], Blueprints.STATION))) return false;
+                || !de.villagerplus.world.LoadedColumns.ready(level, Specials.get(pair[0], Blueprints.STATION))) return false;
         }
         return true;
     }
@@ -518,7 +518,7 @@ public final class RailTransport {
         for (int radius = 1; radius <= 3; radius++) for (Direction direction : List.of(Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST))
             for (int dy = 1; dy >= -1; dy--) {
                 BlockPos feet = center.relative(direction, radius).above(dy);
-                if (!level.hasChunkAt(feet) || !level.getBlockState(feet.below()).isFaceSturdy(level, feet.below(), Direction.UP)
+                if (!de.villagerplus.world.LoadedColumns.ready(level, feet) || !level.getBlockState(feet.below()).isFaceSturdy(level, feet.below(), Direction.UP)
                     || !level.getBlockState(feet).getFluidState().isEmpty() || !level.getBlockState(feet.above()).getFluidState().isEmpty()
                     || level.getBlockState(feet).getBlock() instanceof BaseRailBlock) continue;
                 AABB bounds = rider.getBoundingBox().move(feet.getX() + .5 - rider.getX(), feet.getY() - rider.getY(), feet.getZ() + .5 - rider.getZ());
@@ -672,7 +672,7 @@ public final class RailTransport {
     }
 
     static boolean safeRail(ServerLevel level, BlockPos pos) {
-        if (!level.hasChunkAt(pos) || !level.hasChunkAt(pos.above(2))) return false;
+        if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !de.villagerplus.world.LoadedColumns.ready(level, pos.above(2))) return false;
         var state = level.getBlockState(pos);
         return state.getBlock() instanceof BaseRailBlock && state.getFluidState().isEmpty()
             && level.getBlockState(pos.above()).getCollisionShape(level, pos.above()).isEmpty()

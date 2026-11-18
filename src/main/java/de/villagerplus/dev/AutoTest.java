@@ -79,6 +79,8 @@ public final class AutoTest {
 	private static final String[] WAVE34_FEATUREBATCH = {"demolition", "lightspacing", "stockpolicy", "constructionsite", "wallconstruction", "roads", "builderchecks"};
 	private static final String[] WAVE35_FIXES = {"demolition", "lightspacing", "wallconstruction"};
 	private static final String[] WAVE36_RETRY = {"demolition", "wallconstruction"};
+	private static final String[] FOODVERIFY = {"foodchain", "farmexpand", "seasonfarm", "firstbuilding", "cookdelight", "mealcycle",
+		"butchercooking", "roles", "a01behavior", "stockpolicy", "builderchecks", "builderpaths"};
 	private static final String[] RESUME_FIX_BATCH = {"cookdelight", "marketlifecycle", "milestones"};
 	private static final String[] NEXT_FEATURE_BATCH = {"lightspacing", "constructionsite", "caravandelivery", "caravanr02", "privatechest", "zonepolicy", "railmetro"};
 	private static final String[] FEATURE_FIX_BATCH = {"caravanr02", "stockpolicy"};
@@ -300,6 +302,7 @@ public final class AutoTest {
 					: mode.equals("nextgameplay") ? NEXT_GAMEPLAY
 					: mode.equals("nextgameplayfix") ? NEXT_GAMEPLAY_FIX
 					: mode.equals("performance") ? PERFORMANCE
+					: mode.equals("foodverify") ? FOODVERIFY
 					: mode.equals("resumefixbatch") ? RESUME_FIX_BATCH : new String[] {mode};
 				System.out.println("VP_AUTOTEST MODES " + String.join(",", modes));
 				int passed = 0;

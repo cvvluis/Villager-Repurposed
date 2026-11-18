@@ -32,6 +32,10 @@ public final class VillageMap {
 
 	private enum Kind { NATURAL, TREE, PATH, WATER, FARM, BUILT }
 	private record Geometry(long until, BlockPos center, int gridScale, int overviewScale) { }
+	/** Cells classified on one server tick. The rest of the raster stays unknown until a later tick. */
+	static final int TERRAIN_CELLS_PER_CALL = 480;
+	private static final int TERRAIN_READY_TICKS = 200;
+	private static final int TERRAIN_PARTIAL_TICKS = 100;
 	private static final java.util.Map<String, Geometry> GEOMETRY = new java.util.HashMap<>();
 
 	private VillageMap() {
@@ -223,12 +227,10 @@ public final class VillageMap {
 			for (int dz = 1; dz < size; dz += Math.max(1, size / 4)) {
 				int x = x0 + dx;
 				int z = z0 + dz;
-				if (!level.hasChunkAt(new BlockPos(x, 64, z))) {
+				BlockState s = loadedSurface(level, x, z);
+				if (s == null) {
 					continue;
 				}
-				int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
-				BlockPos pos = new BlockPos(x, y, z);
-				BlockState s = level.getBlockState(pos);
 				if (!s.getFluidState().isEmpty()) {
 					seen.add(Kind.WATER);
 				} else if (s.is(Blocks.FARMLAND) || s.is(BlockTags.CROPS)) {
@@ -237,7 +239,7 @@ public final class VillageMap {
 					seen.add(Kind.PATH);
 				} else if (s.is(BlockTags.LOGS)) {
 					seen.add(Kind.TREE);
-				} else if (HouseTemplate.built(level, pos)) {
+				} else if (HouseTemplate.built(s)) {
 					seen.add(Kind.BUILT);
 				}
 			}
@@ -280,9 +282,31 @@ public final class VillageMap {
 		return updated;
 	}
 
-	/** Gelaendekarte je Dorf, nur alle 10 Sekunden neu berechnet (die Tafel fragt alle 2 Sekunden); Markierungen sind immer frisch. */
-	private record TerrainCache(long until, int originX, int originZ, int scale, byte[] cells) { }
+	/**
+	 * Terrain raster per village. One call classifies at most {@link #TERRAIN_CELLS_PER_CALL} cells and only reads chunks
+	 * that are already fully loaded. A finished raster is reused for 10 seconds, or 5 seconds while any cell is still
+	 * unknown because its chunk was not loaded. Markers are always fresh.
+	 */
+	private record TerrainCache(long readyUntil, int originX, int originZ, int scale, byte[] cells, int[] heights, int cursor) { }
 	private static final java.util.Map<String, TerrainCache> TERRAIN = new java.util.HashMap<>();
+
+	/** True while the physical relief should keep sampling: the raster is unfinished or its cache has expired. */
+	public static boolean terrainPending(ServerLevel level, VillageRef ref) {
+		if (level == null || ref == null) return false;
+		Geometry geometry = geometry(level, ref);
+		BlockPos center = geometry.center();
+		int scale = geometry.gridScale();
+		int originX = center.getX() - GRID * scale / 2;
+		int originZ = center.getZ() - GRID * scale / 2;
+		TerrainCache cache = TERRAIN.get(terrainKey(level, ref));
+		if (cache == null || cache.originX() != originX || cache.originZ() != originZ || cache.scale() != scale) return true;
+		if (cache.cursor() < GRID * GRID) return true;
+		return level.getGameTime() >= cache.readyUntil();
+	}
+
+	private static String terrainKey(ServerLevel level, VillageRef ref) {
+		return level.dimension().identifier() + "/" + ref.bell().asLong();
+	}
 
 	/** Gelaendecodes: 0 Wiese, 1 Wald, 2 Weg/Strasse, 3 Wasser, 4 Feld, 5 Gebaeude, 6 Sand, 7 Stein, 8 Schnee, 9 Tonland, 10 Platz, 11 unbekannt. Bits 4-6: Hoehenschattierung (0..6, 3 = eben). */
 	public static byte[][] grid(ServerLevel level, VillageRef ref) {
@@ -294,47 +318,54 @@ public final class VillageMap {
 		int originX = mapCenter.getX() - GRID * GSIZE / 2;
 		int originZ = mapCenter.getZ() - GRID * GSIZE / 2;
 		long now = level.getGameTime();
-		String terrainKey = level.dimension().identifier() + "/" + bell.asLong();
-		TerrainCache cache = TERRAIN.get(terrainKey);
+		String key = terrainKey(level, ref);
+		TerrainCache cache = TERRAIN.get(key);
+		boolean sameGeometry = cache != null && cache.originX() == originX && cache.originZ() == originZ && cache.scale() == GSIZE;
 		byte[] cells;
-		if (cache != null && now < cache.until() && cache.originX() == originX && cache.originZ() == originZ && cache.scale() == GSIZE) {
+		if (sameGeometry && cache.cursor() >= GRID * GRID && now < cache.readyUntil()) {
 			cells = cache.cells();
 		} else {
-			cells = new byte[GRID * GRID];
-			int[] heights = new int[GRID * GRID];
-			for (int row = 0; row < GRID; row++) {
-				for (int col = 0; col < GRID; col++) {
-					int x0 = originX + col * GSIZE, z0 = originZ + row * GSIZE;
-					int cx = x0 + GSIZE / 2, cz = z0 + GSIZE / 2;
-					if (!level.hasChunkAt(new BlockPos(cx, 64, cz))) {
-						cells[row * GRID + col] = 11;
-						heights[row * GRID + col] = -1;
-						continue;
-					}
-					heights[row * GRID + col] = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, cx, cz);
+			int[] heights;
+			int cursor;
+			if (!sameGeometry) {
+				cells = new byte[GRID * GRID];
+				java.util.Arrays.fill(cells, (byte) 11);
+				heights = new int[GRID * GRID];
+				java.util.Arrays.fill(heights, -1);
+				cursor = 0;
+			} else {
+				cells = cache.cells();
+				heights = cache.heights();
+				cursor = cache.cursor() >= GRID * GRID ? 0 : cache.cursor();
+			}
+			int budget = TERRAIN_CELLS_PER_CALL;
+			while (cursor < GRID * GRID && budget > 0) {
+				int row = cursor / GRID;
+				int col = cursor % GRID;
+				int x0 = originX + col * GSIZE;
+				int z0 = originZ + row * GSIZE;
+				int cx = x0 + GSIZE / 2;
+				int cz = z0 + GSIZE / 2;
+				Integer surface = de.villagerplus.world.LoadedColumns.height(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, cx, cz);
+				if (surface == null) {
+					cells[cursor] = 11;
+					heights[cursor] = -1;
+				} else {
+					heights[cursor] = surface;
 					int kind = classifyFine(level, x0, z0, GSIZE);
-					if (kind <= 1 && Plaza.inside(level, ref, new BlockPos(cx, bell.getY(), cz), 0)) {
-						kind = 10;
-					}
-					cells[row * GRID + col] = (byte) kind;
+					if (kind <= 1 && Plaza.inside(level, ref, new BlockPos(cx, bell.getY(), cz), 0)) kind = 10;
+					cells[cursor] = (byte) (kind & 15);
 				}
+				cursor++;
+				budget--;
 			}
-			for (int row = 1; row < GRID; row++) {
-				for (int col = 1; col < GRID; col++) {
-					int h = heights[row * GRID + col], hn = heights[(row - 1) * GRID + col - 1];
-					if (h < 0 || hn < 0 || cells[row * GRID + col] == 11) {
-						continue;
-					}
-					int shade = Math.max(0, Math.min(6, 3 + Math.max(-3, Math.min(3, h - hn))));
-					cells[row * GRID + col] |= (byte) (shade << 4);
-				}
+			shadeTerrain(cells, heights);
+			int unknown = 0;
+			if (cursor >= GRID * GRID) {
+				for (byte cell : cells) if ((cell & 15) == 11) unknown++;
 			}
-			for (int i = 0; i < cells.length; i++) {
-				if ((cells[i] & 0x70) == 0 && (cells[i] & 15) != 11) {
-					cells[i] |= (byte) (3 << 4);
-				}
-			}
-			TERRAIN.put(terrainKey, new TerrainCache(now + 200, originX, originZ, GSIZE, cells));
+			long readyUntil = cursor >= GRID * GRID ? now + (unknown > 0 ? TERRAIN_PARTIAL_TICKS : TERRAIN_READY_TICKS) : now;
+			TERRAIN.put(key, new TerrainCache(readyUntil, originX, originZ, GSIZE, cells, heights, cursor));
 		}
 		byte[] marks = new byte[GRID * GRID];
 		for (Villager v : Villages.residents(level, ref, Config.VILLAGE_RADIUS, x -> !Guests.isGuest(x) && !Expedition.isAway(x))) {
@@ -428,15 +459,20 @@ public final class VillageMap {
 		return data.hasPlan() ? data.planOrigin.stream().toList() : List.of();
 	}
 
-	/** Gelaendeart eines 4x4-Feldes aus vier Stichproben (Bebauung > Feld > Wasser > Weg > Wald > Oberflaeche). */
-	private static int classifyFine(ServerLevel level, int x0, int z0, int GSIZE) {
+	/** Gelaendeart eines Feldes aus hoechstens vier Stichproben, nur in bereits geladenen Chunks. */
+	private static int classifyFine(ServerLevel level, int x0, int z0, int size) {
 		boolean built = false, farm = false, water = false, path = false, tree = false;
 		int sand = 0, stone = 0, snow = 0, clay = 0;
-		for (int dx = 1; dx < GSIZE; dx += 2) {
-			for (int dz = 1; dz < GSIZE; dz += 2) {
-				int x = x0 + dx, z = z0 + dz;
-				BlockPos pos = new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1, z);
-				BlockState s = level.getBlockState(pos);
+		int samples = 0;
+		int seen = 0;
+		int stride = Math.max(1, size / 2);
+		int start = size <= 1 ? 0 : 1;
+		for (int dx = start; dx < size && samples < 4; dx += stride) {
+			for (int dz = start; dz < size && samples < 4; dz += stride) {
+				samples++;
+				BlockState s = loadedSurface(level, x0 + dx, z0 + dz);
+				if (s == null) continue;
+				seen++;
 				if (!s.getFluidState().isEmpty()) {
 					water = true;
 				} else if (s.is(Blocks.FARMLAND) || s.is(BlockTags.CROPS)) {
@@ -453,11 +489,12 @@ public final class VillageMap {
 					clay++;
 				} else if (s.is(Blocks.STONE) || s.is(Blocks.ANDESITE) || s.is(Blocks.DIORITE) || s.is(Blocks.GRANITE) || s.is(Blocks.DEEPSLATE) || s.is(Blocks.TUFF)) {
 					stone++;
-				} else if (HouseTemplate.built(level, pos)) {
+				} else if (HouseTemplate.built(s)) {
 					built = true;
 				}
 			}
 		}
+		if (seen == 0) return 11;
 		if (built) return 5;
 		if (farm) return 4;
 		if (water) return 3;
@@ -468,6 +505,33 @@ public final class VillageMap {
 		if (sand >= 2) return 6;
 		if (stone >= 2) return 7;
 		return 0;
+	}
+
+	/** Surface block of a fully loaded column, or null. Does not generate chunks. */
+	private static BlockState loadedSurface(ServerLevel level, int x, int z) {
+		Integer top = de.villagerplus.world.LoadedColumns.height(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+		if (top == null) return null;
+		return de.villagerplus.world.LoadedColumns.state(level, new BlockPos(x, top - 1, z));
+	}
+
+	private static void shadeTerrain(byte[] cells, int[] heights) {
+		for (int row = 1; row < GRID; row++) {
+			for (int col = 1; col < GRID; col++) {
+				int index = row * GRID + col;
+				int h = heights[index];
+				int hn = heights[(row - 1) * GRID + col - 1];
+				int low = cells[index] & 15;
+				if (h < 0 || hn < 0 || low == 11) {
+					cells[index] = (byte) low;
+					continue;
+				}
+				int shade = Math.max(0, Math.min(6, 3 + Math.max(-3, Math.min(3, h - hn))));
+				cells[index] = (byte) (low | (shade << 4));
+			}
+		}
+		for (int i = 0; i < cells.length; i++) {
+			if ((cells[i] & 0x70) == 0 && (cells[i] & 15) != 11) cells[i] |= (byte) (3 << 4);
+		}
 	}
 
 	private static void mark(byte[] marks, int originX, int originZ, int cellSize, BlockPos p, int code, boolean override) {

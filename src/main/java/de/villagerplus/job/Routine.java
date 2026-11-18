@@ -199,12 +199,11 @@ public final class Routine {
   int checked = 0;
   while (checked < MAX_GATHER_PATH_CHECKS_PER_ATTEMPT && search.cursor < search.columns.size()) {
    BlockPos column = search.columns.get(search.cursor);
-   if (!c.level().hasChunkAt(column)) {
+   if (!de.villagerplus.world.LoadedColumns.ready(c.level(), column)) {
     search.cursor++;
     continue;
    }
-   BlockPos candidate = c.level().getHeightmapPos(
-    net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column).immutable();
+   BlockPos candidate = de.villagerplus.world.LoadedColumns.heightmapPos(c.level(), net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column).immutable();
    if (!safeGatherStand(c, candidate) || crowdedGatherStand(candidate, occupied)) {
     search.cursor++;
     continue;
@@ -304,7 +303,7 @@ public final class Routine {
  private static boolean safeGatherStand(Ctx c, BlockPos feet) {
   BlockPos floor = feet.below();
   BlockPos head = feet.above();
-  if (!c.level().hasChunkAt(floor) || !c.level().hasChunkAt(feet) || !c.level().hasChunkAt(head)) return false;
+  if (!de.villagerplus.world.LoadedColumns.ready(c.level(), floor) || !de.villagerplus.world.LoadedColumns.ready(c.level(), feet) || !de.villagerplus.world.LoadedColumns.ready(c.level(), head)) return false;
   var ground = c.level().getBlockState(floor);
   var body = c.level().getBlockState(feet);
   var above = c.level().getBlockState(head);
@@ -444,10 +443,14 @@ public final class Routine {
 		c.st().lastMoveAt = 0;
 	}
 
+	/** Below this many food units in the village pantry the lunch take-away reserve is suspended. */
+	static final int SCARCE_PANTRY_FOOD = 48;
+	/** With scarce pantry food, residents at or above this satiety leave the lunch portions to the hungry. */
+	static final int WELL_FED_SATIETY = 70;
+
 	/** Gemeinsames Mittagessen; ausserdem Vorrat auffuellen (Nahrung im Inventar ermoeglicht den Nachwuchs). */
 	private static void centerMeal(Ctx c) {
 		Container box = JobUtil.box(c);
-		Meals.eat(c, box);
 		java.util.List<Container> pantry = new java.util.ArrayList<>();
 		if (box != null) {
 			pantry.add(box);
@@ -455,7 +458,13 @@ public final class Routine {
 		if (c.village() != null) {
 			pantry.addAll(de.villagerplus.village.Specials.containers(c.level(), c.village(), de.villagerplus.build.Blueprints.GRANARY));
 		}
-		if (pantry.isEmpty()) {
+		int pantryFood = 0;
+		for (Container b : pantry) pantryFood += JobUtil.count(b, Meals::isFood);
+		boolean scarce = pantryFood < SCARCE_PANTRY_FOOD;
+		// Scarce food goes to the hungry first: a well-fed resident skips the pantry portion, and nobody takes a reserve home.
+		boolean wellFed = scarce && de.villagerplus.village.Wellbeing.of(c.level(), c.v(), c.mem()).satiety() >= WELL_FED_SATIETY;
+		Meals.eat(c, wellFed ? null : box);
+		if (pantry.isEmpty() || scarce) {
 			return;
 		}
 		int have = JobUtil.count(c.v().getInventory(), Meals::isFood);

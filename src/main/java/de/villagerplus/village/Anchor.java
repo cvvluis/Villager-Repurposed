@@ -38,6 +38,9 @@ public final class Anchor {
 	/** Mine corridor leases outlive the 200-tick housing refresh by 40 ticks and never persist as /forceload entries. */
 	public static final TicketType MINE_WORK = new TicketType(WORK_TICKET_TIMEOUT,
 		TicketType.FLAG_LOADING | TicketType.FLAG_SIMULATION | TicketType.FLAG_KEEP_DIMENSION_ACTIVE);
+	/** Expiring ticket that keeps the already loaded centre of the kept village simulated while no player is close. */
+	public static final TicketType FOOTPRINT_WORK = new TicketType(WORK_TICKET_TIMEOUT,
+		TicketType.FLAG_LOADING | TicketType.FLAG_SIMULATION | TicketType.FLAG_KEEP_DIMENSION_ACTIVE);
 	/** Refreshable lease for a tracked resident loaded outside the village's capped persistent footprint. */
 	public static final TicketType VILLAGER_WORK = new TicketType(WORK_TICKET_TIMEOUT,
 		TicketType.FLAG_LOADING | TicketType.FLAG_SIMULATION | TicketType.FLAG_KEEP_DIMENSION_ACTIVE);
@@ -54,6 +57,7 @@ public final class Anchor {
 			Registry.register(BuiltInRegistries.TICKET_TYPE, Identifier.fromNamespaceAndPath("villagerplus", "wall_work"), WALL_WORK);
 			Registry.register(BuiltInRegistries.TICKET_TYPE, Identifier.fromNamespaceAndPath("villagerplus", "mine_work"), MINE_WORK);
 			Registry.register(BuiltInRegistries.TICKET_TYPE, Identifier.fromNamespaceAndPath("villagerplus", "villager_work"), VILLAGER_WORK);
+			Registry.register(BuiltInRegistries.TICKET_TYPE, Identifier.fromNamespaceAndPath("villagerplus", "footprint_work"), FOOTPRINT_WORK);
 			ServerLifecycleEvents.SERVER_STARTED.register(server -> clearWorldCaches());
 			registered = true;
 		}
@@ -67,6 +71,8 @@ public final class Anchor {
 		WorkTicketKey key = workTicketKey(level, VILLAGER_WORK, chunk);
 		boolean existingLease = WORK_TICKET_REFRESHES.hasUnexpiredLease(key, now, WORK_TICKET_TIMEOUT);
 		if (!shouldLeaseVillagerChunk(true, level.isPositionEntityTicking(villager.blockPosition()), existingLease)) return;
+		// Never let a lease generate terrain: only pin a chunk whose neighbours are already loaded, and never under load.
+		if (overloaded(level) || !pinnable(level, chunk)) return;
 		addWorkTicket(level, VILLAGER_WORK, chunk, VILLAGER_LEASE_RADIUS, now, key);
 	}
 
@@ -107,10 +113,31 @@ public final class Anchor {
 	private static final Map<AnchorKey, Long> LAST_BY_VILLAGE = new HashMap<>();
 	private static final Map<AnchorKey, Long> RING = new HashMap<>();
 	private static final Map<AnchorKey, Long> WARNED = new HashMap<>();
-	private static final int MAX_FORCED_CHUNKS = 256;
+	/**
+	 * Performance budget: at most this many villages per level are held loaded at once (nearest to a player first).
+	 * Every further village is released, including chunks that older versions saved as /forceload entries. Override with
+	 * the JVM property -Dvillagerplus.keptVillages=N (0 = never force-load villages).
+	 */
+	public static final int MAX_KEPT_VILLAGES = Math.max(0, Integer.getInteger("villagerplus.keptVillages", 1));
+	/** Hard cap of forced chunks per kept village (older versions forced up to {@link #LEGACY_MAX_FORCED_CHUNKS}). */
+	private static final int MAX_FORCED_CHUNKS = 49;
+	private static final int LEGACY_MAX_FORCED_CHUNKS = 256;
+	private static final int LEGACY_RADIUS_CHUNKS = 3;
 	private static final int FOOTPRINT_MARGIN_CHUNKS = 1;
+	/** A village competes for the budget only while one of its residents ticked within this many ticks. */
+	private static final long SEEN_WINDOW = 1200L;
+	/** Villages already kept need to fall clearly behind before they are dropped (avoids load/unload flapping). */
+	private static final double KEPT_DISTANCE_BONUS = 0.5625D;
+	private static final long RELEASE_INTERVAL = 12000L;
+	/** Average tick time above which nothing is pinned any more (the tick budget is 50 ms). */
+	private static final long OVERLOAD_TICK_NANOS = 40_000_000L;
+	record SeenVillage(BlockPos bell, long seen) { }
+	record ForcedChunk(ResourceKey<Level> dimension, long pos) { }
+	private static final Map<AnchorKey, SeenVillage> SEEN = new HashMap<>();
+	private static final Map<AnchorKey, Set<ForcedChunk>> KEPT = new HashMap<>();
+	private static final Map<AnchorKey, Long> RELEASED = new HashMap<>();
 	private static final org.slf4j.Logger LOGGER = com.mojang.logging.LogUtils.getLogger();
-	private record AnchorKey(ResourceKey<Level> dimension, long pos) { }
+	record AnchorKey(ResourceKey<Level> dimension, long pos) { }
 	private static final int MAX_WORK_TICKET_CACHE_ENTRIES = 8192;
 	private static final WorkTicketRefreshCache WORK_TICKET_REFRESHES = new WorkTicketRefreshCache(MAX_WORK_TICKET_CACHE_ENTRIES);
 	static record WorkTicketKey(ResourceKey<Level> dimension, Identifier ticketType, long chunkPos) { }
@@ -171,15 +198,18 @@ public final class Anchor {
 			WARNED.remove(key);
 		}
 		LAST_BY_VILLAGE.put(key, now);
-		keepWallWorkLoaded(level, ref, ref.bell());
-		// Generated CTOV villages can extend far beyond a bell-centered fixed radius.
-		// Load the known structure/POI/built footprint plus a one-chunk pathing margin,
-		// while keeping a deterministic hard cap on forced chunks per village.
-		Long ringDone = RING.get(key);
-		if (ringDone == null || now - ringDone > 12000L) {
-			RING.put(key, now);
-			forceFootprint(level, ref, key, now);
+		SEEN.put(key, new SeenVillage(ref.bell(), now));
+		boolean inBudget = withinBudget(level, key, ref.bell(), now);
+		if (!inBudget || attended(level, ref.bell()) || overloaded(level)) {
+			// A village near a player is simulated by the game itself; a village outside the budget or under server load is
+			// simply not pinned any more (its tickets expire). Chunks that older versions saved as /forceload are freed.
+			if (!inBudget || attended(level, ref.bell())) release(level, ref, key, now);
+			else KEPT.remove(key);
+			return;
 		}
+		RELEASED.remove(key);
+		keepWallWorkLoaded(level, ref, ref.bell());
+		pinFootprint(level, ref, key, now);
 		// Refresh active mine leases with the village. An underground route owner renews its
 		// own corridor lease while returning, even after the mine has been archived.
 		ref.data().mine.filter(m -> !m.done).ifPresent(m -> {
@@ -194,6 +224,9 @@ public final class Anchor {
 		LAST_BY_VILLAGE.clear();
 		RING.clear();
 		WARNED.clear();
+		SEEN.clear();
+		KEPT.clear();
+		RELEASED.clear();
 		WORK_TICKET_REFRESHES.clear();
 	}
 
@@ -269,26 +302,148 @@ public final class Anchor {
 		return java.util.Set.copyOf(chunks);
 	}
 
-	private static void forceFootprint(ServerLevel level, VillageRef ref, AnchorKey key, long now) {
+	/** True while this village is inside the load budget, so its residents may keep their chunk simulated. */
+	public static boolean isKept(ServerLevel level, VillageRef ref) {
+		return Config.KEEP_VILLAGES_LOADED && KEPT.containsKey(new AnchorKey(level.dimension(), ref.bell().asLong()));
+	}
+
+	private static double nearestPlayerDistSqr(ServerLevel level, BlockPos bell) {
+		double best = Double.MAX_VALUE;
+		for (var player : level.players()) {
+			best = Math.min(best, player.distanceToSqr(bell.getX() + 0.5, bell.getY(), bell.getZ() + 0.5));
+		}
+		return best;
+	}
+
+	/** Rank among the currently active villages of this level by distance to the nearest player. */
+	static boolean withinBudget(ServerLevel level, AnchorKey key, BlockPos bell, long now) {
+		if (MAX_KEPT_VILLAGES <= 0) return false;
+		SEEN.values().removeIf(v -> now - v.seen() > SEEN_WINDOW);
+		double mine = nearestPlayerDistSqr(level, bell) * (KEPT.containsKey(key) ? KEPT_DISTANCE_BONUS : 1.0D);
+		int closer = 0;
+		for (Map.Entry<AnchorKey, SeenVillage> e : SEEN.entrySet()) {
+			AnchorKey other = e.getKey();
+			if (other.equals(key) || !other.dimension().equals(key.dimension())) continue;
+			double theirs = nearestPlayerDistSqr(level, e.getValue().bell()) * (KEPT.containsKey(other) ? KEPT_DISTANCE_BONUS : 1.0D);
+			if (theirs < mine || (theirs == mine && other.pos() < key.pos())) closer++;
+		}
+		return closer < MAX_KEPT_VILLAGES;
+	}
+
+	/** Chunks of the village footprint, nearest to the bell first (deterministic order). */
+	private static ArrayList<int[]> footprint(ServerLevel level, VillageRef ref, int radius) {
 		BoundingBox box = Development.bounds(level, ref);
 		int bellChunkX = ref.bell().getX() >> 4;
 		int bellChunkZ = ref.bell().getZ() >> 4;
-		int minX = Math.min(box.minX() >> 4, bellChunkX - Config.ANCHOR_RADIUS_CHUNKS) - FOOTPRINT_MARGIN_CHUNKS;
-		int maxX = Math.max(box.maxX() >> 4, bellChunkX + Config.ANCHOR_RADIUS_CHUNKS) + FOOTPRINT_MARGIN_CHUNKS;
-		int minZ = Math.min(box.minZ() >> 4, bellChunkZ - Config.ANCHOR_RADIUS_CHUNKS) - FOOTPRINT_MARGIN_CHUNKS;
-		int maxZ = Math.max(box.maxZ() >> 4, bellChunkZ + Config.ANCHOR_RADIUS_CHUNKS) + FOOTPRINT_MARGIN_CHUNKS;
+		int minX = Math.min(box.minX() >> 4, bellChunkX - radius) - FOOTPRINT_MARGIN_CHUNKS;
+		int maxX = Math.max(box.maxX() >> 4, bellChunkX + radius) + FOOTPRINT_MARGIN_CHUNKS;
+		int minZ = Math.min(box.minZ() >> 4, bellChunkZ - radius) - FOOTPRINT_MARGIN_CHUNKS;
+		int maxZ = Math.max(box.maxZ() >> 4, bellChunkZ + radius) + FOOTPRINT_MARGIN_CHUNKS;
 		var chunks = new ArrayList<int[]>();
 		for (int cx = minX; cx <= maxX; cx++) {
 			for (int cz = minZ; cz <= maxZ; cz++) chunks.add(new int[] {cx, cz});
 		}
 		chunks.sort(Comparator.<int[]>comparingLong(c -> (long)(c[0] - bellChunkX) * (c[0] - bellChunkX)
 			+ (long)(c[1] - bellChunkZ) * (c[1] - bellChunkZ)).thenComparingInt(c -> c[0]).thenComparingInt(c -> c[1]));
-		int count = Math.min(MAX_FORCED_CHUNKS, chunks.size());
-		for (int i = 0; i < count; i++) level.setChunkForced(chunks.get(i)[0], chunks.get(i)[1], true);
-		if (chunks.size() > MAX_FORCED_CHUNKS && now >= WARNED.getOrDefault(key, 0L)) {
-			WARNED.put(key, now + 12000L);
-			LOGGER.warn("Village footprint at {} spans {} chunks; forced-loading the nearest {} only (hard cap).",
-				ref.bell().toShortString(), chunks.size(), MAX_FORCED_CHUNKS);
+		return chunks;
+	}
+
+	/** True when the server is already struggling: pinning more chunks would only make it worse. */
+	static boolean overloaded(ServerLevel level) {
+		return level.getServer().getAverageTickTimeNanos() > OVERLOAD_TICK_NANOS;
+	}
+
+	/** True when a player is close enough that the village is simulated by the game itself (simulation distance minus 3 chunks). */
+	static boolean attended(ServerLevel level, BlockPos bell) {
+		int blocks = Math.max(0, level.getServer().getPlayerList().getSimulationDistance() - 3) * 16;
+		return nearestPlayerDistSqr(level, bell) < (double) blocks * blocks;
+	}
+
+	/** Only a chunk with all eight neighbours already loaded may be pinned: pinning must never trigger world generation. */
+	static boolean pinnable(ServerLevel level, ChunkPos chunk) {
+		for (int dx = -1; dx <= 1; dx++) {
+			for (int dz = -1; dz <= 1; dz++) {
+				if (level.getChunkSource().getChunkNow(chunk.x() + dx, chunk.z() + dz) == null) return false;
+			}
 		}
+		return true;
+	}
+
+	private static void pinFootprint(ServerLevel level, VillageRef ref, AnchorKey key, long now) {
+		Set<ForcedChunk> kept = KEPT.computeIfAbsent(key, k -> new LinkedHashSet<>());
+		Long ringDone = RING.get(key);
+		if (ringDone == null || now - ringDone > 12000L) {
+			RING.put(key, now);
+			ArrayList<int[]> chunks = footprint(level, ref, Config.ANCHOR_RADIUS_CHUNKS);
+			kept.clear();
+			for (int i = 0; i < Math.min(MAX_FORCED_CHUNKS, chunks.size()); i++) {
+				kept.add(new ForcedChunk(level.dimension(), ChunkPos.pack(chunks.get(i)[0], chunks.get(i)[1])));
+			}
+			if (chunks.size() > MAX_FORCED_CHUNKS && now >= WARNED.getOrDefault(key, 0L)) {
+				WARNED.put(key, now + 12000L);
+				LOGGER.info("Village footprint at {} spans {} chunks; pinning at most the nearest {} (only chunks that are already loaded).",
+					ref.bell().toShortString(), chunks.size(), MAX_FORCED_CHUNKS);
+			}
+		}
+		for (ForcedChunk c : kept) {
+			ChunkPos chunk = new ChunkPos(ChunkPos.getX(c.pos()), ChunkPos.getZ(c.pos()));
+			if (pinnable(level, chunk)) addWorkTicket(level, FOOTPRINT_WORK, chunk, VILLAGER_LEASE_RADIUS, now);
+		}
+	}
+
+	/**
+	 * Gives a village outside the budget back to normal chunk handling. Also frees chunks that earlier versions saved as
+	 * /forceload entries around the bell (radius 3, up to 256 chunks); chunks shared with a kept village stay loaded.
+	 */
+	private static void release(ServerLevel level, VillageRef ref, AnchorKey key, long now) {
+		Set<ForcedChunk> mine = KEPT.remove(key);
+		RING.remove(key);
+		Long last = RELEASED.get(key);
+		if (mine == null && last != null && now >= last && now - last < RELEASE_INTERVAL) return;
+		RELEASED.put(key, now);
+		Set<ForcedChunk> others = new java.util.HashSet<>();
+		for (Set<ForcedChunk> kept : KEPT.values()) others.addAll(kept);
+		ArrayList<int[]> candidates = footprint(level, ref, LEGACY_RADIUS_CHUNKS);
+		int released = releaseChunks(level, candidates.subList(0, Math.min(LEGACY_MAX_FORCED_CHUNKS, candidates.size())), mine, others);
+		if (released > 0) {
+			LOGGER.info("Village at {} is outside the load budget ({} kept villages); released {} forced chunks.",
+				ref.bell().toShortString(), MAX_KEPT_VILLAGES, released);
+		}
+	}
+
+	/** Unforces the candidate and own chunks except those another kept village still needs; returns how many were freed. */
+	static int releaseChunks(ServerLevel level, java.util.List<int[]> candidates, Set<ForcedChunk> mine, Set<ForcedChunk> others) {
+		int released = 0;
+		for (int[] c : candidates) {
+			if (others.contains(new ForcedChunk(level.dimension(), ChunkPos.pack(c[0], c[1])))) continue;
+			if (level.setChunkForced(c[0], c[1], false)) released++;
+		}
+		if (mine != null) {
+			for (ForcedChunk c : mine) {
+				if (!others.contains(c) && level.setChunkForced(ChunkPos.getX(c.pos()), ChunkPos.getZ(c.pos()), false)) released++;
+			}
+		}
+		return released;
+	}
+
+	/** Test hook: registers a village as recently active so the budget ranking sees it. */
+	static AnchorKey seenForTest(ServerLevel level, BlockPos bell, long now) {
+		AnchorKey key = new AnchorKey(level.dimension(), bell.asLong());
+		SEEN.put(key, new SeenVillage(bell, now));
+		return key;
+	}
+
+	/** Test hook: treats the village as inside the load budget so its residents may take the temporary chunk lease. */
+	static void markKeptForTest(ServerLevel level, VillageRef ref) {
+		KEPT.putIfAbsent(new AnchorKey(level.dimension(), ref.bell().asLong()), new LinkedHashSet<>());
+	}
+
+	static void resetBudgetForTest() {
+		SEEN.clear();
+		KEPT.clear();
+	}
+
+	static ForcedChunk forcedChunkForTest(ServerLevel level, int x, int z) {
+		return new ForcedChunk(level.dimension(), ChunkPos.pack(x, z));
 	}
 }

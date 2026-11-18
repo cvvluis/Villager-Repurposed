@@ -204,7 +204,7 @@ public final class Builder {
 		List<Step> candidatePlan = candidateSteps;
 		if (type.equals(Blueprints.HOUSE)) {
 			int clearance = design == null ? Blueprints.headroom(type) : siteHeadroom(type, variant, design);
-			if (templateCandidate) clearance = Math.max(clearance, 10);
+			if (templateCandidate) clearance = Math.max(clearance, templateHeadroom(design));
 			if (!housePlotFits(c.level(), anchor, candidateSteps, outward, clearance)) { SITE_REJECT[3]++; return null; }
 			if (!templateCandidate) {
 				int yardStyle = Paths.yardStyle(c.level(), anchor, outward);
@@ -667,7 +667,7 @@ public final class Builder {
 
 	private static boolean storageSearchAreaLoaded(ServerLevel level, BlockPos center) {
 		for (int dx : new int[] {-5, 5}) for (int dz : new int[] {-5, 5}) {
-			if (!level.hasChunkAt(center.offset(dx, -1, dz))) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, center.offset(dx, -1, dz))) return false;
 		}
 		return true;
 	}
@@ -810,10 +810,10 @@ public final class Builder {
 	private static Step snap(ServerLevel level, BlockPos origin, Step s) {
 		int x = s.pos().getX();
 		int z = s.pos().getZ();
-		if (!level.hasChunkAt(new BlockPos(x, origin.getY(), z))) {
+		if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, origin.getY(), z))) {
 			return s;
 		}
-		int surface = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+		int surface = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 		if (Math.abs(surface - origin.getY()) > 3) {
 			return null;
 		}
@@ -1495,7 +1495,7 @@ public final class Builder {
 	}
 
 	private static boolean reachableProjectStand(ServerLevel level, Villager villager, VillageData.BuildProject project) {
-		if (level == null || villager == null || project == null || !level.hasChunkAt(project.origin())) return false;
+		if (level == null || villager == null || project == null || !de.villagerplus.world.LoadedColumns.ready(level, project.origin())) return false;
 		VillageData.PlanBounds bounds = project.bounds().orElseGet(() ->
 			fallbackProjectBounds(project.type(), project.origin(), project.variant(), project.source().isPresent()));
 		int midX = bounds.minX() + (bounds.maxX() - bounds.minX()) / 2;
@@ -1508,7 +1508,7 @@ public final class Builder {
 			new BlockPos(bounds.minX() - 4, y, bounds.maxZ() + 4), new BlockPos(bounds.maxX() + 4, y, bounds.maxZ() + 4));
 		for (int index = 0; index < Math.min(MAX_PROJECT_STAFFING_STAND_PROBES, standColumns.size()); index++) {
 			BlockPos column = standColumns.get(index);
-			if (!level.hasChunkAt(column)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, column)) continue;
 			BlockPos feet = standOnColumn(level, column.getX(), column.getZ(), y);
 			if (feet == null || feet.getX() >= bounds.minX() && feet.getX() <= bounds.maxX()
 				&& feet.getZ() >= bounds.minZ() && feet.getZ() <= bounds.maxZ()) continue;
@@ -2345,7 +2345,7 @@ public final class Builder {
 					de.villagerplus.job.WoodcutterWork.empty());
 				if (work.root().isPresent() && !work.removalPending()) {
 					BlockPos savedRoot = work.root().get();
-					if (!c.level().hasChunkAt(savedRoot)) return true;
+					if (!de.villagerplus.world.LoadedColumns.ready(c.level(), savedRoot)) return true;
 					if (!planTreeNeighborhoodLoaded(c.level(), savedRoot)) {
 						c.st().woodCheckAt = c.now() + 200;
 						c.setActivity("wartet auf geladene Umgebung des Planbaums");
@@ -2499,8 +2499,8 @@ public final class Builder {
 		for (int dx = -radius; dx <= radius; dx++) for (int dz = -radius; dz <= radius; dz++) {
 			long distance = (long)dx * dx + (long)dz * dz;
 			int x = center.getX() + dx, z = center.getZ() + dz;
-			if (!level.hasChunk(x >> 4, z >> 4)) continue;
-			int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+			if (!de.villagerplus.world.LoadedColumns.readyChunk(level, x >> 4, z >> 4)) continue;
+			int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
 			if (Math.abs(y - center.getY()) > 24 || !level.getBlockState(probe.set(x, y, z)).is(BlockTags.OVERWORLD_NATURAL_LOGS)) continue;
 			int baseY = y;
 			while (y - baseY < 48 && level.getBlockState(probe.set(x, baseY - 1, z)).is(BlockTags.LOGS)) baseY--;
@@ -2556,7 +2556,7 @@ public final class Builder {
 
 	private static boolean planTreeOnRoad(ServerLevel level, BlockPos root) {
 		for (BlockPos pos : BlockPos.betweenClosed(root.offset(-1, -1, -1), root.offset(1, -1, 1))) {
-			if (!level.hasChunkAt(pos)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) continue;
 			BlockState floor = level.getBlockState(pos);
 			if (floor.is(Blocks.DIRT_PATH) || floor.is(Blocks.GRAVEL) || floor.is(Blocks.COBBLESTONE)
 				|| floor.is(Blocks.SMOOTH_SANDSTONE) || floor.is(Blocks.SPRUCE_PLANKS)) return true;
@@ -2567,7 +2567,7 @@ public final class Builder {
 	private static boolean planTreeNeighborhoodLoaded(ServerLevel level, BlockPos root) {
 		for (int x = root.getX() - 3; x <= root.getX() + 3; x++)
 			for (int z = root.getZ() - 3; z <= root.getZ() + 3; z++)
-				if (!level.hasChunkAt(new BlockPos(x, root.getY(), z))) return false;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, root.getY(), z))) return false;
 		return true;
 	}
 
@@ -3299,8 +3299,8 @@ public final class Builder {
 				half = siteHalf(type, variant, design);
 				headroom = siteHeadroom(type, variant, design);
 				if (templateEligible(design)) {
-					half = Math.max(half, 4);
-					headroom = Math.max(headroom, 10);
+					half = Math.max(half, templateHalf(design));
+					headroom = Math.max(headroom, templateHeadroom(design));
 				}
 			}
 			// Bis zu 4 Entwuerfe probieren: ein kleinerer passt oft noch auf einen engen oder huegeligen Platz.
@@ -3317,8 +3317,8 @@ public final class Builder {
 					half = siteHalf(type, variant, design);
 					headroom = siteHeadroom(type, variant, design);
 					if (Blueprints.HOUSE.equals(type) && templateEligible(design)) {
-						half = Math.max(half, 4);
-						headroom = Math.max(headroom, 10);
+						half = Math.max(half, templateHalf(design));
+						headroom = Math.max(headroom, templateHeadroom(design));
 					}
 				} else if (Landmarks.handles(type)) {
 					long seed = type.equals(Blueprints.DECOR) ? Landmarks.decorSeed(variant, c.v().getRandom().nextInt(1 << 24))
@@ -3588,7 +3588,7 @@ public final class Builder {
 		d.claimPlanBuilder(c.v().getUUID());
 		if (source == null && Blueprints.HOUSE.equals(type)
 			&& newHouseTemplatePreview(level, ref, type, designForPlan(type, variant), site, dir) != null) {
-			markTemplatePlan(ref, site);
+			markTemplatePlan(ref, site, designForPlan(type, variant));
 		}
 		String earlyPalette = source == null ? EARLY_PALETTE_SITES.remove(site.asLong()) : null;
 		if (earlyPalette != null && !ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.<Long>of()).contains(site.asLong())) {
@@ -3694,8 +3694,8 @@ public final class Builder {
 		int half = design != null ? siteHalf(type, variant, design) : Landmarks.handles(type) ? Landmarks.half(type) : Blueprints.half(type);
 		int headroom = design != null ? siteHeadroom(type, variant, design) : Landmarks.handles(type) ? Landmarks.headroom(type) : Blueprints.headroom(type);
 		if (Blueprints.HOUSE.equals(type) && templateEligible(design)) {
-			half = Math.max(half, 4);
-			headroom = Math.max(headroom, 10);
+			half = Math.max(half, templateHalf(design));
+			headroom = Math.max(headroom, templateHeadroom(design));
 		}
 		int min = type.equals(Blueprints.HOUSE) && houseMinRadiusOverride > 0 ? houseMinRadiusOverride
 			: type.equals(Blueprints.WELL) || type.equals(Blueprints.DECOR) ? 5 : type.equals(Blueprints.TOWNHALL) ? 7
@@ -4265,7 +4265,7 @@ public final class Builder {
 			int dx = withinLayer / 19 - 9;
 			int dz = withinLayer % 19 - 9;
 			BlockPos pos = anchor.offset(dx, dy, dz);
-			if (pos.equals(depotPos) || !c.level().hasChunkAt(pos)) continue;
+			if (pos.equals(depotPos) || !de.villagerplus.world.LoadedColumns.ready(c.level(), pos)) continue;
 			var block = c.level().getBlockState(pos).getBlock();
 			if (!(block instanceof ChestBlock) && !(block instanceof BarrelBlock)) continue;
 			if (Lager.publicStorageAt(c.level(), pos)) scan.sources.add(pos.immutable());
@@ -4282,7 +4282,7 @@ public final class Builder {
 			BlockPos sourcePos = scan.sources.get(scan.sourceIndex % scan.sources.size());
 			scan.sourceIndex = (scan.sourceIndex + 1) % scan.sources.size();
 			scan.sourcesVisited++;
-			if (!c.level().hasChunkAt(sourcePos) || !Lager.publicStorageAt(c.level(), sourcePos)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(c.level(), sourcePos) || !Lager.publicStorageAt(c.level(), sourcePos)) continue;
 			Container source = Lager.publicContainerAt(c.level(), sourcePos);
 			int moved = moveRequestedPublicStock(source, depot, wanted, true, true);
 			if (moved > 0) {
@@ -4673,7 +4673,7 @@ public final class Builder {
 		List<BlockPos> gapTopDown = new ArrayList<>();
 		for (int depth = 1; depth <= SUPPORT_DEPTH; depth++) {
 			BlockPos pos = target.below(depth);
-			if (!level.hasChunkAt(pos)) return new SupportColumn(List.copyOf(gapTopDown), false, true);
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return new SupportColumn(List.copyOf(gapTopDown), false, true);
 			BlockState state = level.getBlockState(pos);
 			if (state.isFaceSturdy(level, pos, Direction.UP)) {
 				return new SupportColumn(bottomUp(gapTopDown), true, false);
@@ -4706,7 +4706,7 @@ public final class Builder {
 		int placed = 0;
 		for (BlockPos pos : column.positions()) {
 			if (placed >= budget) return new SupportResult(placed, false, false, false, true);
-			if (!level.hasChunkAt(pos)) return new SupportResult(placed, false, false, true, false);
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return new SupportResult(placed, false, false, true, false);
 			BlockState previous = level.getBlockState(pos);
 			if (previous.hasBlockEntity() || occupied(level, pos)
 				|| (!previous.isAir() && !previous.canBeReplaced() && previous.getFluidState().isEmpty())) {
@@ -4756,15 +4756,45 @@ public final class Builder {
 	private static List<Step> newHouseTemplatePreview(ServerLevel level, VillageRef ref, String type,
 		Architect.Design design, BlockPos origin, Direction dir) {
 		if (!Blueprints.HOUSE.equals(type) || !templateEligible(design)) return null;
-		List<Step> preview = previewTemplateSteps(level, ref, origin, dir, "haus_klein");
+		List<Step> preview = previewTemplateSteps(level, ref, origin, dir, templateTypeFor(design));
 		return preview == null || preview.isEmpty() ? null : preview;
 	}
 
-	private static void markTemplatePlan(VillageRef ref, BlockPos origin) {
+	/** Small house shape (9x9) used by every template-eligible plan that started before the village house existed. */
+	static final String HOUSE_TEMPLATE_SMALL = "haus_klein";
+	/** Larger village house (about 14x13): chosen for tall two-storey designs of NEW plans only. */
+	static final String HOUSE_TEMPLATE_VILLAGE = "haus_dorf";
+
+	/** Template shape for a fresh plan, derived from its saved design so a restart picks the same one. */
+	static String templateTypeFor(Architect.Design design) {
+		return design != null && design.wallH() >= 6 && design.hw() >= 4 ? HOUSE_TEMPLATE_VILLAGE : HOUSE_TEMPLATE_SMALL;
+	}
+
+	/**
+	 * Template shape of a plan. Plans marked before the village house existed keep the small house; a village-house plan
+	 * is recorded as the origin marker plus its bitwise complement (never a valid position: the y bits fall below the world).
+	 */
+	static String templateTypeForPlan(VillageRef ref, BlockPos origin, Architect.Design design) {
+		List<Long> marked = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.of());
+		if (marked.contains(~origin.asLong())) return HOUSE_TEMPLATE_VILLAGE;
+		if (marked.contains(origin.asLong())) return HOUSE_TEMPLATE_SMALL;
+		return templateTypeFor(design);
+	}
+
+	private static int templateHalf(Architect.Design design) {
+		return HOUSE_TEMPLATE_VILLAGE.equals(templateTypeFor(design)) ? 7 : 4;
+	}
+
+	private static int templateHeadroom(Architect.Design design) {
+		return HOUSE_TEMPLATE_VILLAGE.equals(templateTypeFor(design)) ? 14 : 10;
+	}
+
+	private static void markTemplatePlan(VillageRef ref, BlockPos origin, Architect.Design design) {
 		List<Long> marked = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.of());
 		if (marked.contains(origin.asLong())) return;
 		List<Long> next = new ArrayList<>(marked);
 		next.add(origin.asLong());
+		if (HOUSE_TEMPLATE_VILLAGE.equals(templateTypeFor(design))) next.add(~origin.asLong());
 		ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.copyOf(next));
 		ref.dirty();
 	}
@@ -4828,7 +4858,7 @@ public final class Builder {
 			ConstructionSite site = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.CONSTRUCTION, null);
 			templated = false;
 			if (d.planType.equals(Blueprints.HOUSE) && planDesign != null && templateEligible(planDesign)) {
-				List<Step> fromTemplate = templateSteps(level, ref, origin, dir, d, "haus_klein");
+				List<Step> fromTemplate = templateSteps(level, ref, origin, dir, d, templateTypeForPlan(ref, origin, planDesign));
 				if (fromTemplate != null && !fromTemplate.isEmpty()) {
 					steps = fromTemplate;
 					templated = true;
@@ -5340,6 +5370,17 @@ public final class Builder {
 	/** After a pen found no site the farmer builds its field first and only retries the pen after this long. */
 	private static final long PEN_SITE_RETRY_TICKS = 12000L;
 	private static final java.util.Map<Long, Long> PEN_SITE_BLOCKED_UNTIL = new java.util.HashMap<>();
+
+	/** Whether a farmer could open a new Builder project right now (a free cursor slot and, for the third, a real crew). */
+	public static boolean farmerCanStartProject(Ctx c) {
+		VillageRef ref = c.village();
+		return ref != null && canStartProject(c.level(), ref, ref.data(), c.v(), false);
+	}
+
+	/** True while a failed first-pen site search is waiting for its retry; the farmer then plans fields instead of shadowing them with the pen. */
+	public static boolean penSiteRetryPending(VillageRef ref, long now) {
+		return ref != null && now < PEN_SITE_BLOCKED_UNTIL.getOrDefault(ref.bell().asLong(), 0L);
+	}
 	/** A plan without material progress for this long swaps unobtainable palette blocks for local ones without a caravan. */
 	private static final long STALLED_PLAN_PALETTE_FALLBACK_TICKS = 3000L;
 	/** Per plan origin: the open demand signature and the game tick since which it has not changed. */
@@ -5498,8 +5539,8 @@ public final class Builder {
 		int searchHeadroom = siteHeadroom(type, search.variant, searchDesign);
 		int searchVariant = search.variant;
 		if (templateEligible(searchDesign)) {
-			searchHalf = Math.max(searchHalf, 4);
-			searchHeadroom = Math.max(searchHeadroom, 10);
+			searchHalf = Math.max(searchHalf, templateHalf(searchDesign));
+			searchHeadroom = Math.max(searchHeadroom, templateHeadroom(searchDesign));
 		}
 		int oldMargin = Sites.margin;
 		int evaluatedBefore = SITE_REJECT[0];
@@ -5938,7 +5979,7 @@ public final class Builder {
 		boolean frontColumn = true;
 		boolean missingStandChunk = false;
 		for (BlockPos column : candidates) {
-			if (!c.level().hasChunkAt(column)) {
+			if (!de.villagerplus.world.LoadedColumns.ready(c.level(), column)) {
 				frontColumn = false;
 				missingStandChunk = true;
 				continue;
@@ -6109,8 +6150,8 @@ public final class Builder {
 
 	/** Ground the worker can stand on: the heightmap, a one-block step, or the street under a roof. */
 	static BlockPos standOnColumn(ServerLevel level, int x, int z, int preferY) {
-		if (!level.hasChunkAt(new BlockPos(x, preferY, z))) return null;
-		int top = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+		if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, preferY, z))) return null;
+		int top = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 		BlockPos surface = new BlockPos(x, top, z);
 		BlockPos chosen = null;
 		for (int dy : new int[] {0, -1, 1}) {
@@ -6137,7 +6178,7 @@ public final class Builder {
 		if ((maxX - minX + 1L) * (maxZ - minZ + 1L) > 80) return false;
 		for (int x = minX; x <= maxX; x++) {
 			for (int z = minZ; z <= maxZ; z++) {
-				if (!level.hasChunk(x, z)) return false;
+				if (!de.villagerplus.world.LoadedColumns.readyChunk(level, x, z)) return false;
 			}
 		}
 		return true;
@@ -6156,7 +6197,7 @@ public final class Builder {
 
 	/** Leaves and replaceable plants, plus a single dirt lip a mason would shovel aside. Fluids stay. */
 	private static boolean standable(ServerLevel level, BlockPos feet) {
-		if (!level.hasChunkAt(feet) || !level.hasChunkAt(feet.below()) || !level.hasChunkAt(feet.above())) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, feet) || !de.villagerplus.world.LoadedColumns.ready(level, feet.below()) || !de.villagerplus.world.LoadedColumns.ready(level, feet.above())) return false;
 		BlockPos below = feet.below();
 		BlockState ground = level.getBlockState(below);
 		if ((!ground.isFaceSturdy(level, below, Direction.UP) && !ground.is(Blocks.DIRT_PATH))
@@ -6258,10 +6299,10 @@ public final class Builder {
 		// A solid goal (chest, log, workstation) can never be stood in, so a path "to" it never counts as reached.
 		// Aim at the open cells next to it instead; vanilla navigation does the same through its reach distance.
 		java.util.Set<BlockPos> goals = new java.util.LinkedHashSet<>();
-		if (c.level().hasChunkAt(feet) && !c.level().getBlockState(feet).getCollisionShape(c.level(), feet).isEmpty()) {
+		if (de.villagerplus.world.LoadedColumns.ready(c.level(), feet) && !c.level().getBlockState(feet).getCollisionShape(c.level(), feet).isEmpty()) {
 			for (Direction side : Direction.Plane.HORIZONTAL) {
 				BlockPos next = feet.relative(side);
-				if (!c.level().hasChunkAt(next)) continue;
+				if (!de.villagerplus.world.LoadedColumns.ready(c.level(), next)) continue;
 				boolean open = c.level().getBlockState(next).getCollisionShape(c.level(), next).isEmpty()
 					&& c.level().getBlockState(next.above()).getCollisionShape(c.level(), next.above()).isEmpty();
 				if (open) goals.add(next.immutable());
@@ -6273,7 +6314,7 @@ public final class Builder {
 
 	static boolean safeWorkFloor(ServerLevel level, BlockPos feet) {
 		BlockPos below = feet.below(), head = feet.above();
-		if (!level.hasChunkAt(feet) || !level.hasChunkAt(below) || !level.hasChunkAt(head)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, feet) || !de.villagerplus.world.LoadedColumns.ready(level, below) || !de.villagerplus.world.LoadedColumns.ready(level, head)) return false;
 		BlockState ground = level.getBlockState(below), body = level.getBlockState(feet), upper = level.getBlockState(head);
 		return (ground.isFaceSturdy(level, below, Direction.UP) || ground.is(Blocks.DIRT_PATH)) && ground.getFluidState().isEmpty()
 			&& body.getFluidState().isEmpty() && upper.getFluidState().isEmpty()
@@ -6539,7 +6580,7 @@ public final class Builder {
 		}
 		Built b = list.get(n % list.size());
 		if (d.buildProject(b.origin()).isPresent()) return false;
-		if (!level.hasChunkAt(b.origin())) {
+		if (!de.villagerplus.world.LoadedColumns.ready(level, b.origin())) {
 			return false;
 		}
 		// Die damals benutzte Palette (gespeichert); nur ohne Eintrag wird neu gelesen (neuere Bauten wuerden sie verfaelschen).
@@ -6595,7 +6636,7 @@ public final class Builder {
 		for (int r = Development.MAX_WALL_RADIUS; r >= Config.WALL_MIN_VILLAGE_RADIUS; r--) {
 			int x = bell.getX();
 			int z = bell.getZ() - r;
-			if (!level.hasChunkAt(new BlockPos(x, bell.getY(), z))) {
+			if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x, bell.getY(), z))) {
 				continue;
 			}
 			int h = Wall.groundHeight(level, x, z + 1, style.wall());
@@ -6663,7 +6704,7 @@ public final class Builder {
 	static boolean columnIntact(ServerLevel level, BlockPos bell, VillageStyle style, int r, int t) {
 		if (r <= 0 || t < 0 || t >= 8 * r) return false;
 		int[] o = Wall.ringOffset(r, t);
-		if (!level.hasChunkAt(new BlockPos(bell.getX() + o[0], bell.getY(), bell.getZ() + o[1]))) {
+		if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(bell.getX() + o[0], bell.getY(), bell.getZ() + o[1]))) {
 			return false;
 		}
 		List<Wall.Cell> cells = Wall.column(level, bell, style.wall(), style.stairs(), style.fence(), r, t);
@@ -6897,7 +6938,7 @@ public final class Builder {
 		int[] off = Wall.ringOffset(r, d.planStep);
 		int bx = ref.bell().getX() + off[0];
 		int bz = ref.bell().getZ() + off[1];
-		if (!level.hasChunkAt(new BlockPos(bx, ref.bell().getY(), bz))) {
+		if (!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(bx, ref.bell().getY(), bz))) {
 			// Chunk nicht geladen: Saeule spaeter, Auftrag wartet.
 			return waitForWall(c, ref, "wartet auf den geladenen Mauerabschnitt");
 		}
@@ -7089,7 +7130,7 @@ public final class Builder {
 		/** True only for a still-empty target with suitable ground and room for its eventual plant. */
 		static boolean yardCellClear(ServerLevel level, Step step, int style) {
 			BlockPos pos = step.pos();
-			if (!level.hasChunkAt(pos) || !level.hasChunkAt(pos.below())) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !de.villagerplus.world.LoadedColumns.ready(level, pos.below())) return false;
 			boolean snowy = style == YARD_SNOW;
 			BlockState surface = level.getBlockState(pos);
 			if (snowy ? !surface.is(Blocks.SNOW) : !surface.isAir()) return false;
@@ -7106,7 +7147,7 @@ public final class Builder {
 			int clear = target instanceof net.minecraft.world.level.block.SaplingBlock ? 5 : 1;
 			for (int dy = snowy ? 1 : 0; dy < clear; dy++) {
 				BlockPos head = pos.above(dy);
-				if (!level.hasChunkAt(head) || !level.getBlockState(head).isAir()) return false;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, head) || !level.getBlockState(head).isAir()) return false;
 			}
 			return true;
 		}
@@ -7234,8 +7275,8 @@ public final class Builder {
 			for (int dx = -16; dx <= 16; dx++) for (int dz = -16; dz <= 16; dz++) {
 				int x = center.getX() + dx, z = center.getZ() + dz;
 				BlockPos column = new BlockPos(x, level.getMinY(), z);
-				if (!level.hasChunkAt(column)) continue;
-				int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, column)) continue;
+				int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
 				BlockPos ground = new BlockPos(x, y, z);
 				BlockState surface = level.getBlockState(ground);
 				boolean dirtPath = surface.is(Blocks.DIRT_PATH);
@@ -7263,8 +7304,8 @@ public final class Builder {
 			for (int dx = -reach; dx <= reach; dx++) for (int dz = -reach; dz <= reach; dz++) {
 				if (Math.abs(dx) + Math.abs(dz) > reach) continue;
 				BlockPos column = center.offset(dx, 0, dz);
-				if (!level.hasChunkAt(column)) continue;
-				int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column.getX(), column.getZ()) - 1;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, column)) continue;
+				int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column.getX(), column.getZ()) - 1;
 				BlockPos ground = new BlockPos(column.getX(), y, column.getZ());
 				double distance = ground.distSqr(center);
 				if (distance >= bestDistance || !Sites.isGeneratedVillageRoadGround(level, ground, level.getBlockState(ground))) continue;
@@ -7283,8 +7324,8 @@ public final class Builder {
 
 		private static BlockPos pathSurface(ServerLevel level, int x, int z) {
 			BlockPos column = new BlockPos(x, level.getMinY(), z);
-			if (!level.hasChunkAt(column)) return null;
-			int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, column)) return null;
+			int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
 			BlockPos ground = new BlockPos(x, y, z);
 			BlockState state = level.getBlockState(ground);
 			if (!state.getFluidState().isEmpty() || state.is(Blocks.FARMLAND) || state.hasBlockEntity()) return null;

@@ -172,7 +172,7 @@ public final class Roads {
    for(int scanned=0;cursor<total&&scanned<EXPANSION_COLUMNS_PER_SCAN;scanned++) {
     int x=center.getX()+cursor%width-half,z=center.getZ()+cursor/width-half;
     BlockPos column=new BlockPos(x,ref.bell().getY(),z);
-    if(!level.hasChunkAt(column)) {
+    if(!de.villagerplus.world.LoadedColumns.ready(level, column)) {
      state.put(EXPANSION+"cursor",(long)cursor);state.put(EXPANSION+"retry",level.getGameTime()+200L);
      ref.bellEntity().setAttached(VillagerPlus.ROADS,Map.copyOf(state));ref.dirty();return null;
     }
@@ -202,7 +202,7 @@ public final class Roads {
   for(int scanned=0;cursor<total&&scanned<EXPANSION_COLUMNS_PER_SCAN;scanned++) {
    int x=center.getX()+cursor%width-half,z=center.getZ()+cursor/width-half;
    BlockPos column=new BlockPos(x,ref.bell().getY(),z);
-   if(!level.hasChunkAt(column)) {
+   if(!de.villagerplus.world.LoadedColumns.ready(level, column)) {
     state.put(EXPANSION+"cursor",(long)cursor);state.put(EXPANSION+"retry",level.getGameTime()+200L);
     ref.bellEntity().setAttached(VillagerPlus.ROADS,Map.copyOf(state));ref.dirty();return null;
    }
@@ -254,7 +254,7 @@ public final class Roads {
   }
   for(int dx:new int[]{-half,0,half})for(int dz:new int[]{-half,0,half}) {
    BlockPos column=new BlockPos(center.getX()+dx,ref.bell().getY(),center.getZ()+dz);
-   if(!level.hasChunkAt(column))return false;
+   if(!de.villagerplus.world.LoadedColumns.ready(level, column))return false;
    RoadClearing.Column inspected=RoadClearing.column(level,ref,column.getX(),column.getZ(),new HashMap<>(),"probe");
    if(inspected==null||inspected.next()!=null&&!RoadClearing.validTask(level,inspected.next())
      ||!expansionColumnSuitable(level,ref,inspected.ground()))return false;
@@ -270,13 +270,13 @@ public final class Roads {
  }
 
  private static boolean expansionColumnSuitable(ServerLevel level,VillageRef ref,BlockPos ground) {
-  if(ground==null||!level.hasChunkAt(ground)||!expansionNaturalGround(level,ground,level.getBlockState(ground))
+  if(ground==null||!de.villagerplus.world.LoadedColumns.ready(level, ground)||!expansionNaturalGround(level,ground,level.getBlockState(ground))
     ||Lighting.protectedVillageCell(level,ref,ground)||trustedVillagePathCell(level,ref,ground)
     ||isProtectedLaneCell(level,ground)||protectedExpansionColumn(level,ground)
     ||Development.nearOriginalStructure(level,ref,ground,Development.EXPANSION_PARCEL_CLEARANCE))return false;
   for(int dy=4;dy<=EXPANSION_SURFACE_SCAN_HEIGHT;dy++) {
    BlockPos overhead=ground.above(dy);
-   if(!level.hasChunkAt(overhead))return false;
+   if(!de.villagerplus.world.LoadedColumns.ready(level, overhead))return false;
    BlockState cover=level.getBlockState(overhead);
    if(cover.hasBlockEntity()||!cover.getFluidState().isEmpty())return false;
    if(cover.is(BlockTags.LEAVES)&&cover.hasProperty(LeavesBlock.PERSISTENT)
@@ -294,7 +294,7 @@ public final class Roads {
  }
 
  private static boolean expansionNaturalGround(ServerLevel level,BlockPos ground,BlockState state) {
-  return level.hasChunkAt(ground)&&level.getBlockEntity(ground)==null&&!state.hasBlockEntity()
+  return de.villagerplus.world.LoadedColumns.ready(level, ground)&&level.getBlockEntity(ground)==null&&!state.hasBlockEntity()
    &&state.getFluidState().isEmpty()&&state.isFaceSturdy(level,ground,net.minecraft.core.Direction.UP)
    &&(state.is(Blocks.GRASS_BLOCK)||state.is(Blocks.DIRT)||state.is(Blocks.COARSE_DIRT)
     ||state.is(Blocks.PODZOL)||state.is(Blocks.MYCELIUM)||state.is(Blocks.ROOTED_DIRT));
@@ -303,7 +303,7 @@ public final class Roads {
  private static boolean protectedExpansionColumn(ServerLevel level,BlockPos ground) {
   for(int dy=-4;dy<=EXPANSION_SURFACE_SCAN_HEIGHT;dy++) {
    BlockPos pos=ground.above(dy);
-   if(!level.hasChunkAt(pos))return true;
+   if(!de.villagerplus.world.LoadedColumns.ready(level, pos))return true;
    BlockState state=level.getBlockState(pos);Block block=state.getBlock();
    if(state.hasBlockEntity()||level.getBlockEntity(pos)!=null||state.is(Blocks.FARMLAND)
     ||state.is(BlockTags.PLANKS)||block instanceof ChestBlock||block instanceof BarrelBlock||block instanceof BedBlock
@@ -315,7 +315,7 @@ public final class Roads {
  static Repair expansionCanopyTask(ServerLevel level,VillageRef ref,BlockPos ground) {
   for(int dy=4;dy<=EXPANSION_SURFACE_SCAN_HEIGHT;dy++) {
    BlockPos leaf=ground.above(dy);
-   if(!level.hasChunkAt(leaf))return null;
+   if(!de.villagerplus.world.LoadedColumns.ready(level, leaf))return null;
    BlockState leaves=level.getBlockState(leaf);
    if(!leaves.is(BlockTags.LEAVES)||!leaves.hasProperty(LeavesBlock.PERSISTENT)
     ||leaves.getValue(LeavesBlock.PERSISTENT)||leaves.hasBlockEntity()||level.getBlockEntity(leaf)!=null
@@ -334,10 +334,10 @@ public final class Roads {
   for(int radius=0;radius<=3;radius++)for(int dx=-radius;dx<=radius;dx++)for(int dz=-radius;dz<=radius;dz++) {
    if(Math.max(Math.abs(dx),Math.abs(dz))!=radius)continue;
    int x=ground.getX()+dx,z=ground.getZ()+dz;
-   if(!level.hasChunkAt(new BlockPos(x,ground.getY(),z)))continue;
-   int surface=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z);
+   if(!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x,ground.getY(),z)))continue;
+   int surface=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
    BlockPos feet=new BlockPos(x,surface,z),floor=feet.below();
-   if(!level.hasChunkAt(feet)||!level.hasChunkAt(floor)||!level.hasChunkAt(feet.above())
+   if(!de.villagerplus.world.LoadedColumns.ready(level, feet)||!de.villagerplus.world.LoadedColumns.ready(level, floor)||!de.villagerplus.world.LoadedColumns.ready(level, feet.above())
     ||!level.getBlockState(feet).isAir()||!level.getBlockState(feet.above()).isAir()
     ||!expansionNaturalGround(level,floor,level.getBlockState(floor))||!level.getBlockState(floor).isFaceSturdy(level,floor,net.minecraft.core.Direction.UP))continue;
    double distance=feet.distSqr(target);
@@ -419,8 +419,8 @@ public final class Roads {
     for(int side=-ROAD_HALF_WIDTH;side<=ROAD_HALF_WIDTH;side++) {
      int lane=side+ROAD_HALF_WIDTH;
      int x=route.getX()+(alongX?0:side),z=route.getZ()+(alongX?side:0);
-     if(!level.hasChunkAt(new BlockPos(x,ref.bell().getY(),z))){blocked=true;unavailableChunk=true;break;}
-     BlockPos p=new BlockPos(x,level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z)-1,z);
+     if(!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x,ref.bell().getY(),z))){blocked=true;unavailableChunk=true;break;}
+     BlockPos p=new BlockPos(x,de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)-1,z);
      var clearing=RoadClearing.column(level,ref,x,z,state,key+":clear:"+cursor+":"+side);
      if(clearing==null){blocked=true;unavailableChunk=!columnChunksLoaded(level,x,z);break;}
      p=clearing.ground();
@@ -556,7 +556,7 @@ public final class Roads {
 
  private static boolean columnChunksLoaded(ServerLevel level,int x,int z) {
   for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++)
-   if(!level.hasChunkAt(new BlockPos(x+dx,level.getMinY(),z+dz)))return false;
+   if(!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x+dx,level.getMinY(),z+dz)))return false;
   return true;
  }
 
@@ -574,15 +574,15 @@ public final class Roads {
   Long profile=state.get(gradeYKey(key,cursor));
   for(int side=-1;side<=1;side++) {
    int x=route.getX()+(alongX?0:side),z=route.getZ()+(alongX?side:0);
-   if(!level.hasChunkAt(new BlockPos(x,a.getY(),z)))continue;
-   BlockPos ground=new BlockPos(x,level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z)-1,z);
+   if(!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x,a.getY(),z)))continue;
+   BlockPos ground=new BlockPos(x,de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)-1,z);
    BlockState s=level.getBlockState(ground);
    if(s.is(Blocks.GRAVEL)||s.is(Blocks.COBBLESTONE)||s.is(Blocks.SANDSTONE)||s.is(Blocks.SMOOTH_SANDSTONE)||s.is(Blocks.SPRUCE_PLANKS))return true;
    if(profile!=null) {
     long original=state.getOrDefault(gradeBaseYKey(key,cursor,side),Long.MIN_VALUE);
     if(original!=Long.MIN_VALUE&&ground.getY()!=original)return true;
     BlockPos target=new BlockPos(x,profile.intValue(),z);
-    if(level.hasChunkAt(target)&&isRoadSurface(level.getBlockState(target)))return true;
+    if(de.villagerplus.world.LoadedColumns.ready(level, target)&&isRoadSurface(level.getBlockState(target)))return true;
    }
   }
   return false;
@@ -614,8 +614,8 @@ public final class Roads {
     BlockPos route=RoadRoute.point(state,key,ref.bell(),link.bell(),cursor);
     boolean alongX=RoadRoute.alongX(state,key,ref.bell(),link.bell(),cursor);
     int x=route.getX()+(alongX?0:side),z=route.getZ()+(alongX?side:0);
-    BlockPos col=new BlockPos(x,ref.bell().getY(),z);if(!level.hasChunkAt(col))continue;
-    BlockPos ground=new BlockPos(x,level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z)-1,z);
+    BlockPos col=new BlockPos(x,ref.bell().getY(),z);if(!de.villagerplus.world.LoadedColumns.ready(level, col))continue;
+    BlockPos ground=new BlockPos(x,de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)-1,z);
     BlockState s=level.getBlockState(ground);
     Long savedPalette=state.get(gradeSandKey(key,cursor));
     boolean sand=savedPalette==null?sandPalette(level,route,s)
@@ -678,13 +678,13 @@ public final class Roads {
  }
 
  private static BlockPos gradeWorksite(ServerLevel level,BlockPos target) {
-  if(!level.hasChunkAt(target))return null;
+  if(!de.villagerplus.world.LoadedColumns.ready(level, target))return null;
   BlockPos best=null;double bestDistance=Double.MAX_VALUE;
   for(int radius=1;radius<=3;radius++)for(int dx=-radius;dx<=radius;dx++)for(int dz=-radius;dz<=radius;dz++) {
    if(Math.max(Math.abs(dx),Math.abs(dz))!=radius)continue;
    int x=target.getX()+dx,z=target.getZ()+dz;
-   if(!level.hasChunkAt(new BlockPos(x,target.getY(),z)))continue;
-   int height=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z);
+   if(!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x,target.getY(),z)))continue;
+   int height=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
    BlockPos feet=new BlockPos(x,height,z);
    if(!safeGradeWorksite(level,target,feet))continue;
    double distance=feet.distSqr(target);
@@ -695,7 +695,7 @@ public final class Roads {
  }
 
  private static boolean safeGradeWorksite(ServerLevel level,BlockPos target,BlockPos feet) {
-  if(!level.hasChunkAt(target)||!level.hasChunkAt(feet)||!level.hasChunkAt(feet.below())
+  if(!de.villagerplus.world.LoadedColumns.ready(level, target)||!de.villagerplus.world.LoadedColumns.ready(level, feet)||!de.villagerplus.world.LoadedColumns.ready(level, feet.below())
    ||feet.distSqr(target)>9||!level.getBlockState(feet).isAir()||!level.getBlockState(feet.above()).isAir())return false;
   BlockState floor=level.getBlockState(feet.below());
   return !floor.hasBlockEntity()&&!floor.is(Blocks.FARMLAND)&&floor.getFluidState().isEmpty()
@@ -703,7 +703,7 @@ public final class Roads {
  }
 
  private static boolean gradeSupport(ServerLevel level,BlockPos pos) {
-  if(!level.hasChunkAt(pos))return false;
+  if(!de.villagerplus.world.LoadedColumns.ready(level, pos))return false;
   BlockState state=level.getBlockState(pos);
   if(state.hasBlockEntity()||state.is(Blocks.FARMLAND)||!state.getFluidState().isEmpty()
    ||!state.isFaceSturdy(level,pos,net.minecraft.core.Direction.UP))return false;
@@ -711,7 +711,7 @@ public final class Roads {
  }
 
  private static boolean gradeProfileSaved(ServerLevel level,Repair task) {
-  if(task.gradeKey()==null||task.gradeCursor()<0||task.ownerBell()==null||!level.hasChunkAt(task.ownerBell()))return false;
+  if(task.gradeKey()==null||task.gradeCursor()<0||task.ownerBell()==null||!de.villagerplus.world.LoadedColumns.ready(level, task.ownerBell()))return false;
   var bell=level.getBlockEntity(task.ownerBell());
   if(!(bell instanceof net.minecraft.world.level.block.entity.BellBlockEntity))return false;
   Map<String,Long> roads=bell.getAttachedOrElse(VillagerPlus.ROADS,Map.of());
@@ -720,7 +720,7 @@ public final class Roads {
 
  private static boolean gradeTaskValid(ServerLevel level,Repair task) {
   BlockPos p=task.ground();
-  if(!gradeProfileSaved(level,task)||!level.hasChunkAt(p)||!level.hasChunkAt(p.above())||!level.hasChunkAt(p.below())
+  if(!gradeProfileSaved(level,task)||!de.villagerplus.world.LoadedColumns.ready(level, p)||!de.villagerplus.world.LoadedColumns.ready(level, p.above())||!de.villagerplus.world.LoadedColumns.ready(level, p.below())
    ||!level.getBlockState(p.above()).isAir()||!level.getBlockState(p.above(2)).isAir()
    ||occupied(level,p)||isProtectedLaneCell(level,p)||!safeGradeWorksite(level,p,task.worksite()))return false;
   BlockState state=level.getBlockState(p);
@@ -741,7 +741,7 @@ public final class Roads {
 
  /** Records a completed physical grading operation beside the saved route cursor/profile. */
  public static void noteGradeWork(ServerLevel level,Repair task) {
-  if(task==null||task.gradeKey()==null||task.ownerBell()==null||!level.hasChunkAt(task.ownerBell()))return;
+  if(task==null||task.gradeKey()==null||task.ownerBell()==null||!de.villagerplus.world.LoadedColumns.ready(level, task.ownerBell()))return;
   var bell=level.getBlockEntity(task.ownerBell());
   if(!(bell instanceof net.minecraft.world.level.block.entity.BellBlockEntity))return;
   Map<String,Long> roads=new HashMap<>(bell.getAttachedOrElse(VillagerPlus.ROADS,Map.of()));
@@ -752,7 +752,7 @@ public final class Roads {
  }
 
  public static boolean repairable(ServerLevel level,Repair repair) {
-  BlockPos p=repair.ground();if(!level.hasChunkAt(p))return false;
+  BlockPos p=repair.ground();if(!de.villagerplus.world.LoadedColumns.ready(level, p))return false;
   if(isProtectedLaneCell(level,p))return false;
   if(repair.action()==WorkAction.EXPANSION_CLEAR||repair.action()==WorkAction.EXPANSION_GRADE_CUT)
    return expansionTaskValid(level,repair);
@@ -780,7 +780,7 @@ public final class Roads {
 
  private static boolean expansionTaskValid(ServerLevel level,Repair task) {
   if(task.ownerBell()==null||task.peerBell()!=null||!task.paving().isAir()||task.removal()==null
-    ||!level.hasChunkAt(task.ownerBell())||!level.hasChunkAt(task.worksite()))return false;
+    ||!de.villagerplus.world.LoadedColumns.ready(level, task.ownerBell())||!de.villagerplus.world.LoadedColumns.ready(level, task.worksite()))return false;
   var bell=level.getBlockEntity(task.ownerBell());
   if(!(bell instanceof net.minecraft.world.level.block.entity.BellBlockEntity))return false;
   var data=bell.getAttached(VillagerPlus.VILLAGE);
@@ -807,7 +807,7 @@ public final class Roads {
     ||task.ground().getY()>center.getY()+Development.EXPANSION_PARCEL_MAX_RELIEF-1
     ||!expansionNaturalGround(level,task.ground(),task.removal())
     ||!level.getBlockState(task.ground()).equals(task.removal())
-    ||!level.hasChunkAt(task.ground().below())||!expansionNaturalGround(level,task.ground().below(),level.getBlockState(task.ground().below()))
+    ||!de.villagerplus.world.LoadedColumns.ready(level, task.ground().below())||!expansionNaturalGround(level,task.ground().below(),level.getBlockState(task.ground().below()))
     ||!level.getBlockState(task.ground().above()).isAir()
     ||!safeGradeWorksite(level,task.ground(),task.worksite())||occupied(level,task.ground()))return false;
   return true;
@@ -825,8 +825,8 @@ public final class Roads {
    BlockPos route=routePoint(plaza,ref.bell(),cursor,length);
    boolean alongX=alongXAt(plaza,ref.bell(),cursor,length);
    int x=route.getX()+(alongX?0:side),z=route.getZ()+(alongX?side:0);
-   BlockPos column=new BlockPos(x,ref.bell().getY(),z);if(!level.hasChunkAt(column))continue;
-   int y=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z);
+   BlockPos column=new BlockPos(x,ref.bell().getY(),z);if(!de.villagerplus.world.LoadedColumns.ready(level, column))continue;
+   int y=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
    BlockPos target=new BlockPos(x,y,z);
    if(villageGapValid(level,ref,target)) {
     state.put("repair:center",(long)((index+1)%total));
@@ -874,8 +874,8 @@ public final class Roads {
    // directly on its lip, while the worker can still place from two blocks away.
    if(distance<2||distance>3||distance>=bestDistance)continue;
    int x=target.getX()+dx,z=target.getZ()+dz;
-   BlockPos probe=new BlockPos(x,target.getY(),z);if(!level.hasChunkAt(probe))continue;
-   int groundY=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z)-1;
+   BlockPos probe=new BlockPos(x,target.getY(),z);if(!de.villagerplus.world.LoadedColumns.ready(level, probe))continue;
+   int groundY=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)-1;
    BlockPos floor=new BlockPos(x,groundY,z);
    if(!level.getBlockState(floor).is(Blocks.DIRT_PATH)||!trustedVillagePathCell(level,ref,floor)
     ||Lighting.protectedVillageCell(level,ref,floor)||isProtectedLaneCell(level,floor))continue;
@@ -921,7 +921,7 @@ public final class Roads {
                                     java.util.function.Predicate<BlockPos> allowed) {
   for(int step=1;step<=MAX_SAVED_PATH_GAP;step++) {
    BlockPos pos=target.relative(direction,step);
-   if(!level.hasChunkAt(pos)||!allowed.test(pos))return null;
+   if(!de.villagerplus.world.LoadedColumns.ready(level, pos)||!allowed.test(pos))return null;
    // Treat a dirt-path block one level above or below the target as a valid stair endpoint.
    // Minecraft's normal navigation can traverse that single-block step without teleporting.
    for(int dy=-1;dy<=1;dy++) {
@@ -944,7 +944,7 @@ public final class Roads {
  }
 
  private static boolean safePathAnchor(ServerLevel level,BlockPos path) {
-  return level.hasChunkAt(path)&&level.hasChunkAt(path.above(2))
+  return de.villagerplus.world.LoadedColumns.ready(level, path)&&de.villagerplus.world.LoadedColumns.ready(level, path.above(2))
    &&level.getBlockState(path.below()).isFaceSturdy(level,path.below(),net.minecraft.core.Direction.UP)
    &&level.getBlockState(path.above()).isAir()&&level.getBlockState(path.above(2)).isAir();
  }
@@ -964,14 +964,14 @@ public final class Roads {
  }
 
  private static boolean gapClearanceCell(ServerLevel level,BlockPos pos) {
-  if(!level.hasChunkAt(pos)||occupied(level,pos))return false;
+  if(!de.villagerplus.world.LoadedColumns.ready(level, pos)||occupied(level,pos))return false;
   BlockState state=level.getBlockState(pos);
   return state.isAir()||gapObstacle(level,pos);
  }
 
  /** Only one-cell natural plants and a thin snow obstruction may be removed from the path clearance box. */
  static boolean gapObstacle(ServerLevel level,BlockPos pos) {
-  if(!level.hasChunkAt(pos)||occupied(level,pos))return false;
+  if(!de.villagerplus.world.LoadedColumns.ready(level, pos)||occupied(level,pos))return false;
   BlockState state=level.getBlockState(pos);
   if(state.isAir()||state.hasBlockEntity()||!state.getFluidState().isEmpty())return false;
   if(state.is(Blocks.SNOW)||state.is(Blocks.SHORT_GRASS)||state.is(Blocks.FERN)||state.is(Blocks.DEAD_BUSH))return true;
@@ -1000,7 +1000,7 @@ public final class Roads {
  private static boolean gapClearTaskValid(ServerLevel level,Repair task) {
   BlockPos target=gapClearTarget(task);
   if(target==null||task.ownerBell()==null||task.peerBell()!=null||task.removal()==null
-   ||!task.paving().isAir()||!level.hasChunkAt(task.ownerBell()))return false;
+   ||!task.paving().isAir()||!de.villagerplus.world.LoadedColumns.ready(level, task.ownerBell()))return false;
   var bell=level.getBlockEntity(task.ownerBell());
   if(!(bell instanceof net.minecraft.world.level.block.entity.BellBlockEntity))return false;
   var data=bell.getAttached(VillagerPlus.VILLAGE);
@@ -1017,7 +1017,7 @@ public final class Roads {
  public static boolean isProtectedLaneCell(ServerLevel level,BlockPos ground) {
   for(int dy=0;dy<=1;dy++) {
    BlockPos pos=ground.above(dy);
-   if(!level.hasChunkAt(pos))continue;
+   if(!de.villagerplus.world.LoadedColumns.ready(level, pos))continue;
    var state=level.getBlockState(pos);
    if(level.getBlockEntity(pos) instanceof net.minecraft.world.level.block.entity.BellBlockEntity)return true;
    if(!(state.getBlock() instanceof net.minecraft.world.level.block.ChestBlock
@@ -1053,7 +1053,7 @@ public final class Roads {
     BlockState desired=post[stage].defaultBlockState();
     if(post[stage]==Blocks.LANTERN)desired=desired.setValue(net.minecraft.world.level.block.LanternBlock.HANGING,false);
     boolean done=state.getOrDefault(completion,0L)!=0L;
-    if(level.hasChunkAt(target)&&level.getBlockState(target).is(post[stage])) {
+    if(de.villagerplus.world.LoadedColumns.ready(level, target)&&level.getBlockState(target).is(post[stage])) {
      state.put(completion,1L);continue;
     }
     if(done)state.remove(completion); // A damaged lamp can be rebuilt later as a paid repair.
@@ -1068,13 +1068,13 @@ public final class Roads {
  private static boolean trustedBuiltRoadCursor(ServerLevel level,Map<String,Long> state,String key,BlockPos a,BlockPos b,
                                                 int cursor,int built) {
   int length=RoadRoute.length(state,key,a,b);
-  if(cursor<0||cursor>=built||cursor>length||!level.hasChunkAt(RoadRoute.point(state,key,a,b,cursor)))return false;
+  if(cursor<0||cursor>=built||cursor>length||!de.villagerplus.world.LoadedColumns.ready(level, RoadRoute.point(state,key,a,b,cursor)))return false;
   BlockPos route=RoadRoute.point(state,key,a,b,cursor);boolean alongX=RoadRoute.alongX(state,key,a,b,cursor);
   for(int side=-1;side<=1;side++) {
    int x=route.getX()+(alongX?0:side),z=route.getZ()+(alongX?side:0);
    BlockPos column=new BlockPos(x,route.getY(),z);
-   if(!level.hasChunkAt(column))return false;
-   BlockPos ground=new BlockPos(x,level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z)-1,z);
+   if(!de.villagerplus.world.LoadedColumns.ready(level, column))return false;
+   BlockPos ground=new BlockPos(x,de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)-1,z);
    if(!isRoadSurface(level.getBlockState(ground)))return false;
   }
   return true;
@@ -1086,11 +1086,11 @@ public final class Roads {
   int x=route.getX()+(alongX?0:side*2),z=route.getZ()+(alongX?side*2:0);
   int laneX=route.getX()+(alongX?0:side),laneZ=route.getZ()+(alongX?side:0);
   BlockPos column=new BlockPos(x,route.getY(),z),laneColumn=new BlockPos(laneX,route.getY(),laneZ);
-  if(!level.hasChunkAt(column)||!level.hasChunkAt(laneColumn))return null;
-  BlockPos support=new BlockPos(x,level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z)-1,z);
+  if(!de.villagerplus.world.LoadedColumns.ready(level, column)||!de.villagerplus.world.LoadedColumns.ready(level, laneColumn))return null;
+  BlockPos support=new BlockPos(x,de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)-1,z);
   for(int step=0;step<3&&(level.getBlockState(support).is(Blocks.SPRUCE_LOG)
     ||level.getBlockState(support).is(Blocks.LANTERN));step++)support=support.below();
-  BlockPos laneGround=new BlockPos(laneX,level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,laneX,laneZ)-1,laneZ);
+  BlockPos laneGround=new BlockPos(laneX,de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, laneX, laneZ)-1,laneZ);
   BlockState floor=level.getBlockState(support),lane=level.getBlockState(laneGround);
   if(!isRoadSurface(lane)||!naturalSoil(floor)||floor.hasBlockEntity()||!floor.getFluidState().isEmpty()
     ||!floor.isFaceSturdy(level,support,net.minecraft.core.Direction.UP)
@@ -1102,21 +1102,21 @@ public final class Roads {
   Block[] allowed={Blocks.SPRUCE_LOG,Blocks.SPRUCE_LOG,Blocks.LANTERN};
   for(int dy=0;dy<=2;dy++) {
    BlockPos cell=base.above(dy);
-   if(!level.hasChunkAt(cell))return null;
+   if(!de.villagerplus.world.LoadedColumns.ready(level, cell))return null;
    BlockState state=level.getBlockState(cell);
    if((!state.isAir()&&!state.is(allowed[dy]))||!state.getFluidState().isEmpty()||state.hasBlockEntity())return null;
   }
   AABB post=new AABB(x,support.getY()+1,z,x+1,support.getY()+4,z+1);
   if(!level.getEntities((Entity)null,post,Entity::isAlive).isEmpty())return null;
   BlockPos worksite=laneGround.above();
-  if(!level.hasChunkAt(worksite)||!level.getBlockState(worksite).isAir()
+  if(!de.villagerplus.world.LoadedColumns.ready(level, worksite)||!level.getBlockState(worksite).isAir()
     ||!level.getBlockState(worksite.above()).isAir())return null;
   return new LampSite(base,worksite);
  }
 
  private static boolean lightingRepairable(ServerLevel level,Repair repair) {
   BlockPos target=repair.ground(),support=target.below();
-  if(!level.hasChunkAt(target)||!level.hasChunkAt(support))return false;
+  if(!de.villagerplus.world.LoadedColumns.ready(level, target)||!de.villagerplus.world.LoadedColumns.ready(level, support))return false;
   BlockState state=level.getBlockState(target),floor=level.getBlockState(support);
   if(!state.isAir()||!state.getFluidState().isEmpty()||floor.hasBlockEntity()
     ||!floor.isFaceSturdy(level,support,net.minecraft.core.Direction.UP))return false;
@@ -1147,7 +1147,7 @@ public final class Roads {
  }
 
  static VillageRef loadedVillage(ServerLevel level,BlockPos bell) {
-  if(!level.hasChunkAt(bell))return null;
+  if(!de.villagerplus.world.LoadedColumns.ready(level, bell))return null;
   var entity=level.getBlockEntity(bell);
   if(!(entity instanceof net.minecraft.world.level.block.entity.BellBlockEntity))return null;
   VillageData data=entity.getAttached(VillagerPlus.VILLAGE);
@@ -1223,7 +1223,7 @@ public final class Roads {
 
  /** True only for cells on the already-built, persistent plaza-to-bell village path corridor. */
  public static boolean trustedVillagePathCell(ServerLevel level,VillageRef ref,BlockPos cell) {
-  if(ref==null||cell==null||!level.hasChunkAt(cell))return false;
+  if(ref==null||cell==null||!de.villagerplus.world.LoadedColumns.ready(level, cell))return false;
   BlockPos plaza=Market.of(ref).plaza().orElse(null);
   if(plaza==null)return false;
   Map<String,Long> state=ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of());
@@ -1258,12 +1258,12 @@ public final class Roads {
    for(int side=-1;side<=1;side++) {
     int x=route.getX()+(alongX?0:side),z=route.getZ()+(alongX?side:0);
     BlockPos column=new BlockPos(x,route.getY(),z);
-    if(!level.hasChunkAt(column))continue;
-    BlockPos ground=new BlockPos(x,level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z)-1,z);
+    if(!de.villagerplus.world.LoadedColumns.ready(level, column))continue;
+    BlockPos ground=new BlockPos(x,de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)-1,z);
     // x/z was produced directly from routePoint within the saved built range above, and
     // trustedVillagePathCell intentionally ignores Y. Re-scanning that route here would
     // make this full-path enumeration quadratic in its length.
-    if(level.hasChunkAt(ground))cells.putIfAbsent(ground.asLong(),ground.immutable());
+    if(de.villagerplus.world.LoadedColumns.ready(level, ground))cells.putIfAbsent(ground.asLong(),ground.immutable());
    }
   }
   return List.copyOf(cells.values());
@@ -1309,7 +1309,7 @@ public final class Roads {
   int selected=-1;double distance=24*24;
   for(int cursor=0;cursor<=last;cursor++) {
    BlockPos point=RoadRoute.point(state,routeKey,a,b,cursor);
-   if(!level.hasChunkAt(point))continue;
+   if(!de.villagerplus.world.LoadedColumns.ready(level, point))continue;
    RailSite site=findRailSite(level,point.getX(),point.getZ(),a.getY());
    if(site==null)continue;
    BlockState footing=level.getBlockState(site.support());
@@ -1322,7 +1322,7 @@ public final class Roads {
    int fallback=stationStartCursor(a,b,station,last,total);
    if(fallback>=0) {
     BlockPos point=RoadRoute.point(state,routeKey,a,b,fallback);
-    if(level.hasChunkAt(point)&&findRailSite(level,point.getX(),point.getZ(),a.getY())!=null)selected=fallback;
+    if(de.villagerplus.world.LoadedColumns.ready(level, point)&&findRailSite(level,point.getX(),point.getZ(),a.getY())!=null)selected=fallback;
    }
   }
   return selected;
@@ -1346,7 +1346,7 @@ public final class Roads {
 	 }
 
 	private static boolean validRailVillage(ServerLevel level,VillageRef ref) {
-	  if(ref==null||ref.bell()==null||ref.data()==null||ref.bellEntity()==null||!level.hasChunkAt(ref.bell()))return false;
+	  if(ref==null||ref.bell()==null||ref.data()==null||ref.bellEntity()==null||!de.villagerplus.world.LoadedColumns.ready(level, ref.bell()))return false;
 	  var entity=level.getBlockEntity(ref.bell());
 	  return entity==ref.bellEntity()&&entity instanceof net.minecraft.world.level.block.entity.BellBlockEntity
 	   &&entity.getAttached(VillagerPlus.VILLAGE)==ref.data();
@@ -1366,13 +1366,13 @@ public final class Roads {
 	   de.villagerplus.build.Blueprints.STATION};
 	  for(String type:depots) {
 	   BlockPos origin=Specials.get(ref,type);
-	   if(origin==null||!level.hasChunkAt(origin)||!RailResources.hasDepot(level,ref,type))return false;
+	   if(origin==null||!de.villagerplus.world.LoadedColumns.ready(level, origin)||!RailResources.hasDepot(level,ref,type))return false;
 	  }
 	  if(!Specials.has(ref,de.villagerplus.build.Blueprints.KITCHEN))return false;
 	  BlockPos kitchen=Specials.get(ref,de.villagerplus.build.Blueprints.KITCHEN);
-	  if(kitchen==null||!level.hasChunkAt(kitchen))return false;
+	  if(kitchen==null||!de.villagerplus.world.LoadedColumns.ready(level, kitchen))return false;
 	  BlockPos school=ref.data().extra.school.orElse(null);
-	  return school!=null&&level.hasChunkAt(school);
+	  return school!=null&&de.villagerplus.world.LoadedColumns.ready(level, school);
 	 }
 
  /** Baut eine verbundene Schienenhälfte ab dem straßennahen Bahnhofszugang bis zur gemeinsamen Streckenmitte. */
@@ -1392,7 +1392,7 @@ public final class Roads {
   for(int count=0;cursor<=last&&count<budget;cursor++,count++){
    BlockPos route=RoadRoute.point(state,routeKey,a,b,cursor);int x=route.getX(),z=route.getZ();
    boolean alongX=RoadRoute.alongX(state,routeKey,a,b,cursor);
-   BlockPos col=new BlockPos(x,a.getY(),z);if(!level.hasChunkAt(col))break;
+   BlockPos col=new BlockPos(x,a.getY(),z);if(!de.villagerplus.world.LoadedColumns.ready(level, col))break;
    RailSite site=findRailSite(level,x,z,a.getY());
    if(site==null){
     if(cursor<=length/2&&state.getOrDefault("road:"+key,0L)<1) {state.put("road:"+key,1L);}
@@ -1448,7 +1448,7 @@ public final class Roads {
  private record RailSite(BlockPos support,BlockPos rail,boolean supported) { }
 
  private static RailSite findRailSite(ServerLevel level,int x,int z,int platformY) {
-  int top=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z)-1;
+  int top=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)-1;
   int high=platformY>level.getMinY()+4?Math.max(top,platformY+1):top;
   int low=Math.min(top-3,platformY>level.getMinY()+4?platformY-4:top-3);
   for(int y=high;y>=low;y--) {
@@ -1523,7 +1523,7 @@ public final class Roads {
 
  private static boolean planPlatformBlock(ServerLevel level,List<PlatformBlock> placements,BlockPos pos,
                                           BlockState desired,boolean floor){
-  if(pos.getY()<level.getMinY()||pos.getY()>=level.getMaxY()||!level.hasChunkAt(pos)
+  if(pos.getY()<level.getMinY()||pos.getY()>=level.getMaxY()||!de.villagerplus.world.LoadedColumns.ready(level, pos)
     ||level.getBlockEntity(pos)!=null)return false;
   BlockState before=level.getBlockState(pos);
   if(before.is(desired.getBlock()))return true;
@@ -1605,8 +1605,8 @@ public final class Roads {
    int length=RoadRoute.length(state,routeKey,ref.bell(),other);if(length==0)continue;
    for(int i=0;i<=length/2;i++) {
    BlockPos route=RoadRoute.point(state,routeKey,ref.bell(),other,i);int x=route.getX(),z=route.getZ();
-    if(!level.hasChunkAt(new BlockPos(x,ref.bell().getY(),z)))continue;
-    int y=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z)-1;BlockState road=level.getBlockState(new BlockPos(x,y,z));
+    if(!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x,ref.bell().getY(),z)))continue;
+    int y=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)-1;BlockState road=level.getBlockState(new BlockPos(x,y,z));
     if(!(road.is(Blocks.GRAVEL)||road.is(Blocks.SMOOTH_SANDSTONE)||road.is(Blocks.SPRUCE_PLANKS)))continue;
     double distance=current.distSqr(new BlockPos(x,y,z));if(distance<bestDistance){bestDistance=distance;bestCursor=i;bestOther=other;bestLength=length;}
    }
@@ -1616,7 +1616,7 @@ public final class Roads {
   int waypoint=Math.max(0,bestCursor-6);
   String routeKey=Network.dim(level)+bestOther.asLong();
   BlockPos point=RoadRoute.point(state,routeKey,ref.bell(),bestOther,waypoint);int x=point.getX(),z=point.getZ();
-  return new BlockPos(x,level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z),z);
+  return new BlockPos(x,de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z),z);
  }
 
  private static boolean clearable(BlockState s){
@@ -1625,7 +1625,7 @@ public final class Roads {
 
  /** Resolves terrain below a naturally rooted tree before paving; buildings and placed timber remain untouched. */
  static BlockPos surface(ServerLevel level,int x,int z){
-  int top=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z)-1;
+  int top=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)-1;
   BlockPos topPos=new BlockPos(x,top,z);
   if(!level.getBlockState(topPos).is(BlockTags.LOGS))return topPos;
   int lowest=Math.max(level.getMinY(),top-32);
@@ -1657,7 +1657,7 @@ public final class Roads {
   int minY=Math.max(level.getMinY(),top-3),maxY=Math.min(level.getMaxY()-1,top+4);
   for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)for(int y=minY;y<=maxY;y++){
    BlockPos pos=new BlockPos(x+dx,y,z+dz);
-   if(level.hasChunkAt(pos)&&level.getBlockState(pos).is(BlockTags.LEAVES))return true;
+   if(de.villagerplus.world.LoadedColumns.ready(level, pos)&&level.getBlockState(pos).is(BlockTags.LEAVES))return true;
   }
   return false;
  }
@@ -1676,10 +1676,10 @@ public final class Roads {
   for(int count=0;cursor<=last&&count<budget;cursor++,count++) {
    boolean alongX=alongXAt(a,b,cursor,length);
    BlockPos route=routePoint(a,b,cursor,length);int x=route.getX(),z=route.getZ();
-   BlockPos col=new BlockPos(x,a.getY(),z);if(!level.hasChunkAt(col))break;
+   BlockPos col=new BlockPos(x,a.getY(),z);if(!de.villagerplus.world.LoadedColumns.ready(level, col))break;
    boolean loaded=true;for(int side=-2;side<=2;side++) {
     BlockPos adjacent=new BlockPos(x+(alongX?0:side),a.getY(),z+(alongX?side:0));
-    if(!level.hasChunkAt(adjacent)){loaded=false;break;}
+    if(!de.villagerplus.world.LoadedColumns.ready(level, adjacent)){loaded=false;break;}
    }
    if(!loaded)break;
    BlockPos previous=cursor>0?routePoint(a,b,cursor-1,length):null;
@@ -1710,10 +1710,10 @@ public final class Roads {
  }
 
  private static int pathY(ServerLevel level,int x,int z){
-  int top=level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z)-1;
+  int top=de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)-1;
   for(int y=top+2;y>=top-4;y--){
    BlockPos pos=new BlockPos(x,y,z);
-   if(level.hasChunkAt(pos)&&level.getBlockState(pos).is(Blocks.DIRT_PATH))return y;
+   if(de.villagerplus.world.LoadedColumns.ready(level, pos)&&level.getBlockState(pos).is(Blocks.DIRT_PATH))return y;
   }
   return Integer.MIN_VALUE;
  }
@@ -1785,7 +1785,7 @@ public final class Roads {
  static void buildFootbridge(ServerLevel level,BlockPos deck){
   int supportDepth=0;
   for(int depth=1;depth<=24;depth++){
-   BlockPos pile=deck.below(depth);if(!level.hasChunkAt(pile))return;
+   BlockPos pile=deck.below(depth);if(!de.villagerplus.world.LoadedColumns.ready(level, pile))return;
    BlockState bed=level.getBlockState(pile);
    if(bed.isFaceSturdy(level,pile,net.minecraft.core.Direction.UP)){supportDepth=depth;break;}
    if(!bed.isAir()&&bed.getFluidState().isEmpty())return;

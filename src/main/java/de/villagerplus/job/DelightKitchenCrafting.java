@@ -45,7 +45,7 @@ final class DelightKitchenCrafting {
 		Block station = BuiltInRegistries.BLOCK.getOptional(stationId).orElse(null);
 		if (station == null) return null;
 		for (BlockPos pos : BlockPos.betweenClosed(kitchen.offset(-8, -3, -8), kitchen.offset(8, 5, 8))) {
-			if (level.hasChunkAt(pos) && level.getBlockState(pos).is(station)) return pos.immutable();
+			if (de.villagerplus.world.LoadedColumns.ready(level, pos) && level.getBlockState(pos).is(station)) return pos.immutable();
 		}
 		return null;
 	}
@@ -206,7 +206,7 @@ final class DelightKitchenCrafting {
 	static boolean cookInOven(Ctx c) {
 		if (c.village() == null) return false;
 		BlockPos kitchen = Specials.get(c.village(), Blueprints.KITCHEN);
-		if (kitchen == null || !c.level().hasChunkAt(kitchen)) return false;
+		if (kitchen == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), kitchen)) return false;
 		BlockPos ovenPos = findMarkedOven(c.level(), kitchen);
 		if (ovenPos == null || !(c.level().getBlockEntity(ovenPos) instanceof AbstractFurnaceBlockEntity furnace)) return false;
 		Integer communal = furnace.getAttached(VillagerPlus.COMMUNAL_FURNACE);
@@ -273,7 +273,7 @@ final class DelightKitchenCrafting {
 
 	private static BlockPos findMarkedOven(ServerLevel level, BlockPos kitchen) {
 		for (BlockPos pos : BlockPos.betweenClosed(kitchen.offset(-16, -4, -16), kitchen.offset(16, 8, 16))) {
-			if (!level.hasChunkAt(pos) || !level.getBlockState(pos).is(Blocks.FURNACE)
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !level.getBlockState(pos).is(Blocks.FURNACE)
 				|| !(level.getBlockEntity(pos) instanceof AbstractFurnaceBlockEntity furnace)) continue;
 			Integer communal = furnace.getAttached(VillagerPlus.COMMUNAL_FURNACE);
 			if (communal == null || communal != 0) continue;

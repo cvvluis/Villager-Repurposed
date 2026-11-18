@@ -144,16 +144,15 @@ public final class Board {
 			for (int dx = -radius; dx <= radius; dx++) for (int dz = -radius; dz <= radius; dz++) {
 				if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) continue;
 				BlockPos column = chest.offset(dx, 0, dz);
-				if (!level.hasChunkAt(column)) continue;
-				int y = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
-					column.getX(), column.getZ());
+				if (!de.villagerplus.world.LoadedColumns.ready(level, column)) continue;
+				int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column.getX(), column.getZ());
 				if (Math.abs(y - chest.getY()) > 8) continue;
 				BlockPos p = new BlockPos(column.getX(), y, column.getZ());
 				Direction right = Sites.facingTowards(p, chest).getCounterClockWise();
 				boolean safe = true;
 				for (int i = 0; i < 4 && safe; i++) {
 					BlockPos cell = p.relative(right, i);
-					if (!level.hasChunkAt(cell)) { safe = false; break; }
+					if (!de.villagerplus.world.LoadedColumns.ready(level, cell)) { safe = false; break; }
 					safe = boardColumnClear(level, cell);
 				}
 				if (safe) return p;

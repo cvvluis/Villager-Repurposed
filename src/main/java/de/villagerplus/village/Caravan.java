@@ -402,7 +402,7 @@ public final class Caravan {
 	}
 
 	private static net.minecraft.world.level.block.entity.BellBlockEntity loadedBell(ServerLevel level, BlockPos pos) {
-		return level.hasChunkAt(pos) && level.getBlockEntity(pos) instanceof net.minecraft.world.level.block.entity.BellBlockEntity bell ? bell : null;
+		return de.villagerplus.world.LoadedColumns.ready(level, pos) && level.getBlockEntity(pos) instanceof net.minecraft.world.level.block.entity.BellBlockEntity bell ? bell : null;
 	}
 
 	private static void queueCaravanAdoption(ServerLevel level, AbstractVillager trader) {
@@ -475,7 +475,7 @@ public final class Caravan {
 	private static boolean adoptTaggedCaravan(ServerLevel level, AbstractVillager trader) {
 		if (ACTIVE.containsKey(trader.getUUID())) return true;
 		BlockPos bellPos = taggedBell(trader);
-		if (bellPos == null || !level.hasChunkAt(bellPos)) return false;
+		if (bellPos == null || !de.villagerplus.world.LoadedColumns.ready(level, bellPos)) return false;
 		VillageRef ref = resolve(level, bellPos);
 		if (ref == null) return false;
 
@@ -777,7 +777,7 @@ public final class Caravan {
 			if (!pending.dimension().equals(level.dimension())) continue;
 			Entity entity = level.getEntity(entry.getKey());
 			if (entity == null) {
-				if (level.hasChunkAt(pending.lastPosition())) PENDING_CARAVAN_ORPHANS.remove(entry.getKey());
+				if (de.villagerplus.world.LoadedColumns.ready(level, pending.lastPosition())) PENDING_CARAVAN_ORPHANS.remove(entry.getKey());
 				continue;
 			}
 			if (ACTIVE.containsKey(entity.getUUID()) || ACTIVE.values().stream().anyMatch(state -> state.llamas.contains(entity.getUUID()))) {
@@ -849,7 +849,7 @@ public final class Caravan {
 		List<CaravanCampData.CampBlock> pending = new ArrayList<>();
 		for (CaravanCampData.CampBlock record : records) {
 			BlockPos pos = record.pos();
-			if (!level.hasChunkAt(pos)) {
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) {
 				pending.add(record);
 				continue;
 			}
@@ -1105,9 +1105,9 @@ public final class Caravan {
 
 			BlockPos column = bell.offset((int) Math.round(Math.cos(angle) * radius), 0, (int) Math.round(Math.sin(angle) * radius));
 
-			if (!level.hasChunkAt(column)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, column)) continue;
 
-			BlockPos p = level.getHeightmapPos(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column);
+			BlockPos p = de.villagerplus.world.LoadedColumns.heightmapPos(level, net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column);
 
 			double horizontal = Math.hypot(p.getX() - bell.getX(), p.getZ() - bell.getZ());
 
@@ -1126,7 +1126,7 @@ public final class Caravan {
 
 	private static VillageRef resolve(ServerLevel level, BlockPos bell) {
 
-		if (!level.hasChunkAt(bell) || !(level.getBlockEntity(bell) instanceof net.minecraft.world.level.block.entity.BellBlockEntity be)) return null;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, bell) || !(level.getBlockEntity(bell) instanceof net.minecraft.world.level.block.entity.BellBlockEntity be)) return null;
 
 		return new VillageRef(bell, be.getAttachedOrCreate(de.villagerplus.VillagerPlus.VILLAGE), be);
 
@@ -1171,7 +1171,7 @@ public final class Caravan {
 
 	private static boolean recordReturnedLinkedRouteVisit(ServerLevel level, VillageRef source, State state) {
 		if (state.routeBell == null || state.routeDimension == null || state.routeRelationDelta <= 0 || state.routeVisitDay < 0) return true;
-		if (!state.routeDimension.equals(Network.dim(level)) || !level.hasChunkAt(state.routeBell)) return false;
+		if (!state.routeDimension.equals(Network.dim(level)) || !de.villagerplus.world.LoadedColumns.ready(level, state.routeBell)) return false;
 		VillageRef origin = resolve(level, state.routeBell);
 		if (origin == null) return false;
 		TradeNetwork sourceNetwork = Network.of(source.bellEntity());
@@ -1337,9 +1337,9 @@ public final class Caravan {
 			for (int dx = -radius; dx <= radius; dx++) for (int dz = -radius; dz <= radius; dz++) {
 				if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) continue;
 				BlockPos column = origin.offset(dx, 0, dz);
-				if (!level.hasChunkAt(column)) continue;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, column)) continue;
 				loadedColumns++;
-				BlockPos feet = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column);
+				BlockPos feet = de.villagerplus.world.LoadedColumns.heightmapPos(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column);
 				if (Math.abs(feet.getY() - origin.getY()) > 2) { heightRejected++; continue; }
 				if (!CaravanSites.canStand(level, template, feet, occupied)) { templateRejected++; continue; }
 				candidates++;
@@ -1825,7 +1825,7 @@ public final class Caravan {
 
 	static BlockPos porterStand(ServerLevel level,BlockPos chest) {
 		for(net.minecraft.core.Direction dir:net.minecraft.core.Direction.Plane.HORIZONTAL) {
-			BlockPos adjacent=chest.relative(dir); if(!level.hasChunkAt(adjacent)) continue;
+			BlockPos adjacent=chest.relative(dir); if(!de.villagerplus.world.LoadedColumns.ready(level, adjacent)) continue;
 			var safe=JobUtil.safeSpot(level,net.minecraft.world.phys.Vec3.atBottomCenterOf(adjacent));
 			if(safe!=null) return BlockPos.containing(safe);
 		}
@@ -1835,7 +1835,7 @@ public final class Caravan {
 	private static boolean isPorterStand(ServerLevel level,BlockPos target,BlockPos stand) {
 		if(stand==null) return false;
 		for(net.minecraft.core.Direction dir:net.minecraft.core.Direction.Plane.HORIZONTAL) {
-			BlockPos adjacent=target.relative(dir); if(!level.hasChunkAt(adjacent)) continue;
+			BlockPos adjacent=target.relative(dir); if(!de.villagerplus.world.LoadedColumns.ready(level, adjacent)) continue;
 			var safe=JobUtil.safeSpot(level,net.minecraft.world.phys.Vec3.atBottomCenterOf(adjacent));
 			if(safe!=null&&BlockPos.containing(safe).equals(stand)) return true;
 		}
@@ -1846,7 +1846,7 @@ public final class Caravan {
 	private static BlockPos reachablePorterStand(Ctx c,BlockPos target) {
 		List<BlockPos> candidates=new ArrayList<>();
 		for(net.minecraft.core.Direction dir:net.minecraft.core.Direction.Plane.HORIZONTAL) {
-			BlockPos adjacent=target.relative(dir); if(!c.level().hasChunkAt(adjacent)) continue;
+			BlockPos adjacent=target.relative(dir); if(!de.villagerplus.world.LoadedColumns.ready(c.level(), adjacent)) continue;
 			var safe=JobUtil.safeSpot(c.level(),net.minecraft.world.phys.Vec3.atBottomCenterOf(adjacent));
 			if(safe!=null) candidates.add(BlockPos.containing(safe));
 		}
@@ -1863,7 +1863,7 @@ public final class Caravan {
 		net.minecraft.world.entity.animal.equine.Donkey donkey) {
 		List<BlockPos> candidates=new ArrayList<>();
 		for(net.minecraft.core.Direction dir:net.minecraft.core.Direction.Plane.HORIZONTAL) {
-			BlockPos adjacent=target.relative(dir); if(!c.level().hasChunkAt(adjacent)) continue;
+			BlockPos adjacent=target.relative(dir); if(!de.villagerplus.world.LoadedColumns.ready(c.level(), adjacent)) continue;
 			var safe=JobUtil.safeSpot(c.level(),net.minecraft.world.phys.Vec3.atBottomCenterOf(adjacent));
 			if(safe!=null) candidates.add(BlockPos.containing(safe));
 		}
@@ -1897,8 +1897,8 @@ public final class Caravan {
 			for(int dx=-radius;dx<=radius&&candidates.size()<24;dx++)for(int dz=-radius;dz<=radius&&candidates.size()<24;dz++) {
 				if(Math.max(Math.abs(dx),Math.abs(dz))!=radius) continue;
 				BlockPos column=depot.offset(dx,0,dz);
-				if(!c.level().hasChunkAt(column)) continue;
-				BlockPos feet=c.level().getHeightmapPos(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,column);
+				if(!de.villagerplus.world.LoadedColumns.ready(c.level(), column)) continue;
+				BlockPos feet=de.villagerplus.world.LoadedColumns.heightmapPos(c.level(), net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column);
 				if(Math.abs(feet.getY()-depot.getY())>2||feet.distSqr(depot)>25L
 					||!CaravanSites.canStand(c.level(),donkey,feet,reserved)) continue;
 				candidates.add(feet.immutable());
@@ -2090,10 +2090,10 @@ public final class Caravan {
 
 				BlockPos col = new BlockPos(x, bell.getY(), z);
 
-				if (!level.hasChunkAt(col.offset(-3, 0, -3)) || !level.hasChunkAt(col.offset(3, 0, 3))) continue;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, col.offset(-3, 0, -3)) || !de.villagerplus.world.LoadedColumns.ready(level, col.offset(3, 0, 3))) continue;
 
-				BlockPos c = level.getHeightmapPos(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, col);
-				if (seen.add(c.asLong())) candidates.add(c.immutable());
+				BlockPos c = de.villagerplus.world.LoadedColumns.heightmapPos(level, net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, col);
+				if (c != null && seen.add(c.asLong())) candidates.add(c.immutable());
 
 			}
 
@@ -2157,7 +2157,7 @@ public final class Caravan {
 
 	/** Lights the camp only after taking one real coal or charcoal from a communal village store. */
 	static boolean tryIgniteCampfire(ServerLevel level, BlockPos pos, List<Container> stores) {
-		if (pos == null || !level.hasChunkAt(pos)) return false;
+		if (pos == null || !de.villagerplus.world.LoadedColumns.ready(level, pos)) return false;
 		var fire = level.getBlockState(pos);
 		if (!fire.is(net.minecraft.world.level.block.Blocks.CAMPFIRE)) return false;
 		if (fire.getValue(net.minecraft.world.level.block.CampfireBlock.LIT)) return true;
@@ -2191,7 +2191,7 @@ public final class Caravan {
 		long now = level.getGameTime();
 		if (!state.campBuilt || now < state.campRetryAt) return;
 		for (BlockPos pos : state.camp) {
-			if (!level.hasChunkAt(pos)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) continue;
 			var fire = level.getBlockState(pos);
 			if (!fire.is(net.minecraft.world.level.block.Blocks.CAMPFIRE)) continue;
 			if (!fire.getValue(net.minecraft.world.level.block.CampfireBlock.LIT)) {
@@ -2423,7 +2423,7 @@ public final class Caravan {
 			if (!(e instanceof AbstractVillager trader) || !trader.isAlive()) {
 				if (e == null && UNLOADED_CARAVAN_TRADERS.contains(s.trader)) continue;
 
-				if (e == null && !level.hasChunkAt(s.spawn) && level.getGameTime() < s.born + 10000) continue;
+				if (e == null && !de.villagerplus.world.LoadedColumns.ready(level, s.spawn) && level.getGameTime() < s.born + 10000) continue;
 
 				if (cleanup(level, s)) it.remove();
 				else persistVisitState(level, s);
@@ -2433,7 +2433,7 @@ public final class Caravan {
 
 			boolean leaving = departureStarted(s, level.getGameTime());
 			if (leaving && trader.getTradingPlayer() == null) clearCampForDeparture(level, s);
-			if (!level.hasChunkAt(s.bell)) {
+			if (!de.villagerplus.world.LoadedColumns.ready(level, s.bell)) {
 				// A due caravan must keep travelling even after its departure village unloads.
 				// The saved spawn and donkey UUIDs are enough to continue safely; never load the bell chunk.
 				if (departureCanAdvanceWithoutVillage(level, s)
@@ -2614,7 +2614,7 @@ public final class Caravan {
 
 	/** A due return only needs its saved destination and members when the source village is unloaded. */
 	static boolean departureCanAdvanceWithoutVillage(ServerLevel level, State state) {
-		return departureStarted(state, level.getGameTime()) && !level.hasChunkAt(state.bell);
+		return departureStarted(state, level.getGameTime()) && !de.villagerplus.world.LoadedColumns.ready(level, state.bell);
 	}
 
 	/** Start the normal post-trade visit timer even when the pack animals still carry undelivered freight. */
@@ -2646,7 +2646,7 @@ public final class Caravan {
 			? !packAnimalsCanResume(level, state, trader)
 			: !packAnimalsCanKeepUp(level, state, trader);
 		state.waitingForDonkeys = waitForDonkeys;
-		BlockPos target = waitForDonkeys || !level.hasChunkAt(state.spawn)
+		BlockPos target = waitForDonkeys || !de.villagerplus.world.LoadedColumns.ready(level, state.spawn)
 			? holdForPackAnimals(level, trader, !wasWaiting) : state.spawn;
 		if (now % 20L == 0L && trader.getTradingPlayer() == null) {
 			if (trader instanceof CaravanTraderEntity custom) {
@@ -2836,14 +2836,14 @@ public final class Caravan {
 	/** Validate block clearance and ground support without rejecting a Vanilla path for nearby moving entities. */
 	private static String donkeyPathNodeFailure(ServerLevel level,
 		net.minecraft.world.entity.animal.equine.Donkey donkey, BlockPos feet) {
-		if (!level.hasChunkAt(feet) || !level.hasChunkAt(feet.below())) return "path node chunk is not loaded";
+		if (!de.villagerplus.world.LoadedColumns.ready(level, feet) || !de.villagerplus.world.LoadedColumns.ready(level, feet.below())) return "path node chunk is not loaded";
 		var body = donkey.getBoundingBox();
 		var atNode = body.move(feet.getX() + 0.5 - donkey.getX(), feet.getY() - donkey.getY(), feet.getZ() + 0.5 - donkey.getZ());
 		int minX = (int)Math.floor(atNode.minX), maxX = (int)Math.floor(atNode.maxX - 1.0E-7);
 		int minZ = (int)Math.floor(atNode.minZ), maxZ = (int)Math.floor(atNode.maxZ - 1.0E-7);
 		for (int x = minX; x <= maxX; x++) for (int z = minZ; z <= maxZ; z++) {
 			BlockPos floor = new BlockPos(x, feet.getY() - 1, z);
-			if (!level.hasChunkAt(floor)) return "support block chunk is not loaded at " + floor;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, floor)) return "support block chunk is not loaded at " + floor;
 			var support = level.getBlockState(floor);
 			if (!support.getFluidState().isEmpty() || !support.isFaceSturdy(level, floor, net.minecraft.core.Direction.UP)
 				|| support.is(Blocks.MAGMA_BLOCK) || support.is(Blocks.CACTUS) || support.is(Blocks.CAMPFIRE)
@@ -2852,7 +2852,7 @@ public final class Caravan {
 		int bodyTop = (int)Math.ceil(atNode.maxY);
 		for (int y = feet.getY(); y < bodyTop; y++) for (int x = minX; x <= maxX; x++) for (int z = minZ; z <= maxZ; z++) {
 			BlockPos occupied = new BlockPos(x, y, z);
-			if (!level.hasChunkAt(occupied)) return "body clearance chunk is not loaded at " + occupied;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, occupied)) return "body clearance chunk is not loaded at " + occupied;
 			if (!level.getFluidState(occupied).isEmpty()) return "fluid blocks body at " + occupied;
 		}
 		if (level.noBlockCollision(donkey, atNode)) return null;
@@ -2865,7 +2865,7 @@ public final class Caravan {
 		int minZ = (int)Math.floor(body.minZ), maxZ = (int)Math.floor(body.maxZ - 1.0E-7);
 		for (int x = minX; x <= maxX; x++) for (int y = minY; y <= maxY; y++) for (int z = minZ; z <= maxZ; z++) {
 			BlockPos pos = new BlockPos(x, y, z);
-			if (!level.hasChunkAt(pos)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) continue;
 			var state = level.getBlockState(pos);
 			var shape = state.getCollisionShape(level, pos);
 			for (AABB localShape : shape.toAabbs()) {
@@ -2918,7 +2918,7 @@ public final class Caravan {
 			reserved.add(other.getBoundingBox().inflate(homeClearance));
 			var navigation = other.getNavigation();
 			BlockPos target = navigation.isInProgress() ? navigation.getTargetPos() : null;
-			if (target != null && level.hasChunkAt(target)) reserved.add(CaravanSites.bounds(other, target).inflate(homeClearance));
+			if (target != null && de.villagerplus.world.LoadedColumns.ready(level, target)) reserved.add(CaravanSites.bounds(other, target).inflate(homeClearance));
 			if (reserveActivePaths) {
 				// New routes reserve the full active path so a second animal does not
 				// choose a corridor through the first one's planned movement.
@@ -2926,7 +2926,7 @@ public final class Caravan {
 				if (path != null && path.getNodeCount() <= 128) {
 					for (int node = 1; node < path.getNodeCount(); node++) {
 						BlockPos feet = path.getNodePos(node);
-						if (level.hasChunkAt(feet)) reserved.add(CaravanSites.bounds(other, feet).inflate(homeClearance));
+						if (de.villagerplus.world.LoadedColumns.ready(level, feet)) reserved.add(CaravanSites.bounds(other, feet).inflate(homeClearance));
 					}
 				}
 			}
@@ -2949,8 +2949,8 @@ public final class Caravan {
 			for (int dx = -radius; dx <= radius; dx++) for (int dz = -radius; dz <= radius; dz++) {
 				if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) continue;
 				BlockPos column = origin.offset(dx, 0, dz);
-				if (!level.hasChunkAt(column)) continue;
-				BlockPos feet = level.getHeightmapPos(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column);
+				if (!de.villagerplus.world.LoadedColumns.ready(level, column)) continue;
+				BlockPos feet = de.villagerplus.world.LoadedColumns.heightmapPos(level, net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column);
 				int horizontalDx = feet.getX() - origin.getX();
 				int horizontalDz = feet.getZ() - origin.getZ();
 				long horizontalDistanceSqr = (long)horizontalDx * horizontalDx + (long)horizontalDz * horizontalDz;
@@ -3059,7 +3059,7 @@ public final class Caravan {
 
 	/** Find a nearby loaded, supported place for the merchant to wait without requesting chunks. */
 	static BlockPos safeDepotArrivalStand(ServerLevel level, AbstractVillager trader, BlockPos chest) {
-		if (chest == null || !level.hasChunkAt(chest)) return null;
+		if (chest == null || !de.villagerplus.world.LoadedColumns.ready(level, chest)) return null;
 		var chestBox = new net.minecraft.world.phys.AABB(chest);
 		var chestCenter = net.minecraft.world.phys.Vec3.atBottomCenterOf(chest);
 		BlockPos best = null;
@@ -3069,8 +3069,8 @@ public final class Caravan {
 			for (int dx = -radius; dx <= radius; dx++) for (int dz = -radius; dz <= radius; dz++) {
 				if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) continue;
 				BlockPos column = chest.offset(dx, 0, dz);
-				if (!level.hasChunkAt(column)) continue;
-				BlockPos feet = level.getHeightmapPos(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column);
+				if (!de.villagerplus.world.LoadedColumns.ready(level, column)) continue;
+				BlockPos feet = de.villagerplus.world.LoadedColumns.heightmapPos(level, net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column);
 				if (Math.abs(feet.getY() - chest.getY()) > 1) continue;
 				var standCenter = net.minecraft.world.phys.Vec3.atBottomCenterOf(feet);
 				double chestDx = standCenter.x - chestCenter.x;
@@ -3105,10 +3105,10 @@ public final class Caravan {
 		int maxY = (int) Math.floor(box.maxY - 1.0E-7);
 		for (int x = minX; x <= maxX; x++) for (int z = minZ; z <= maxZ; z++) {
 			BlockPos support = new BlockPos(x, feet.getY() - 1, z);
-			if (!level.hasChunkAt(support) || hasBlockEntity(level, support)) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, support) || hasBlockEntity(level, support)) return false;
 			for (int y = minY; y <= maxY; y++) {
 				BlockPos occupied = new BlockPos(x, y, z);
-				if (!level.hasChunkAt(occupied) || hasBlockEntity(level, occupied)) return false;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, occupied) || hasBlockEntity(level, occupied)) return false;
 			}
 		}
 		return CaravanSites.canStand(level, trader, feet, List.of());
@@ -3126,8 +3126,8 @@ public final class Caravan {
 			for (int dx = -radius; dx <= radius; dx++) for (int dz = -radius; dz <= radius; dz++) {
 				if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) continue;
 				BlockPos column = origin.offset(dx, 0, dz);
-				if (!level.hasChunkAt(column)) continue;
-				BlockPos feet = level.getHeightmapPos(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column);
+				if (!de.villagerplus.world.LoadedColumns.ready(level, column)) continue;
+				BlockPos feet = de.villagerplus.world.LoadedColumns.heightmapPos(level, net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column);
 				if (Math.abs(feet.getY() - origin.getY()) <= 2 && hasSafeTraderStand(level, trader, feet)) return feet;
 			}
 		}

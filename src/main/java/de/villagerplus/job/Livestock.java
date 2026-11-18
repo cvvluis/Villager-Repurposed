@@ -210,7 +210,7 @@ public final class Livestock {
 	 */
 	public static boolean hasEligibleLivestockForInitialPen(ServerLevel level, VillageRef ref) {
 		if (INITIAL_PEN_PLANNING_SUPPRESSION.get() > 0 || level == null || ref == null
-			|| !ref.data().extra.pen.isEmpty() || !level.hasChunkAt(ref.bell())) return false;
+			|| !ref.data().extra.pen.isEmpty() || !de.villagerplus.world.LoadedColumns.ready(level, ref.bell())) return false;
 		List<BlockPos> nearbyBells = herdingBellsNear(level, ref.bell(), ref.bell(), Config.VILLAGE_RADIUS);
 		if (!nearbyBells.contains(ref.bell())) return false;
 		List<ZonePolicy.Zone> pastures = validPastures(ref);
@@ -223,7 +223,7 @@ public final class Livestock {
 	/** Cached planner variant; repeated farmer/build ticks share one bounded neighborhood entity query per second. */
 	public static boolean hasEligibleLivestockForInitialPenCached(ServerLevel level, VillageRef ref) {
 		if (INITIAL_PEN_PLANNING_SUPPRESSION.get() > 0 || level == null || ref == null
-			|| !ref.data().extra.pen.isEmpty() || !level.hasChunkAt(ref.bell())) return false;
+			|| !ref.data().extra.pen.isEmpty() || !de.villagerplus.world.LoadedColumns.ready(level, ref.bell())) return false;
 		long now = level.getGameTime();
 		Map<Long, InitialPenEligibility> cache = INITIAL_PEN_ELIGIBILITY.computeIfAbsent(level, ignored -> new HashMap<>());
 		long villageKey = ref.bell().asLong();
@@ -252,7 +252,7 @@ public final class Livestock {
 		if (!"farmer".equals(job) && !"shepherd".equals(job) && !"butcher".equals(job)) return 0;
 		if (SPECIES.stream().noneMatch(species -> species.food() == food)) return 0;
 		BlockPos pen = ref.data().extra.pen.get();
-		if (!level.hasChunkAt(pen)) return 0;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pen)) return 0;
 		List<Container> granaries = feedContainers(level, ref);
 		int feedOnHand = countFeed(granaries, food)
 			+ JobUtil.count(buyer.getInventory(), stack -> stack.is(food));
@@ -683,7 +683,7 @@ public final class Livestock {
 				cancelHerding(level, plan, true);
 				continue;
 			}
-			if (!level.hasChunkAt(plan.bell) || !(level.getBlockEntity(plan.bell) instanceof BellBlockEntity bellEntity)) {
+			if (!de.villagerplus.world.LoadedColumns.ready(level, plan.bell) || !(level.getBlockEntity(plan.bell) instanceof BellBlockEntity bellEntity)) {
 				cancelHerding(level, plan, true);
 				continue;
 			}
@@ -797,7 +797,7 @@ public final class Livestock {
 
 	private static boolean isInOtherRegisteredPen(ServerLevel level, VillageRef ref, Animal animal, List<BlockPos> nearbyBells) {
 		for (BlockPos bell : nearbyBells) {
-			if (bell.equals(ref.bell()) || !level.hasChunkAt(bell)) continue;
+			if (bell.equals(ref.bell()) || !de.villagerplus.world.LoadedColumns.ready(level, bell)) continue;
 			var entity = level.getBlockEntity(bell);
 			if (entity == null) continue;
 			VillageData other = entity.getAttached(VillagerPlus.VILLAGE);
@@ -863,7 +863,7 @@ public final class Livestock {
 
 	private static PenGate findPenGate(ServerLevel level, BlockPos pen, List<ZonePolicy.Zone> pastures) {
 		PenExpansion.Gate gate = PenExpansion.herdingGate(level, pen, pastures);
-		if (gate == null || !level.hasChunkAt(gate.inside()) || !level.hasChunkAt(gate.outside())) return null;
+		if (gate == null || !de.villagerplus.world.LoadedColumns.ready(level, gate.inside()) || !de.villagerplus.world.LoadedColumns.ready(level, gate.outside())) return null;
 		return new PenGate(gate.position(), gate.outward());
 	}
 
@@ -880,13 +880,13 @@ public final class Livestock {
 
 	/** Snapshots the gate and connected fence/wall posts so interrupted herding can restore its exact passage. */
 	private static List<PassageBlock> captureGatePassage(ServerLevel level, PenGate gate) {
-		if (!level.hasChunkAt(gate.position())) return List.of();
+		if (!de.villagerplus.world.LoadedColumns.ready(level, gate.position())) return List.of();
 		BlockState gateState = level.getBlockState(gate.position());
 		if (!(gateState.getBlock() instanceof FenceGateBlock)) return List.of();
 		List<PassageBlock> blocks = new ArrayList<>();
 		for (Direction side : List.of(gate.outward().getClockWise(), gate.outward().getCounterClockWise())) {
 			BlockPos sidePos = gate.position().relative(side);
-			if (!level.hasChunkAt(sidePos)) return List.of();
+			if (!de.villagerplus.world.LoadedColumns.ready(level, sidePos)) return List.of();
 			BlockState sideState = level.getBlockState(sidePos);
 			if (sideState.is(BlockTags.FENCES) || sideState.is(BlockTags.WALLS)) {
 				blocks.add(new PassageBlock(sidePos, sideState, false));
@@ -906,7 +906,7 @@ public final class Livestock {
 		List<PassageBlock> plannedPassage) {
 		if (level == null || animal == null || gate == null || target == null || plannedPassage == null
 			|| plannedPassage.isEmpty() || plannedPassage.size() > 3
-			|| !level.hasChunkAt(gate) || !level.hasChunkAt(target)) return null;
+			|| !de.villagerplus.world.LoadedColumns.ready(level, gate) || !de.villagerplus.world.LoadedColumns.ready(level, target)) return null;
 		BlockState openGate = level.getBlockState(gate);
 		if (!(openGate.getBlock() instanceof FenceGateBlock) || !openGate.getValue(FenceGateBlock.OPEN)
 			|| !gate.relative(openGate.getValue(FenceGateBlock.FACING).getOpposite()).equals(target)) return null;
@@ -917,7 +917,7 @@ public final class Livestock {
 		boolean includesGate = false;
 		for (PassageBlock planned : plannedPassage) {
 			BlockPos position = planned.position();
-			if (!validPassagePositions.contains(position) || !level.hasChunkAt(position)
+			if (!validPassagePositions.contains(position) || !de.villagerplus.world.LoadedColumns.ready(level, position)
 				|| passage.stream().anyMatch(block -> block.position().equals(position))) return null;
 			BlockState current = level.getBlockState(position);
 			if (position.equals(gate)) {
@@ -932,7 +932,7 @@ public final class Livestock {
 		if (!includesGate) return null;
 		var navigation = animal.getNavigation();
 		BlockPos outside = gate.relative(openGate.getValue(FenceGateBlock.FACING));
-		if (!level.hasChunkAt(outside) || !isClearGateLane(level, animal, navigation, outside, gate, target)) return null;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, outside) || !isClearGateLane(level, animal, navigation, outside, gate, target)) return null;
 		// After an earlier custom route, vanilla still remembers the outside cell as its
 		// navigation target. createPath(outside) then returns the active through-gate path
 		// from its cache; reuse that exact, structurally verified route instead of treating
@@ -985,7 +985,7 @@ public final class Livestock {
 			double y = startY + deltaY * amount;
 			double z = startZ + deltaZ * amount;
 			BlockPos sampleCell = BlockPos.containing(x, y, z);
-			if (!level.hasChunkAt(sampleCell) || !level.hasChunkAt(sampleCell.above())) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, sampleCell) || !de.villagerplus.world.LoadedColumns.ready(level, sampleCell.above())) return false;
 			AABB bounds = originalBounds.move(x - animal.getX(), y - animal.getY(), z - animal.getZ());
 			if (!level.noCollision(animal, bounds)) return false;
 		}
@@ -993,7 +993,7 @@ public final class Livestock {
 	}
 
 	private static PenGate findGateAt(ServerLevel level, BlockPos gate) {
-		if (level == null || gate == null || !level.hasChunkAt(gate)
+		if (level == null || gate == null || !de.villagerplus.world.LoadedColumns.ready(level, gate)
 			|| !(level.getBlockState(gate).getBlock() instanceof FenceGateBlock)) return null;
 		return new PenGate(gate.immutable(), level.getBlockState(gate).getValue(FenceGateBlock.FACING));
 	}
@@ -1011,7 +1011,7 @@ public final class Livestock {
 	}
 
 	private static boolean setGateOpen(ServerLevel level, BlockPos position, boolean open) {
-		if (!level.hasChunkAt(position)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, position)) return false;
 		var state = level.getBlockState(position);
 		if (!(state.getBlock() instanceof FenceGateBlock)) return false;
 		if (state.getValue(FenceGateBlock.OPEN) == open) return true;
@@ -1029,7 +1029,7 @@ public final class Livestock {
 	/** Restores a temporarily removed block, but leaves any non-air player replacement untouched. */
 	private static boolean settlePassageBlock(ServerLevel level, PassageBlock passage) {
 		BlockPos position = passage.position();
-		if (!level.hasChunkAt(position)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, position)) return false;
 		BlockState originalState = passage.state();
 		BlockState current = level.getBlockState(position);
 		if (originalState == null) return !passage.owned() || closeRecoveryGate(level, position);
@@ -1046,7 +1046,7 @@ public final class Livestock {
 	/** Keeps recovery tags until an unloaded gate can be closed on a later entity/chunk load. */
 	private static boolean closeRecoveryGate(ServerLevel level, BlockPos position) {
 		if (position == null) return true;
-		if (!level.hasChunkAt(position)) return false;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, position)) return false;
 		var state = level.getBlockState(position);
 		if (!(state.getBlock() instanceof FenceGateBlock) || !state.getValue(FenceGateBlock.OPEN)) return true;
 		level.setBlock(position, state.setValue(FenceGateBlock.OPEN, false), 3);

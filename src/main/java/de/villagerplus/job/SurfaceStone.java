@@ -191,10 +191,10 @@ public final class SurfaceStone {
 	 * The returned cell is where the quarryman stands.
 	 */
 	static BlockPos standFor(ServerLevel level, BlockPos pos) {
-		if (!level.hasChunkAt(pos) || !localRock(level.getBlockState(pos))) return null;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !localRock(level.getBlockState(pos))) return null;
 		for (Direction side : Direction.Plane.HORIZONTAL) {
 			BlockPos stand = pos.relative(side);
-			if (!level.hasChunkAt(stand)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, stand)) continue;
 			if (level.getBlockState(stand).isAir() && level.getBlockState(stand.above()).isAir() && level.canSeeSky(stand)
 				&& level.getBlockState(stand.below()).isFaceSturdy(level, stand.below(), Direction.UP)) return stand;
 		}
@@ -211,7 +211,7 @@ public final class SurfaceStone {
 			for (int dy = -2; dy <= 2; dy++) {
 				for (int dz = -2; dz <= 2; dz++) {
 					p.set(pos.getX() + dx, pos.getY() + dy, pos.getZ() + dz);
-					if (!level.hasChunkAt(p)) continue;
+					if (!de.villagerplus.world.LoadedColumns.ready(level, p)) continue;
 					net.minecraft.world.level.block.state.BlockState state = level.getBlockState(p);
 					if (state.isAir() || !state.getFluidState().isEmpty()) continue;
 					if (state.hasBlockEntity() || isManMade(state)) return true;
@@ -257,10 +257,10 @@ public final class SurfaceStone {
 				int x = anchor.getX() + dx, z = anchor.getZ() + dz;
 				// Never leave the village's quarry area, whichever point the search is anchored at.
 				if (Math.abs(x - bell.getX()) > RADIUS || Math.abs(z - bell.getZ()) > RADIUS) continue;
-				if (!level.hasChunk(x >> 4, z >> 4)) continue;
+				if (!de.villagerplus.world.LoadedColumns.readyChunk(level, x >> 4, z >> 4)) continue;
 				// The village bounds are large (they cover the whole search area); only keep clear of the bell itself.
 				if (Math.abs(x - bell.getX()) <= 8 && Math.abs(z - bell.getZ()) <= 8) continue;
-				int top = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+				int top = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
 				for (int dy = 0; dy <= DEPTH; dy++) {
 					int y = top - dy;
 					if (Math.abs(y - bell.getY()) > 24) continue;

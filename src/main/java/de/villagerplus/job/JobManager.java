@@ -413,7 +413,7 @@ public final class JobManager {
 				v.blockPosition().toShortString(), state(v).activity, walk.map(w -> w.getTarget().currentBlockPosition().toShortString()).orElse("-"),
 				v.getNavigation().isDone() ? "fertig" : "aktiv");
 		}
-		if (village != null) de.villagerplus.village.Anchor.keepVillagerActive(level, v);
+		if (village != null && de.villagerplus.village.Anchor.isKept(level, village)) de.villagerplus.village.Anchor.keepVillagerActive(level, v);
 		if (de.villagerplus.village.Staffing.restoreTemporary(level, v, mem, now)) {
 			JobState restored = state(v);
 			restored.idleSince = 0L;
@@ -764,7 +764,7 @@ public final class JobManager {
 		List<BlockPos> candidates = new ArrayList<>();
 		Set<BlockPos> seen = new HashSet<>();
 		for (BlockPos anchor : anchors) {
-			if (!level.hasChunkAt(anchor)) continue;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, anchor)) continue;
 			for (int dx = -6; dx <= 6; dx++) {
 				for (int dy = -3; dy <= 3; dy++) {
 					for (int dz = -6; dz <= 6; dz++) {
@@ -815,7 +815,7 @@ public final class JobManager {
 			BlockPos feet = path.getNodePos(i);
 			BlockPos floor = feet.below();
 			BlockPos head = feet.above();
-			if (!level.hasChunkAt(feet) || !level.hasChunkAt(floor) || !level.hasChunkAt(head)) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, feet) || !de.villagerplus.world.LoadedColumns.ready(level, floor) || !de.villagerplus.world.LoadedColumns.ready(level, head)) return false;
 			if (!level.getFluidState(floor).isEmpty() || !level.getFluidState(feet).isEmpty()
 				|| !level.getFluidState(head).isEmpty()) return false;
 			var ground = level.getBlockState(floor);
@@ -831,8 +831,8 @@ public final class JobManager {
 
 	/** Check that an individual pause stand has a complete, collision-free vanilla route. */
 	static boolean safeReachableStand(Ctx c, BlockPos destination) {
-		if (c == null || destination == null || !c.level().hasChunkAt(destination)
-			|| !c.level().hasChunkAt(destination.below()) || !c.level().hasChunkAt(destination.above())) return false;
+		if (c == null || destination == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), destination)
+			|| !de.villagerplus.world.LoadedColumns.ready(c.level(), destination.below()) || !de.villagerplus.world.LoadedColumns.ready(c.level(), destination.above())) return false;
 		var path = de.villagerplus.build.Builder.workPath(c, destination);
 		if (path == null || !path.canReach() || path.getNodeCount() == 0
 			|| !path.getNodePos(path.getNodeCount() - 1).equals(destination)) return false;
@@ -843,7 +843,7 @@ public final class JobManager {
 			BlockPos feet = path.getNodePos(i);
 			BlockPos floor = feet.below();
 			BlockPos head = feet.above();
-			if (!level.hasChunkAt(feet) || !level.hasChunkAt(floor) || !level.hasChunkAt(head)) return false;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, feet) || !de.villagerplus.world.LoadedColumns.ready(level, floor) || !de.villagerplus.world.LoadedColumns.ready(level, head)) return false;
 			if (!level.getFluidState(floor).isEmpty() || !level.getFluidState(feet).isEmpty()
 				|| !level.getFluidState(head).isEmpty()) return false;
 			var ground = level.getBlockState(floor);
@@ -858,7 +858,7 @@ public final class JobManager {
 	static boolean isShelteredStand(ServerLevel level, BlockPos feet) {
 		BlockPos head = feet.above();
 		BlockPos roof = feet.above(2);
-		if (feet.getY() <= level.getMinY() || roof.getY() >= level.getMaxY() || !level.hasChunkAt(roof)) return false;
+		if (feet.getY() <= level.getMinY() || roof.getY() >= level.getMaxY() || !de.villagerplus.world.LoadedColumns.ready(level, roof)) return false;
 		if (!level.getBlockState(feet).getCollisionShape(level, feet).isEmpty()
 			|| !level.getBlockState(head).getCollisionShape(level, head).isEmpty()
 			|| !level.getBlockState(feet.below()).isFaceSturdy(level, feet.below(), Direction.UP)) return false;

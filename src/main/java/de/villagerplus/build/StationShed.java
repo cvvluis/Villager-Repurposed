@@ -64,7 +64,7 @@ public final class StationShed {
 		for (Direction side : new Direction[] {Direction.SOUTH, Direction.NORTH}) {
 			BlockPos power = railPos.relative(side);
 			BlockPos floor = power.below();
-			if (!box.isInside(power) || !level.hasChunkAt(power) || !level.hasChunkAt(floor)
+			if (!box.isInside(power) || !de.villagerplus.world.LoadedColumns.ready(level, power) || !de.villagerplus.world.LoadedColumns.ready(level, floor)
 				|| !level.getBlockState(power).isAir()
 				|| !level.getBlockState(floor).isFaceSturdy(level, floor, Direction.UP)) continue;
 			return power;

@@ -65,7 +65,81 @@ public final class TemplateLibraryChecks {
 		check(TemplateLibrary.family(Identifier.withDefaultNamespace("snowy_taiga")).equals("taiga"), "Taiga erkannt");
 		check(TemplateLibrary.family(Identifier.withDefaultNamespace("plains")).equals("plains"), "Ebene erkannt");
 		check(DoorBlock.class != null, "door");
+		villageTemplates();
 		return checks;
+	}
+
+	/** The three hand-built village templates: readable, door-oriented, buildable by villagers and with a roof-stair fallback. */
+	private static void villageTemplates() {
+		String[] types = {"haus_dorf", "rathaus_dorf", "schmiede_dorf"};
+		int[] doorDistance = {3, 7, 4};
+		int[] maxHalf = {7, 11, 9};
+		BlockPos origin = new BlockPos(100, 64, 100);
+		net.minecraft.world.level.block.Block[] noStairs = {};
+		de.villagerplus.village.VillageStyle style = new de.villagerplus.village.VillageStyle(net.minecraft.world.level.block.Blocks.COBBLESTONE,
+			net.minecraft.world.level.block.Blocks.OAK_PLANKS, net.minecraft.world.level.block.Blocks.BRICKS,
+			net.minecraft.world.level.block.Blocks.BRICK_STAIRS, net.minecraft.world.level.block.Blocks.OAK_DOOR,
+			net.minecraft.world.level.block.Blocks.OAK_FENCE);
+		for (int t = 0; t < types.length; t++) {
+			String type = types[t];
+			check(TemplateLibrary.has(type), type + " ist als Vorlage vorhanden");
+			for (String family : new String[] {"desert", "plains", "taiga"}) {
+				HouseTemplate template = TemplateLibrary.get(type, family);
+				check(template != null, type + " (" + family + ") lesbar");
+			}
+			HouseTemplate template = TemplateLibrary.get(type, "plains");
+			for (Direction dir : Direction.Plane.HORIZONTAL) {
+				List<Step> steps = template.steps(origin, dir, 100, false, b -> b, !type.startsWith("rathaus"));
+				check(!steps.isEmpty(), type + " " + dir + ": hat Schritte");
+				Set<BlockPos> seen = new HashSet<>();
+				for (Step s : steps) check(seen.add(s.pos()), type + " " + dir + ": Position doppelt " + s.pos());
+				int minY = steps.stream().mapToInt(s -> s.pos().getY()).min().orElse(0);
+				check(minY == origin.getY() - 1, type + " " + dir + ": der begehbare Boden liegt direkt unter dem Ursprung (min y " + minY + ")");
+				int distance = doorDistance[t];
+				boolean frontDoor = steps.stream().anyMatch(s -> s.item() != null && s.item().toString().contains("door")
+					&& s.pos().getY() == origin.getY() && Math.abs((s.pos().getX() - origin.getX()) * dir.getStepX()
+						+ (s.pos().getZ() - origin.getZ()) * dir.getStepZ()) == distance);
+				check(frontDoor, type + " " + dir + ": Haupttuer steht " + distance + " Bloecke vor dem Ursprung");
+				int half = maxHalf[t];
+				check(steps.stream().allMatch(s -> Math.abs(s.pos().getX() - origin.getX()) <= half && Math.abs(s.pos().getZ() - origin.getZ()) <= half),
+					type + " " + dir + ": Grundflaeche liegt in der halben Kante " + half);
+			}
+			List<Step> steps = template.steps(origin, Direction.SOUTH, 100, false, b -> b, !type.startsWith("rathaus"));
+			for (Step s : steps) {
+				if (s.item() == null) continue;
+				net.minecraft.world.level.block.Block block = net.minecraft.world.level.block.Block.byItem(s.item());
+				String path = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(block).getPath();
+				check(block.defaultBlockState().getFluidState().isEmpty() && !path.contains("lava") && !path.equals("bell") && !path.equals("ladder")
+					&& !path.contains("carpet") && !path.contains("pot") && !path.contains("sign"),
+					type + ": kein nicht baubarer Block (" + path + ")");
+			}
+			long beds = steps.stream().filter(s -> ItemTags.BEDS.equals(s.tag())).count();
+			boolean wantsBeds = !type.startsWith("rathaus");
+			check(wantsBeds ? beds >= 1 : beds == 0, type + ": Betten (" + beds + ")");
+			// Roof stairs: a village that cannot supply the template's stair material falls back to its own stairs, cobblestone at the end.
+			List<Step> substituted = template.steps(origin, Direction.SOUTH, 100, false, b -> Supply.substitute(b, style), wantsBeds);
+			for (Step s : substituted) {
+				if (s.item() == null) continue;
+				net.minecraft.world.level.block.Block block = net.minecraft.world.level.block.Block.byItem(s.item());
+				if (block instanceof net.minecraft.world.level.block.BedBlock) continue;
+				check(Supply.obtainable(block), type + ": nach Ersatz beschaffbar (" + net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(block).getPath() + ")");
+				if (block instanceof net.minecraft.world.level.block.StairBlock) {
+					check(block == net.minecraft.world.level.block.Blocks.COBBLESTONE_STAIRS || Supply.obtainable(block),
+						type + ": Treppen weichen auf beschaffbare Treppen aus");
+				}
+			}
+		}
+		check(TemplateLibrary.skipped(net.minecraft.world.level.block.Blocks.LAVA.defaultBlockState()), "Lava wird nie gebaut");
+		check(TemplateLibrary.skipped(net.minecraft.world.level.block.Blocks.BELL.defaultBlockState()), "Glocken werden nie gebaut");
+		check(!TemplateLibrary.skipped(net.minecraft.world.level.block.Blocks.COBBLESTONE_STAIRS.defaultBlockState()), "Treppen werden gebaut");
+		// Which designs of NEW plans take the village house: only the tall two-storey ones, everything else keeps the small house.
+		Architect.Design tall = new Architect.Design(Architect.Kind.HOUSE, 4, 3, 6, true, 2, true, true, true, true, true, 2, -1, 2, true, 0, 0);
+		Architect.Design compact = new Architect.Design(Architect.Kind.HOUSE, 2, 2, 3, true, 1, true, true, true, true, false, 2, 0, 1, false, 1, 0);
+		Architect.Design standard = new Architect.Design(Architect.Kind.HOUSE, 3, 3, 5, true, 1, true, true, true, true, false, 2, 1, 1, false, 1, 0);
+		check(Builder.HOUSE_TEMPLATE_VILLAGE.equals(Builder.templateTypeFor(tall)), "hohe zweigeschossige Entwuerfe bekommen das Dorfhaus");
+		check(Builder.HOUSE_TEMPLATE_SMALL.equals(Builder.templateTypeFor(compact)) && Builder.HOUSE_TEMPLATE_SMALL.equals(Builder.templateTypeFor(standard)),
+			"kompakte und normale Entwuerfe behalten das kleine Haus");
+		check(Builder.HOUSE_TEMPLATE_SMALL.equals(Builder.templateTypeFor(null)), "ohne Entwurf gilt das kleine Haus");
 	}
 
 	/** The plan path in a real village: new houses take the template, it survives a restart, older plans keep their design. */
@@ -144,6 +218,19 @@ public final class TemplateLibraryChecks {
 		check(legacy != null && !legacy.isEmpty() && legacy.size() != first.size(), "laufender Altplan behaelt den alten Entwurf");
 		check(!ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.<Long>of()).contains(older.asLong()), "Altplan wird nicht markiert");
 		d.planStep = 0;
+		// Persistence of the template choice: a plan marked before the village house existed keeps the small house after a restart,
+		// a village-house plan is recorded with its complement marker and keeps the village house.
+		Architect.Design tallDesign = new Architect.Design(Architect.Kind.HOUSE, 4, 3, 6, true, 2, true, true, true, true, true, 2, -1, 2, true, 0, 0);
+		BlockPos marked = ref.bell().offset(60, 0, 60);
+		List<Long> savedMarkers = List.copyOf(ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.<Long>of()));
+		ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.of());
+		check(Builder.HOUSE_TEMPLATE_VILLAGE.equals(Builder.templateTypeForPlan(ref, marked, tallDesign)), "unmarkierter hoher Plan: Dorfhaus nach Entwurf");
+		ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.of(marked.asLong()));
+		check(Builder.HOUSE_TEMPLATE_SMALL.equals(Builder.templateTypeForPlan(ref, marked, tallDesign)), "alter markierter Plan behaelt das kleine Haus auch bei hohem Entwurf");
+		ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.of(marked.asLong(), ~marked.asLong()));
+		check(Builder.HOUSE_TEMPLATE_VILLAGE.equals(Builder.templateTypeForPlan(ref, marked, tallDesign)), "mit Komplement-Marker bleibt es das Dorfhaus");
+		check(!BlockPos.of(~marked.asLong()).equals(marked) && BlockPos.of(~marked.asLong()).getY() < -64, "der Komplement-Marker ist keine gueltige Weltposition");
+		ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, savedMarkers);
 		return checks;
 	}
 }

@@ -48,7 +48,7 @@ public final class EquipmentMaintenance {
 		}
 		// The cached target can become stale while the smith is walking. Never spend a repair
 		// ingredient unless the worker has reached a still-loaded, still-usable anvil.
-		if (!c.level().hasChunkAt(anvil) || !isAnvil(c.level().getBlockState(anvil))) {
+		if (!de.villagerplus.world.LoadedColumns.ready(c.level(), anvil) || !isAnvil(c.level().getBlockState(anvil))) {
 			c.st().toolRepairAnvil = null;
 			c.st().toolRepairNextWorkAt = c.now() + ANVIL_SCAN_INTERVAL;
 			c.st().clearTarget();
@@ -95,7 +95,7 @@ public final class EquipmentMaintenance {
 	private static BlockPos findAnvil(Ctx c) {
 		JobState state = c.st();
 		BlockPos cached = state.toolRepairAnvil;
-		if (cached != null && c.level().hasChunkAt(cached) && isAnvil(c.level().getBlockState(cached))) {
+		if (cached != null && de.villagerplus.world.LoadedColumns.ready(c.level(), cached) && isAnvil(c.level().getBlockState(cached))) {
 			return cached;
 		}
 		state.toolRepairAnvil = null;
@@ -104,11 +104,11 @@ public final class EquipmentMaintenance {
 		}
 		state.toolRepairCheckAt = c.now() + ANVIL_SCAN_INTERVAL;
 		BlockPos origin = Specials.get(c.village(), Blueprints.TOOLSHED);
-		if (origin == null || !c.level().hasChunkAt(origin)) {
+		if (origin == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), origin)) {
 			return null;
 		}
 		for (BlockPos pos : BlockPos.betweenClosed(origin.offset(-9, -2, -9), origin.offset(9, 8, 9))) {
-			if (c.level().hasChunkAt(pos) && isAnvil(c.level().getBlockState(pos))) {
+			if (de.villagerplus.world.LoadedColumns.ready(c.level(), pos) && isAnvil(c.level().getBlockState(pos))) {
 				state.toolRepairAnvil = pos.immutable();
 				return state.toolRepairAnvil;
 			}

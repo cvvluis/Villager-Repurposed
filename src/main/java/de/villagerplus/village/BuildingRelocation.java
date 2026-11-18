@@ -85,7 +85,7 @@ public final class BuildingRelocation {
 		Set<Long> sourceStructuralColumns = roof.keySet();
 		for (var e : moves.entrySet()) {
 			BlockPos from = e.getKey(), to = e.getValue();
-			if (!level.hasChunkAt(from) || !level.hasChunkAt(to) || to.distSqr(ref.bell()) > 96L * 96L || to.getY() < level.getMinY() || to.getY() >= level.getMaxY()) return "Quelle oder Ziel ist nicht vollständig geladen oder außerhalb des Dorfgebiets.";
+			if (!de.villagerplus.world.LoadedColumns.ready(level, from) || !de.villagerplus.world.LoadedColumns.ready(level, to) || to.distSqr(ref.bell()) > 96L * 96L || to.getY() < level.getMinY() || to.getY() >= level.getMaxY()) return "Quelle oder Ziel ist nicht vollständig geladen oder außerhalb des Dorfgebiets.";
 			if (from.equals(ref.bell()) || to.equals(ref.bell())) return "Die Dorfglocke darf nicht überbaut werden.";
 			if (moves.containsKey(to)) continue;
 			BlockState target = level.getBlockState(to);
@@ -95,7 +95,7 @@ public final class BuildingRelocation {
 			if (level.getBlockEntity(to) != null) return "Die Zielfläche enthält ein Blockinventar; nichts wurde verändert.";
 			long column = BlockPos.asLong(to.getX(), 0, to.getZ());
 			if (foundation && !sourceStructuralColumns.contains(column) && checkedColumns.add(column)) {
-				int surface = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, to.getX(), to.getZ());
+				int surface = de.villagerplus.world.LoadedColumns.heightOrMinY(level, net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, to.getX(), to.getZ());
 				if (Math.abs(built.origin().getY() - surface) > 2) return "Der Baugrund am Ziel ist zu hoch oder zu tief. Ziel "
 					+ coordinates(to) + ", Oberfläche " + surface + ", Gebäudehöhe " + built.origin().getY() + ".";
 			}

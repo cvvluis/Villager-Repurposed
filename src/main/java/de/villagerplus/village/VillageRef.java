@@ -15,7 +15,7 @@ public record VillageRef(BlockPos bell, VillageData data, BlockEntity bellEntity
 
 	/** Position der Dorfmitten-Doppelkiste, falls sie existiert. */
 	public BlockPos chestPos(ServerLevel level) {
-		if (data.chest.isPresent() && level.hasChunkAt(data.chest.get())
+		if (data.chest.isPresent() && de.villagerplus.world.LoadedColumns.ready(level, data.chest.get())
 			&& level.getBlockState(data.chest.get()).getBlock() instanceof ChestBlock) {
 			BlockPos pos = data.chest.get();
 			if (Lager.publicContainerAt(level, pos) != null) return pos;

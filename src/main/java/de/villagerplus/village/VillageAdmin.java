@@ -160,8 +160,8 @@ public final class VillageAdmin {
 		for (int dx = -72; dx <= 72; dx += 3) {
 			for (int dz = -72; dz <= 72; dz += 3) {
 				int x = bell.getX() + dx, z = bell.getZ() + dz;
-				if (!level.hasChunk(x >> 4, z >> 4)) continue;
-				int top = level.getHeight(Heightmap.Types.MOTION_BLOCKING, x, z) - 1;
+				if (!de.villagerplus.world.LoadedColumns.readyChunk(level, x >> 4, z >> 4)) continue;
+				int top = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING, x, z) - 1;
 				for (int dy = 0; dy <= 14; dy++) {
 					BlockState state = level.getBlockState(pos.set(x, top - dy, z));
 					if (!state.is(BlockTags.OVERWORLD_NATURAL_LOGS)) continue;
@@ -280,8 +280,8 @@ public final class VillageAdmin {
 		for (int dx = -48; dx <= 48; dx += 4) {
 			for (int dz = -48; dz <= 48; dz += 4) {
 				int x = bell.getX() + dx, z = bell.getZ() + dz;
-				if (!level.hasChunk(x >> 4, z >> 4)) continue;
-				int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING, x, z) - 1;
+				if (!de.villagerplus.world.LoadedColumns.readyChunk(level, x >> 4, z >> 4)) continue;
+				int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING, x, z) - 1;
 				BlockState top = level.getBlockState(pos.set(x, y, z));
 				if (top.is(BlockTags.LEAVES) || top.is(BlockTags.LOGS)) trees++;
 				else if (!top.getFluidState().isEmpty()) water++;

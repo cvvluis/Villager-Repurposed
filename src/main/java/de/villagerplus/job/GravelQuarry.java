@@ -34,15 +34,15 @@ public final class GravelQuarry {
 
 	/** Natural exposed gravel only; excludes road lanes, depot footprints, fluids, and unsafe drops. */
 	public static boolean naturalSource(ServerLevel level, BlockPos gravel) {
-		if (gravel == null || !level.hasChunkAt(gravel.below()) || !level.hasChunkAt(gravel)
-			|| !level.hasChunkAt(gravel.above(2))) return false;
+		if (gravel == null || !de.villagerplus.world.LoadedColumns.ready(level, gravel.below()) || !de.villagerplus.world.LoadedColumns.ready(level, gravel)
+			|| !de.villagerplus.world.LoadedColumns.ready(level, gravel.above(2))) return false;
 		BlockState state = level.getBlockState(gravel);
 		if (!state.is(Blocks.GRAVEL) || !state.getFluidState().isEmpty() || !state.isFaceSturdy(level, gravel, Direction.UP)
 			|| !level.getBlockState(gravel.above()).isAir() || !level.getBlockState(gravel.above(2)).isAir()
 			|| !level.getBlockState(gravel.below()).isFaceSturdy(level, gravel.below(), Direction.UP)
 			|| !level.getBlockState(gravel.below()).getFluidState().isEmpty() || Roads.isProtectedLaneCell(level, gravel)
 			|| roadSurface(level, gravel) || depotFootprint(level, gravel)) return false;
-		return level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, gravel.getX(), gravel.getZ()) - 1 == gravel.getY();
+		return de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, gravel.getX(), gravel.getZ()) - 1 == gravel.getY();
 	}
 
 	private static boolean roadSurface(ServerLevel level, BlockPos gravel) {
@@ -57,7 +57,7 @@ public final class GravelQuarry {
 	private static boolean depotFootprint(ServerLevel level, BlockPos gravel) {
 		for (int dy = -1; dy <= 2; dy++) {
 			BlockPos pos = gravel.above(dy);
-			if (!level.hasChunkAt(pos)) return true;
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return true;
 			BlockState state = level.getBlockState(pos);
 			if (state.getBlock() instanceof net.minecraft.world.level.block.ChestBlock
 				|| state.getBlock() instanceof net.minecraft.world.level.block.BarrelBlock) return true;
@@ -203,13 +203,13 @@ public final class GravelQuarry {
 			BlockPos center = new BlockPos(route.getX(), mine.targetY, route.getZ());
 			for (int sign : new int[] {-1, 1}) {
 				BlockPos floorTorch = center.relative(lateral, sign * MINE_SUPPORT_RADIUS);
-				if (!level.hasChunkAt(floorTorch) || !level.getBlockState(floorTorch).is(Blocks.TORCH)
+				if (!de.villagerplus.world.LoadedColumns.ready(level, floorTorch) || !level.getBlockState(floorTorch).is(Blocks.TORCH)
 					|| c.v().position().distanceToSqr(net.minecraft.world.phys.Vec3.atBottomCenterOf(floorTorch)) > 9.0
 					|| Roads.isProtectedLaneCell(level, floorTorch)) continue;
 				boolean walkSurfaceSupported = true;
 				for (int lane = -MINE_WALK_LANE_HALF_WIDTH; lane <= MINE_WALK_LANE_HALF_WIDTH; lane++) {
 					BlockPos floor = center.relative(lateral, lane).below();
-					if (!level.hasChunkAt(floor) || !level.getBlockState(floor).getFluidState().isEmpty()
+					if (!de.villagerplus.world.LoadedColumns.ready(level, floor) || !level.getBlockState(floor).getFluidState().isEmpty()
 						|| !level.getBlockState(floor).isFaceSturdy(level, floor, Direction.UP)) {
 						walkSurfaceSupported = false;
 						break;
@@ -219,7 +219,7 @@ public final class GravelQuarry {
 				Direction towardBacking = sign > 0 ? lateral : lateral.getOpposite();
 				BlockPos wallTorch = center.relative(lateral, sign * MINE_WALK_LANE_HALF_WIDTH).above();
 				BlockPos backing = wallTorch.relative(towardBacking);
-				if (!level.hasChunkAt(wallTorch) || !level.hasChunkAt(backing)
+				if (!de.villagerplus.world.LoadedColumns.ready(level, wallTorch) || !de.villagerplus.world.LoadedColumns.ready(level, backing)
 					|| !level.getBlockState(wallTorch).isAir() || Roads.isProtectedLaneCell(level, wallTorch)) continue;
 				BlockState backingState = level.getBlockState(backing);
 				Direction facing = towardBacking.getOpposite();
@@ -309,7 +309,7 @@ public final class GravelQuarry {
 		for (Direction side : new Direction[] {direction.getClockWise(), direction.getCounterClockWise()}) {
 			for (int height = 0; height < 2; height++) {
 				BlockPos pos = center.relative(side).above(height);
-				if (!c.level().hasChunkAt(pos) || c.v().position().distanceToSqr(net.minecraft.world.phys.Vec3.atBottomCenterOf(pos)) > 9.0
+				if (!de.villagerplus.world.LoadedColumns.ready(c.level(), pos) || c.v().position().distanceToSqr(net.minecraft.world.phys.Vec3.atBottomCenterOf(pos)) > 9.0
 					|| !c.level().getBlockState(pos).is(Blocks.GRAVEL)
 					|| Roads.isProtectedLaneCell(c.level(), pos) || roadSurface(c.level(), pos) || depotFootprint(c.level(), pos)
 					|| !c.level().getBlockState(pos.above()).getFluidState().isEmpty()
@@ -360,7 +360,7 @@ public final class GravelQuarry {
 			BlockPos center = mine.entrance.relative(direction, i);
 			center = new BlockPos(center.getX(), mine.targetY, center.getZ());
 			for (BlockPos p : BlockPos.betweenClosed(center.offset(-1, -1, -1), center.offset(1, 3, 1))) {
-				if (!level.hasChunkAt(p)) continue;
+				if (!de.villagerplus.world.LoadedColumns.ready(level, p)) continue;
 				BlockState state = level.getBlockState(p);
 				if (state.is(Blocks.OAK_FENCE) || state.is(Blocks.OAK_PLANKS) || state.is(Blocks.SPRUCE_LOG)) support = true;
 				if (state.is(Blocks.TORCH) || state.is(Blocks.WALL_TORCH) || state.is(Blocks.LANTERN)) torch = true;

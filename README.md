@@ -19,6 +19,59 @@ Dorfbewohner haben Namen, feste Häuser mit Schild, einen festen Tagesplan und e
 mit Doppelkiste und wächst selbstständig. Server- und Client-Mod (der Info-Knopf braucht die Mod auch beim Spieler; Einzelspieler funktioniert), benötigt Fabric Loader 0.20.1+,
 Fabric API und Java 25.
 
+## Neu in 0.10.8: Dorfkarte lädt keine Chunks mehr (Playtest 11)
+
+Beim Betreten eines Dorfs im großen Modpack hing der Server-Thread in der Relief-Abtastung der großen Dorftafel (`VillageMap.grid` / `classifyFine`): `hasChunkAt` galt nur für die Zellmitte, `getHeight`/`getBlockState` haben fehlende Nachbarspalten synchron erzeugt (`getChunkBlocking`). Das Bild blieb stehen, der Server meldete „Can't keep up“.
+
+- Karte, Relief und die Textkarte lesen nur noch Chunks, die `getChunkNow` schon vollständig hat. Pro Aufruf werden höchstens 480 Zellen mit je vier Stichproben klassifiziert; der Rest erscheint in den nächsten Ticks. Ein fertiges Raster bleibt 10 Sekunden gültig, eines mit unbekannten Zellen 5 Sekunden. Eine fehlgeschlagene Abtastung wird nicht mehr alle 20 Ticks wiederholt.
+- Dieselbe nicht blockierende Höhenlesung gilt für die übrigen Geländeabtastungen der Mod (Wege, Bauplätze, Berufe), statt dort Chunks zu erzeugen.
+- Der Hänger-Wächter behandelt `managedBlock`/`pollTask` nicht mehr als Pause, wenn der Stapel in `getChunkBlocking` steht. Der Client zählt Frames (Schwelle 3 Sekunden), nicht mehr Spielticks.
+- Das Relief nutzt den Entity-Translucent-RenderType. Iris kennt `minecraft:pipeline/debug_quads` nicht.
+
+Nicht im Modpack gemessen, nur kompiliert.
+
+## Neu in 0.10.7: kein Fehlalarm beim Weltstart (Playtest 10)
+
+Der Hänger-Bericht des Clients zählt nur noch, solange eine Welt läuft. Beim Erzeugen oder Laden einer Welt steht die Client-Schleife von selbst still, das war in 0.10.6 ein Fehlalarm.
+
+## Neu in 0.10.6: Hänger-Bericht (Playtest 9)
+
+Nur Diagnose, keine Fehlerbehebung: Friert das Spiel oder der Server für mehr als 8 Sekunden ein, schreibt die Mod die Thread-Stapel nach `logs/villagerplus-stall-server.txt` bzw. `-client.txt` (höchstens drei Berichte je Start). Damit lässt sich sehen, welcher Code (diese Mod oder eine andere) den Hänger hält. Ein pausierter Einzelspieler-Server zählt nicht als Hänger. Die Ursache des Einfrierens im Modpack ist weiterhin nicht gefunden.
+
+## Neu in 0.10.5: drei handgebaute Vorlagenhäuser (Playtest 8)
+
+Nur auf dem Dev-Server geprüft (Prüfgruppen), nicht im Client und nicht in einem Naturlauf gebaut.
+
+- Neue Bauvorlagen mit den Originalmaterialien: Dorfhaus (`haus_dorf`, 14x13), Rathaus mit Veranda (`rathaus_dorf`, 22x23) und Schmiede mit Wohnhaus (`schmiede_dorf`, 19x15). Die Bauer setzen sie Block für Block aus dem Dorfvorrat. Was ein Dorf nicht herstellen kann, wird ersetzt; fehlen Treppenmaterial oder Dachziegel, weichen die Treppen auf Bruchsteintreppen aus.
+- Nicht gebaut werden Lava, Glocken, Leitern, Töpfe, Teppiche, Schilder, Arbeitsblöcke und Ähnliches, damit keine fremden Arbeitsplätze oder Füllblöcke entstehen; ein verstecktes Fundament unter dem Boden entfällt.
+- Im Spiel verwendet wird bisher nur das Dorfhaus: neue Pläne mit hohem zweigeschossigem Entwurf (rund jedes sechste neue Haus) nehmen es statt des kleinen 9x9-Hauses. Laufende Pläne behalten ihre Form. Rathaus und Schmiede liegen nur in der Bibliothek; der Bau des Rathauses läuft weiter über den bisherigen Entwurf.
+
+## Neu in 0.10.4: Dorf-Toast stürzt nicht mehr ab (Playtest 7)
+
+Das animierte Dorf-Toast (Einblendung rechts oben bei Dorfmeldungen) fängt jetzt jeden Fehler ab und schaltet sich dann selbst aus, die Chatnachricht bleibt. Mit `-Dvillagerplus.toast=false` lässt es sich ganz abschalten. Die Absturzursache selbst ist noch nicht gefunden (kein Absturzbericht vorhanden); nur auf dem Dev-Server kompiliert, nicht im Client geprüft.
+
+## Neu in 0.10.3: kein Zwangsladen mehr (Playtest 6)
+
+Zweiter Hotfix gegen "Can't keep up" im großen Modpack. Nicht im Modpack gemessen, nur auf dem Dev-Server geprüft.
+
+- Die Mod setzt keine /forceload-Chunks mehr. Das nächste Dorf wird nur noch mit kurzlebigen Tickets gehalten, nur für bereits geladene Chunks (es wird nie neues Gelände erzeugt), nicht solange ein Spieler in der Nähe ist und nicht, wenn der Server schon überlastet ist (Ø Tickzeit über 40 ms).
+- Alte Zwangsladungen aus 0.10.0 bis 0.10.2 werden beim Spielen freigegeben. `-Dvillagerplus.keptVillages=0` schaltet das Festhalten ganz ab.
+
+## Neu in 0.10.2: weniger Serverlast (Playtest 5)
+
+Hotfix für Lag im großen Modpack ("Can't keep up", hoher Ping). Nicht im Modpack gemessen, nur auf dem Dev-Server geprüft.
+
+- Bisher hielt die Mod jedes bekannte Dorf dauerhaft geladen (viele Chunks, in der Welt als /forceload gespeichert). Jetzt bleibt höchstens ein Dorf pro Dimension geladen, das dem nächsten Spieler am nächsten ist, mit kleinerem Bereich. Alle anderen Dörfer, auch alte Zwangsladungen aus bestehenden Welten, werden freigegeben und arbeiten nur noch, solange ein Spieler in Reichweite ist.
+- Einstellbar mit `-Dvillagerplus.keptVillages=N` (Standard 1, 0 = nie Chunks zwangsladen). Von Hand gesetzte /forceload-Chunks im Bereich eines freigegebenen Dorfs werden mitfreigegeben.
+
+## Neu in 0.10.1: Nahrungskette und mehr Steinarbeit (Playtest 4)
+
+Stand: nur auf dem Dev-Server geprüft (Prüfgruppen, Fixtures, Naturläufe ohne Spieler), **nicht im Client oder Vollpack erprobt**. Es ist weiterhin kein Bau in einem Naturlauf fertig geworden; der Feldplan im Hungerzustand scheitert noch am Zaunholz. Neun Prüfgruppen sind auf diesem Stand rot (siehe CLOUD-LOG, Ursachen offen).
+
+- **Nahrung:** Bauern ernten reife Pflanzen im ganzen Dorf, bei Mangel auch per Angel; Essen geht vor dem Kornspeicher über eine begrenzte Brücke in die Dorfkiste; knappe Mittagsportionen gehen an die Hungrigen; ein nicht startbares Gehege blockiert den Feldplan nicht mehr.
+- **Stein und Holz:** untätige Bewohner und freie Maurer arbeiten an Bruchstein, wenn Pläne warten; Holzversorgung und Planken im Block.
+- **Erstes Gebäude:** Ablauf und Prüfgruppe für das erste Gebäude; Einwohner ticken ohne Spieler (Chunk-Lease-Radius 2).
+
 ## Neu in 0.10.0: stabilere Dörfer (Playtest 3)
 
 Stand: nur auf dem Dev-Server geprüft (Prüfgruppen, synthetische Fixtures und Naturläufe ohne Spieler), **nicht im Client oder Vollpack erprobt**.
