@@ -171,8 +171,42 @@ public final class Mining {
 		return d.hasPlan() && demand > JobUtil.count(box, stack -> stack.is(net.minecraft.world.item.Items.COBBLESTONE));
 	}
 
-	private static final java.util.Map<Long, Integer> UNREACHABLE_MINE_STEPS = new java.util.HashMap<>();
-	private static final int UNREACHABLE_MINE_LIMIT = 3;
+	/** Path failures per mine entrance and worker (memory only, never saved). */
+	private static final java.util.Map<Long, java.util.Map<java.util.UUID, long[]>> UNREACHABLE_MINE_STEPS = new java.util.HashMap<>();
+	/** Counted failures one worker needs before the entrance may be given up. */
+	static final int UNREACHABLE_MINE_LIMIT = 3;
+	/** A lone worker (nobody else has failed) must fail this often, spread over time, before the mine is given up. */
+	static final int UNREACHABLE_MINE_SOLO_LIMIT = 8;
+	/** Failures of one worker closer together than this count once: one bad spot must not burn the budget in seconds. */
+	static final long UNREACHABLE_MINE_DEBOUNCE_TICKS = 200L;
+	/** A worker's failures are forgotten after this long without a new one. */
+	static final long UNREACHABLE_MINE_EXPIRY_TICKS = 12000L;
+
+	/**
+	 * Records one path failure and returns true when the entrance counts as genuinely unreachable: a worker reached
+	 * the limit and a second worker failed as well, or one worker failed the solo limit times over a long stretch.
+	 */
+	static boolean recordMineStepMiss(long entrance, java.util.UUID worker, long now) {
+		java.util.Map<java.util.UUID, long[]> perWorker = UNREACHABLE_MINE_STEPS.computeIfAbsent(entrance, k -> new java.util.HashMap<>());
+		perWorker.values().removeIf(f -> now - f[1] > UNREACHABLE_MINE_EXPIRY_TICKS || now < f[1]);
+		long[] mine = perWorker.computeIfAbsent(worker, k -> new long[]{0L, Long.MIN_VALUE / 2});
+		if (now - mine[1] >= UNREACHABLE_MINE_DEBOUNCE_TICKS) {
+			mine[0]++;
+			mine[1] = now;
+		}
+		boolean closes = false;
+		for (long[] f : perWorker.values()) {
+			if (f[0] >= UNREACHABLE_MINE_SOLO_LIMIT) closes = true;
+			if (f[0] >= UNREACHABLE_MINE_LIMIT && perWorker.size() >= 2) closes = true;
+		}
+		if (closes) UNREACHABLE_MINE_STEPS.remove(entrance);
+		return closes;
+	}
+
+	/** Any successful path to this mine proves it is reachable: forget all earlier failures. */
+	static void clearMineStepMisses(long entrance) {
+		UNREACHABLE_MINE_STEPS.remove(entrance);
+	}
 
 	private static final java.util.Map<java.util.UUID, Long> MINE_DIAG = new java.util.HashMap<>();
 
@@ -2909,15 +2943,15 @@ public final class Mining {
 				c.setActivity("wartet auf einen freien Minenweg");
 				// A mine whose entrance waypoint never gets a path (e.g. built over by a project) is given up so a new one is chosen.
 				// Only failures inside the long-route handover radius count (farther away the long-route search handles it first).
-				int misses = farSq <= 20.0 * 20.0 ? UNREACHABLE_MINE_STEPS.merge(mine.entrance.asLong(), 1, Integer::sum) : 0;
-				if (misses >= UNREACHABLE_MINE_LIMIT && onMineSurface(mine, c.v())) {
-					UNREACHABLE_MINE_STEPS.remove(mine.entrance.asLong());
-					LOGGER.info("Mine: Eingang {} wird nach {} erfolglosen Wegsuchen aufgegeben", mine.entrance.toShortString(), misses);
+				boolean unreachable = farSq <= 20.0 * 20.0 && recordMineStepMiss(mine.entrance.asLong(), c.v().getUUID(), c.now());
+				if (unreachable && onMineSurface(mine, c.v())) {
+					LOGGER.info("Mine: Eingang {} wird nach wiederholten erfolglosen Wegsuchen mehrerer Arbeiter aufgegeben", mine.entrance.toShortString());
 					return MineWalk.BLOCKED;
 				}
 				return MineWalk.STUCK;
 			}
 		}
+		clearMineStepMisses(mine.entrance.asLong());
 		return approachMineStep(c, cell);
 	}
 

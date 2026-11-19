@@ -50,6 +50,7 @@ public final class MineLifecycleChecks {
 		int minY = entrance.getY() - 8, maxY = entrance.getY() + 5;
 		int minZ = entrance.getZ() - 8, maxZ = entrance.getZ() + 8;
 		try {
+			checks += unreachableEntranceChecks();
 			for (int x = minX; x <= maxX; x++) for (int z = minZ; z <= maxZ; z++) {
 				level.getChunkAt(new BlockPos(x, entrance.getY(), z));
 				for (int y = minY; y <= maxY; y++) {
@@ -677,6 +678,46 @@ public final class MineLifecycleChecks {
 			if (level.getBlockState(above).isCollisionShapeFullBlock(level, above)) return true;
 		}
 		return false;
+	}
+
+	/** Entrance give-up bookkeeping: one worker's bad spot must not close a mine, success resets, a truly unreachable entrance still closes. */
+	private static int unreachableEntranceChecks() {
+		int checks = 0;
+		long entrance = BlockPos.asLong(24100, 70, 24100);
+		java.util.UUID a = java.util.UUID.fromString("00000000-0000-0000-0000-0000000000a1");
+		java.util.UUID b = java.util.UUID.fromString("00000000-0000-0000-0000-0000000000b2");
+		long step = Mining.UNREACHABLE_MINE_DEBOUNCE_TICKS;
+		Mining.clearMineStepMisses(entrance);
+		boolean closed = false;
+		for (int i = 0; i < 3; i++) closed |= Mining.recordMineStepMiss(entrance, a, 1000L + i * step);
+		check(!closed, "three failures by one worker do not close the mine"); checks++;
+		closed = false;
+		for (int i = 0; i < 50; i++) closed |= Mining.recordMineStepMiss(entrance, a, 5000L + i);
+		check(!closed, "rapid repeated failures of one worker count once and never close the mine"); checks++;
+		Mining.clearMineStepMisses(entrance);
+		Mining.recordMineStepMiss(entrance, a, 100L);
+		Mining.recordMineStepMiss(entrance, a, 100L + step);
+		Mining.clearMineStepMisses(entrance);
+		closed = false;
+		for (int i = 0; i < 2; i++) closed |= Mining.recordMineStepMiss(entrance, a, 3000L + i * step);
+		closed |= Mining.recordMineStepMiss(entrance, b, 3000L + 2 * step);
+		check(!closed, "a successful step resets the failure count");  checks++;
+		Mining.clearMineStepMisses(entrance);
+		Mining.recordMineStepMiss(entrance, a, 0L);
+		Mining.recordMineStepMiss(entrance, a, step);
+		closed = Mining.recordMineStepMiss(entrance, a, Mining.UNREACHABLE_MINE_EXPIRY_TICKS + 2 * step + 1);
+		check(!closed, "old failures expire"); checks++;
+		Mining.clearMineStepMisses(entrance);
+		closed = false;
+		for (int i = 0; i < 3; i++) closed |= Mining.recordMineStepMiss(entrance, a, 20000L + i * step);
+		closed |= Mining.recordMineStepMiss(entrance, b, 20000L + 3 * step);
+		check(closed, "an entrance that several workers cannot reach is given up"); checks++;
+		Mining.clearMineStepMisses(entrance);
+		closed = false;
+		for (int i = 0; i < Mining.UNREACHABLE_MINE_SOLO_LIMIT; i++) closed |= Mining.recordMineStepMiss(entrance, a, 40000L + i * step);
+		check(closed, "an entrance a lone worker keeps failing on over a long stretch is given up"); checks++;
+		Mining.clearMineStepMisses(entrance);
+		return checks;
 	}
 
 	private static void check(boolean value, String message) {
