@@ -10,6 +10,7 @@
 - `claude/integration` merges #19, #21, #20, #22. Full run of all 130 single groups on it: all green except lightspacing, railtransportdispatch, roads, roadterrain, roadlighting, roadwork (agent `claude/road-checks` investigating), the restart pairs (red by design as single groups) and four groups that run 0 checks without client (board, plaza, toast, trader).
 - Natural run (taiga seed 4242, 72k ticks, integration): still NO building finished and no `Bauplan farm`. Farm blockers: `no usable seed` (9x). Granary 437 steps stalled up to 15k ticks, storage 266 steps stalled 17.5k ticks. After the seed change the next blocker was seen once: `no fence kit`, which #19 addresses; no continuous run shows a field starting yet. Agent `claude/stall-fix` is investigating what the stalled plans wait for.
 - Pending agents at the time of writing: road checks, stall analysis, translatable texts (160 `Component.literal` -> keys).
+- Audit recount 19.11.2026 (read-only, strict standard): **17 implemented / 30 partial / 0 missing / 15 unverified** (loose 53/62); this replaces the older counters 8/62, 13/62, 18/62 and 30/62 quoted elsewhere in this file. See `docs/master-prompt-audit.md`.
 - Honesty: all results are dev-server fixtures or tiny natural runs (n=1..2, forceload instead of a player); nothing played in the client or the full modpack.
 
 ## Run 18.11.2026 (4) – Freeze on entering a village fixed (0.10.8)
