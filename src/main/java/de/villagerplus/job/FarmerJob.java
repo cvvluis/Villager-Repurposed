@@ -316,9 +316,8 @@ public class FarmerJob implements Job {
 		boolean seedsWait = false;
 		if (carriedSeeds > 0 && carriedSeeds < SEED_HARVEST_BATCH) {
 			if (ripeLeft == null) ripeLeft = ripeCropLeft(c);
-			// The unfunded first field still needs its eight public seeds promptly; otherwise they travel with the food batch.
-			seedsWait = ripeLeft && c.village() != null && (c.village().data().farms > 0
-				|| publicFarmSeedCount(Balance.storage(c.level(), c.village())) + carriedSeeds >= VISIBLE_STARTER_FIELD_SEEDS);
+			seedsWait = c.village() != null && seedsWaitForRipeCrops(ripeLeft, c.village().data().farms,
+				publicFarmSeedCount(Balance.storage(c.level(), c.village())), carriedSeeds);
 		}
 		if (!seedsWait && starterSeedDepositDue(c) && JobUtil.depositSurplus(c, stack -> stack.is(Items.WHEAT_SEEDS), 1, 0)) {
 			return true;
@@ -417,6 +416,14 @@ public class FarmerJob implements Job {
 	 */
 	static boolean forageSeedsBeforeFarHarvest(int completedFarms, int publicSeeds, int carriedSeeds, boolean farTarget) {
 		return completedFarms == 0 && farTarget && publicSeeds + carriedSeeds < VISIBLE_STARTER_FIELD_SEEDS;
+	}
+
+	/**
+	 * A farmer in a distant generated field keeps harvesting (about 1.7 seeds per crop) until the unfunded first field has its eight
+	 * public seeds, instead of walking 60+ blocks back for two seeds that a diverted farmer then never fetches again (natural run: two harvests in 48k ticks).
+	 */
+	static boolean seedsWaitForRipeCrops(boolean ripeCropLeft, int completedFarms, int publicSeeds, int carriedSeeds) {
+		return ripeCropLeft && (completedFarms > 0 || publicSeeds + carriedSeeds < VISIBLE_STARTER_FIELD_SEEDS);
 	}
 
 	private static boolean forageBeforeFarHarvest(Ctx c, BlockPos cropTarget) {

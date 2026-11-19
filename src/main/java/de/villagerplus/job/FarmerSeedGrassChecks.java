@@ -282,7 +282,10 @@ public final class FarmerSeedGrassChecks {
 			require(FarmerJob.forageSeedsBeforeFarHarvest(0, 7, 0, true) && !FarmerJob.forageSeedsBeforeFarHarvest(0, 4, 4, true)
 				&& !FarmerJob.forageSeedsBeforeFarHarvest(0, 0, 0, false) && !FarmerJob.forageSeedsBeforeFarHarvest(1, 0, 0, true),
 				"the grass-first rule needs no field, a far crop and fewer than eight seeds");
-			return 8;
+			require(FarmerJob.seedsWaitForRipeCrops(true, 0, 3, 2) && !FarmerJob.seedsWaitForRipeCrops(true, 0, 6, 2)
+				&& !FarmerJob.seedsWaitForRipeCrops(false, 0, 0, 2) && FarmerJob.seedsWaitForRipeCrops(true, 1, 20, 2),
+				"an unfunded first field keeps harvesting a ripe far field until eight seeds are in hand, then delivers; with a field the seeds travel with the food");
+			return 9;
 		} finally {
 			if (worker != null) {
 				JobUtil.clearLongRoute(worker);
