@@ -328,6 +328,11 @@ public final class StockPolicy {
 		};
 	}
 
+	/** Whether a village depot of this blueprint type accepts the item by StockPolicy category. */
+	public static boolean depotAccepts(String depot, Item item) {
+		return depot != null && item != null && accepts(depot, item);
+	}
+
 	/** Whether the public material store's existing delivery filter permits this item type. */
 	public static boolean acceptsMaterialStoreItem(Item item) {
 		return item != null && accepts(de.villagerplus.build.Blueprints.STORAGE, item);

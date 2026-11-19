@@ -134,6 +134,93 @@ public final class LamplighterJobChecks {
 			state.lightAt = 0L;
 			require(!job.primary(ctx(level, worker, state, memory, ref, now + 1200)) && level.getBlockState(lanternSpot).isAir()
 				&& count(publicStock, Items.TORCH) == 2, "an owned village chest is not treated as public lamp stock"); checks++;
+			checks += routeChecks(level, origin.offset(3200, 0, 0));
+			return checks;
+		} finally {
+			if (worker != null) worker.discard();
+			before.keySet().forEach(level::removeBlockEntity);
+			before.forEach((p, s) -> level.setBlock(p, s, 3));
+		}
+	}
+
+	/**
+	 * Overland routes: once the lit village leaves no dark spot inside the 12 block radius, the lamplighter follows the four
+	 * route rays (+8 .. +40 blocks beyond the radius). A cobblestone road is laid along every ray over natural terrain, so the
+	 * dark spot on a real road outside the village radius must be found, lit with a real public torch, and the 64 block spacing
+	 * must hold for the next route search. Runs in its own area (fresh chunks) because it loads the full spacing disk.
+	 */
+	private static int routeChecks(ServerLevel level, BlockPos origin) {
+		Map<BlockPos, BlockState> before = new LinkedHashMap<>();
+		Villager worker = null;
+		int checks = 0;
+		try {
+			for (int cx = Math.floorDiv(origin.getX() - 120, 16); cx <= Math.floorDiv(origin.getX() + 120, 16); cx++) {
+				for (int cz = Math.floorDiv(origin.getZ() - 120, 16); cz <= Math.floorDiv(origin.getZ() + 120, 16); cz++) {
+					long dx = Math.max(0, Math.max((long) cx * 16 - origin.getX(), origin.getX() - ((long) cx * 16 + 15)));
+					long dz = Math.max(0, Math.max((long) cz * 16 - origin.getZ(), origin.getZ() - ((long) cz * 16 + 15)));
+					if (dx * dx + dz * dz <= 117L * 117L) level.getChunk(cx, cz);
+				}
+			}
+			BlockState air = Blocks.AIR.defaultBlockState();
+			BlockState stone = Blocks.STONE.defaultBlockState();
+			for (int dx = -16; dx <= 16; dx++) for (int dz = -16; dz <= 16; dz++) for (int dy = -2; dy <= 5; dy++) {
+				BlockPos p = origin.offset(dx, dy, dz);
+				before.put(p, level.getBlockState(p));
+				level.removeBlockEntity(p);
+				level.setBlock(p, dy < 0 ? stone : air, 3);
+			}
+			// The road: a cobblestone floor with clear air above on each of the four rays, from the village edge to the last probe.
+			for (net.minecraft.core.Direction direction : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+				for (int step = 17; step <= 52; step++) {
+					BlockPos column = origin.relative(direction, step);
+					int top = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column.getX(), column.getZ());
+					for (int y = top - 2; y <= top + 3; y++) {
+						BlockPos p = new BlockPos(column.getX(), y, column.getZ());
+						before.putIfAbsent(p, level.getBlockState(p));
+						level.removeBlockEntity(p);
+						level.setBlock(p, y < top ? Blocks.COBBLESTONE.defaultBlockState() : air, 3);
+					}
+				}
+			}
+			VillageRef ref = Checks090.fixtureForEquipment(level, origin);
+			Container publicStock = ref.chest(level);
+			require(publicStock != null, "route fixture chest exists");
+			publicStock.clearContent();
+			publicStock.setItem(0, new ItemStack(Items.TORCH, 5));
+
+			BlockPos bell = ref.bell();
+			BlockPos inside = Lighting.findDark(level, bell, 12);
+			require(inside != null && Math.abs(inside.getX() - bell.getX()) <= 12 && Math.abs(inside.getZ() - bell.getZ()) <= 12,
+				"the unlit village offers a dark spot inside its radius first (found " + (inside == null ? "none" : inside.toShortString()) + ")"); checks++;
+			level.setBlock(inside, Blocks.TORCH.defaultBlockState(), 3);
+
+			BlockPos far = Lighting.findDark(level, bell, 12);
+			require(far != null, "a lit village still reports a dark spot along its overland routes");
+			int dx = far.getX() - bell.getX();
+			int dz = far.getZ() - bell.getZ();
+			int distance = Math.abs(dx) + Math.abs(dz);
+			require((dx == 0 || dz == 0) && distance >= 20 && distance <= 52 && (distance - 12) % 8 == 0
+				&& level.getBlockState(far).isAir() && level.getBlockState(far.below()).is(Blocks.COBBLESTONE)
+				&& Lighting.placeable(level, far),
+				"the dark spot lies on a route ray outside the 12 block radius, on the road (" + far.toShortString() + ", distance " + distance + ")"); checks++;
+
+			worker = EntityTypes.VILLAGER.spawn(level, far.east(1), EntitySpawnReason.COMMAND);
+			if (worker == null) throw new IllegalStateException("LAMPLIGHTER CHECK FAILED: could not spawn route lamplighter");
+			worker.addTag("vp090_fixture");
+			worker.setNoAi(true);
+			worker.setInvulnerable(true);
+			VillagerMemory memory = worker.getAttachedOrCreate(VillagerPlus.MEMORY);
+			JobState state = new JobState();
+			LamplighterJob job = new LamplighterJob();
+			long now = level.getGameTime() + 1;
+			stand(worker, far);
+			require(job.primary(ctx(level, worker, state, memory, ref, now)) && level.getBlockState(far).is(Blocks.TORCH)
+				&& count(publicStock, Items.TORCH) == 4, "the lamplighter lights the road spot outside the village radius with one public torch"); checks++;
+
+			BlockPos next = Lighting.findDark(level, bell, 12);
+			require(next == null || (Math.abs(next.getY() - far.getY()) > 63
+				|| (long) (next.getX() - far.getX()) * (next.getX() - far.getX()) + (long) (next.getZ() - far.getZ()) * (next.getZ() - far.getZ()) >= 64L * 64L),
+				"the next route search keeps the 64 block spacing to the new road lamp (next " + (next == null ? "none" : next.toShortString()) + ")"); checks++;
 			return checks;
 		} finally {
 			if (worker != null) worker.discard();

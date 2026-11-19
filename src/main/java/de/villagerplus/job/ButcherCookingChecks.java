@@ -196,6 +196,25 @@ public final class ButcherCookingChecks {
 			village.clearContent();
 			village.setItem(0, new ItemStack(Items.PORKCHOP, 3));
 			require(count(village, Items.PORKCHOP) == 0, "the guarded central chest refuses raw meat written directly"); checks++;
+
+			// 8. Charcoal from the charcoal burner is the preferred public fuel: with coal in an earlier slot and charcoal
+			// in a later one, the kitchen smoker burns charcoal and leaves the coal and the private chest alone.
+			village.clearContent();
+			smoker = furnace(level, smokerPos);
+			for (int i = 0; i < 3; i++) smoker.setItem(i, ItemStack.EMPTY);
+			smoker.setAttached(VillagerPlus.SMITH_FURNACE, ItemStack.EMPTY);
+			village.setItem(0, new ItemStack(Items.COAL, 4));
+			village.setItem(1, new ItemStack(Items.CHARCOAL, 4));
+			granary.setItem(0, new ItemStack(Items.BEEF, 2));
+			JobState fuelState = new JobState();
+			long t2 = now + 1000;
+			job.secondary(ctx(level, butcher, fuelState, memory, ref, t2++));
+			job.secondary(ctx(level, butcher, fuelState, memory, ref, t2++));
+			require(smoker.getItem(1).is(Items.CHARCOAL) && smoker.getItem(1).getCount() == 1
+				&& count(village, Items.CHARCOAL) == 3 && count(village, Items.COAL) == 4
+				&& count(privateBox, Items.COAL) == 8 && count(privateBox, Items.BEEF) == 8,
+				"the kitchen smoker takes one public charcoal and no coal when both exist, private chest untouched (smoker fuel "
+					+ smoker.getItem(1) + ")"); checks++;
 			return checks;
 		} finally {
 			spawned.forEach(Entity::discard);

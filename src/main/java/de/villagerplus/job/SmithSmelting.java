@@ -79,11 +79,7 @@ final class SmithSmelting {
 				if (recipe == null || !ItemStack.isSameItemSameComponents(
 					recipe.assemble(new SingleRecipeInput(input)), claim)) return false;
 				if (furnace.getItem(1).isEmpty()) {
-					ItemStack fuel = ItemStack.EMPTY;
-					for (Container store : Balance.storage(c.level(), ref)) {
-						fuel = withdraw(store, s -> s.is(ItemTags.COALS));
-						if (!fuel.isEmpty()) break;
-					}
+					ItemStack fuel = withdrawFuel(Balance.storage(c.level(), ref));
 					if (fuel.isEmpty()) return false;
 					furnace.setItem(1, fuel);
 				}
@@ -247,7 +243,7 @@ final class SmithSmelting {
 		if (recipe == null || !ItemStack.isSameItemSameComponents(recipe.assemble(new SingleRecipeInput(input)), claim)) return false;
 		if (furnace.getItem(1).isEmpty()) {
 			Container storage = Lager.combined(c.level(), c.village());
-			ItemStack fuel = storage == null ? ItemStack.EMPTY : withdraw(storage, s -> s.is(ItemTags.COALS));
+			ItemStack fuel = storage == null ? ItemStack.EMPTY : withdrawFuel(storage);
 			if (fuel.isEmpty()) return false;
 			furnace.setItem(1, fuel);
 		}
@@ -419,6 +415,24 @@ final class SmithSmelting {
 		if (smokes(worker)) return Meals.isPreparedFood(output);
 		StockPolicy.Category category = StockPolicy.category(output.getItem());
 		return category == StockPolicy.Category.MATERIAL || category == StockPolicy.Category.TOOLS;
+	}
+
+	/** One fuel item from public stock: charcoal (the charcoal burner's product) first, any other coal only as fallback. */
+	static ItemStack withdrawFuel(Container store) {
+		ItemStack charcoal = withdraw(store, s -> s.is(Items.CHARCOAL));
+		return charcoal.isEmpty() ? withdraw(store, s -> s.is(ItemTags.COALS)) : charcoal;
+	}
+
+	static ItemStack withdrawFuel(Iterable<? extends Container> stores) {
+		for (Container store : stores) {
+			ItemStack charcoal = withdraw(store, s -> s.is(Items.CHARCOAL));
+			if (!charcoal.isEmpty()) return charcoal;
+		}
+		for (Container store : stores) {
+			ItemStack coal = withdraw(store, s -> s.is(ItemTags.COALS));
+			if (!coal.isEmpty()) return coal;
+		}
+		return ItemStack.EMPTY;
 	}
 
 	private static ItemStack withdraw(Container store, Predicate<ItemStack> match) {

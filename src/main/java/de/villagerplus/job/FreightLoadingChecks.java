@@ -159,6 +159,59 @@ public final class FreightLoadingChecks {
 			require(FreightLoading.work(ctx(level, porter, state, memory, ref, now)) && count(cart, Items.BREAD) == 5
 				&& count(granary, Items.BREAD) == 0 && count(cart, Items.COBBLESTONE) == 26 * 64,
 				"a cart with one free slot takes the cargo without disturbing its other contents"); checks++;
+
+			// G: the porter sorts misplaced goods into the right depot through StockPolicy routing, with nothing created or lost.
+			cart.discard();
+			spawned.remove(cart);
+			Specials.remove(ref, Blueprints.STATION); // no station: the porter has no freight work and falls through to sorting
+			BlockPos toolshedPos = origin.offset(28, 0, 10);
+			level.setBlock(toolshedPos, Blocks.BARREL.defaultBlockState(), 3);
+			Container toolshed = HopperBlockEntity.getContainerAt(level, toolshedPos);
+			require(toolshed != null, "fixture toolshed barrel exists");
+			Specials.set(ref, Blueprints.TOOLSHED, toolshedPos);
+			for (Container box : new Container[] {village, granary, store, privateChest, toolshed}) box.clearContent();
+			// The material chest refuses direct writes of tools; legacy contents loaded from a save are the real source of such
+			// stacks, so seed it with the registration lifted for these writes only.
+			var registeredChest = ref.data().chest;
+			ref.data().chest = java.util.Optional.empty();
+			village.setItem(0, new ItemStack(Items.IRON_PICKAXE));
+			village.setItem(1, new ItemStack(Items.OAK_LOG, 10));
+			ref.data().chest = registeredChest;
+			require(count(village, Items.IRON_PICKAXE) == 1, "fixture: a legacy tool sits in the material chest"); checks++;
+			toolshed.setItem(0, new ItemStack(Items.BRICKS, 12));
+			toolshed.setItem(1, new ItemStack(Items.IRON_AXE));
+			privateChest.setItem(0, new ItemStack(Items.DIAMOND_PICKAXE));
+			privateChest.setItem(1, new ItemStack(Items.BRICKS, 5));
+			PorterJob porterJob = new PorterJob();
+			JobState sortState = new JobState();
+			BlockPos villagePos = ref.chestPos(level);
+			porter.teleportTo(villagePos.getX() + 1.5, villagePos.getY(), villagePos.getZ() + 0.5);
+			int sortJobs = memory.jobsDone;
+			require(porterJob.primary(ctx(level, porter, sortState, memory, ref, now + 500)) && count(village, Items.IRON_PICKAXE) == 0
+				&& count(toolshed, Items.IRON_PICKAXE) == 1 && count(toolshed, Items.IRON_AXE) == 1 && count(village, Items.OAK_LOG) == 10
+				&& memory.jobsDone == sortJobs + 1,
+				"a tool lying in the material chest is carried into the toolshed, the logs stay"); checks++;
+			require(porterJob.primary(ctx(level, porter, sortState, memory, ref, now + 600)) && count(toolshed, Items.BRICKS) == 12,
+				"the porter walks to the toolshed first and moves nothing on the way"); checks++;
+			porter.teleportTo(toolshedPos.getX() + 1.5, toolshedPos.getY(), toolshedPos.getZ() + 0.5);
+			require(porterJob.primary(ctx(level, porter, sortState, memory, ref, now + 700)) && count(toolshed, Items.BRICKS) == 0
+				&& count(village, Items.BRICKS) == 12 && count(toolshed, Items.IRON_AXE) == 1 && count(toolshed, Items.IRON_PICKAXE) == 1,
+				"bricks lying in the toolshed are carried into the material chest, the tools stay"); checks++;
+			require(count(privateChest, Items.DIAMOND_PICKAXE) == 1 && count(privateChest, Items.BRICKS) == 5
+				&& stockSum(Items.IRON_PICKAXE, village, toolshed, granary, store) == 1 && stockSum(Items.BRICKS, village, toolshed, granary, store) == 12
+				&& stockSum(Items.OAK_LOG, village, toolshed, granary, store) == 10 && stockSum(Items.IRON_AXE, village, toolshed, granary, store) == 1,
+				"private chests stay untouched and every sorted item is accounted for"); checks++;
+			require(!porterJob.primary(ctx(level, porter, sortState, memory, ref, now + 800)) && count(village, Items.BRICKS) == 12
+				&& count(toolshed, Items.IRON_PICKAXE) == 1, "correctly sorted depots are left alone"); checks++;
+			// Without a toolshed the tool has no right depot: it stays exactly where it is.
+			Specials.remove(ref, Blueprints.TOOLSHED);
+			ref.data().chest = java.util.Optional.empty();
+			village.setItem(2, new ItemStack(Items.STONE_SHOVEL));
+			ref.data().chest = registeredChest;
+			sortState.idleUntil[0] = 0L;
+			porter.teleportTo(villagePos.getX() + 1.5, villagePos.getY(), villagePos.getZ() + 0.5);
+			require(!porterJob.primary(ctx(level, porter, sortState, memory, ref, now + 900)) && count(village, Items.STONE_SHOVEL) == 1,
+				"a misplaced tool without any toolshed stays in its slot"); checks++;
 			return checks;
 		} finally {
 			spawned.forEach(Entity::discard);
