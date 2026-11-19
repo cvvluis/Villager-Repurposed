@@ -175,8 +175,8 @@ public final class LightingSpacingChecks {
 			level.setBlock(steepSearchLight, Blocks.AIR.defaultBlockState(), 3);
 
 			// The remembered road corridor must include the repair. This prevents converting a garden or random dirt gap.
-			Market.save(ref, new MarketData(Optional.of(origin.west(10)), oldMarket.shops(), oldMarket.nextPlan(), oldMarket.sales()));
-			ref.bellEntity().setAttached(VillagerPlus.ROADS, Map.of("center", 11L));
+			Market.save(ref, new MarketData(Optional.of(origin.west(20)), oldMarket.shops(), oldMarket.nextPlan(), oldMarket.sales()));
+			ref.bellEntity().setAttached(VillagerPlus.ROADS, Map.of("center", 21L));
 			for (int dx = -10; dx <= -1; dx++) {
 				BlockPos ground = origin.offset(dx, -1, 0);
 				level.setBlock(ground.below(), Blocks.STONE.defaultBlockState(), 3);
@@ -199,9 +199,9 @@ public final class LightingSpacingChecks {
 			checks++;
 
 			// The saved plaza-to-bell path can extend beyond the local twelve-block work scan.
-			Market.save(ref, new MarketData(Optional.of(origin.west(20)), oldMarket.shops(), oldMarket.nextPlan(), oldMarket.sales()));
-			ref.bellEntity().setAttached(VillagerPlus.ROADS, Map.of("center", 21L));
-			for (int dx = -20; dx <= -1; dx++) {
+			Market.save(ref, new MarketData(Optional.of(origin.west(30)), oldMarket.shops(), oldMarket.nextPlan(), oldMarket.sales()));
+			ref.bellEntity().setAttached(VillagerPlus.ROADS, Map.of("center", 31L));
+			for (int dx = -30; dx <= -1; dx++) {
 				BlockPos ground = origin.offset(dx, -1, 0);
 				level.setBlock(ground.below(), Blocks.STONE.defaultBlockState(), 3);
 				level.setBlock(ground, dx == -15 ? Blocks.DIRT.defaultBlockState() : Blocks.DIRT_PATH.defaultBlockState(), 3);
@@ -240,8 +240,8 @@ public final class LightingSpacingChecks {
 				"the lamplighter closes that distant saved-path gap using and consuming carried Dirt");
 			checks++;
 			worker.getInventory().clearContent();
-			Market.save(ref, new MarketData(Optional.of(origin.west(10)), oldMarket.shops(), oldMarket.nextPlan(), oldMarket.sales()));
-			ref.bellEntity().setAttached(VillagerPlus.ROADS, Map.of("center", 11L));
+			Market.save(ref, new MarketData(Optional.of(origin.west(20)), oldMarket.shops(), oldMarket.nextPlan(), oldMarket.sales()));
+			ref.bellEntity().setAttached(VillagerPlus.ROADS, Map.of("center", 21L));
 			for (int dx = -10; dx <= -1; dx++) {
 				BlockPos ground = origin.offset(dx, -1, 0);
 				level.setBlock(ground, dx <= -9 || dx >= -7 ? Blocks.DIRT_PATH.defaultBlockState() : Blocks.DIRT.defaultBlockState(), 3);
@@ -257,7 +257,7 @@ public final class LightingSpacingChecks {
 				"a hard surface is never excavated or replaced to repair a road");
 			checks++;
 			level.setBlock(candidate, Blocks.DIRT.defaultBlockState(), 3);
-			ref.bellEntity().setAttached(VillagerPlus.ZONES, List.of(new ZonePolicy.Zone("test", "work",
+			ref.bellEntity().setAttached(VillagerPlus.ZONES, List.of(new ZonePolicy.Zone("test", "protected",
 				candidate.getX(), candidate.getZ(), candidate.getX(), candidate.getZ())));
 			check(!Lighting.recognizedVillagePathGap(level, ref, candidate), "a claimed village zone is never edited");
 			checks++;
@@ -447,8 +447,8 @@ public final class LightingSpacingChecks {
 
 			// A longer remembered-road gap remains repairable, but an open area beyond the cap does not.
 			// Keep the entire gap beyond the bell's protected three-block radius.
-			Market.save(ref, new MarketData(Optional.of(origin.west(14)), oldMarket.shops(), oldMarket.nextPlan(), oldMarket.sales()));
-			ref.bellEntity().setAttached(VillagerPlus.ROADS, Map.of("center", 15L));
+			Market.save(ref, new MarketData(Optional.of(origin.west(24)), oldMarket.shops(), oldMarket.nextPlan(), oldMarket.sales()));
+			ref.bellEntity().setAttached(VillagerPlus.ROADS, Map.of("center", 25L));
 			for (int dx = -14; dx <= -5; dx++) {
 				BlockPos ground = origin.offset(dx, -1, 0);
 				level.setBlock(ground, dx == -14 || dx == -5 ? Blocks.DIRT_PATH.defaultBlockState()
@@ -475,8 +475,8 @@ public final class LightingSpacingChecks {
 				&& JobUtil.count(worker.getInventory(), stack -> stack.is(Items.DIRT)) == 0,
 				"the eight-cell-gap repair still consumes one real Dirt block and shovel durability per work cycle");
 			checks++;
-			Market.save(ref, new MarketData(Optional.of(origin.west(15)), oldMarket.shops(), oldMarket.nextPlan(), oldMarket.sales()));
-			ref.bellEntity().setAttached(VillagerPlus.ROADS, Map.of("center", 16L));
+			Market.save(ref, new MarketData(Optional.of(origin.west(25)), oldMarket.shops(), oldMarket.nextPlan(), oldMarket.sales()));
+			ref.bellEntity().setAttached(VillagerPlus.ROADS, Map.of("center", 26L));
 			for (int dx = -15; dx <= -5; dx++) {
 				BlockPos ground = origin.offset(dx, -1, 0);
 				level.setBlock(ground.below(), Blocks.STONE.defaultBlockState(), 3);
@@ -489,8 +489,8 @@ public final class LightingSpacingChecks {
 			check(!Lighting.recognizedVillagePathGap(level, ref, nineGapCandidate, worker),
 				"a nine-cell opening remains outside the bounded repair length");
 			checks++;
-			Market.save(ref, new MarketData(Optional.of(origin.west(10)), oldMarket.shops(), oldMarket.nextPlan(), oldMarket.sales()));
-			ref.bellEntity().setAttached(VillagerPlus.ROADS, Map.of("center", 11L));
+			Market.save(ref, new MarketData(Optional.of(origin.west(20)), oldMarket.shops(), oldMarket.nextPlan(), oldMarket.sales()));
+			ref.bellEntity().setAttached(VillagerPlus.ROADS, Map.of("center", 21L));
 
 			// A single natural soil block over the saved route can be cut when path blocks anchor both sides.
 			for (int dx = -10; dx <= -1; dx++) {
@@ -712,7 +712,7 @@ public final class LightingSpacingChecks {
 				&& selectedBerm.getX() <= origin.getX() - 5 && Math.abs(selectedBerm.getZ() - origin.getZ()) <= 1,
 				"the saved-route scan selects one cell from the bounded two-by-three obstruction");
 			checks++;
-			ref.bellEntity().setAttached(VillagerPlus.ZONES, List.of(new ZonePolicy.Zone("berm", "field",
+			ref.bellEntity().setAttached(VillagerPlus.ZONES, List.of(new ZonePolicy.Zone("berm", "protected",
 				secondBermCell.getX(), secondBermCell.getZ(), secondBermCell.getX(), secondBermCell.getZ())));
 			check(!Lighting.recognizedVillagePathCut(level, ref, firstBermCell, worker),
 				"a claimed adjacent cell prevents cutting the whole short route obstruction");

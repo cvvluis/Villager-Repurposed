@@ -165,7 +165,7 @@ public final class RoadTerrainChecks {
     /** Exercise the real road job across a four-cell gap, recreating volatile job state after each block. */
     private static int paidGapJob(ServerLevel level, BlockPos bell) {
         Map<BlockPos, Cell> before = new LinkedHashMap<>();
-        BlockPos plaza = bell.west(20), gap = plaza.east(8), chest = bell.east(3);
+        BlockPos plaza = bell.west(20), gap = plaza.east(10), chest = bell.east(3);
         snapshot(level, before, bell);
         snapshot(level, before, bell.below());
         snapshot(level, before, chest);

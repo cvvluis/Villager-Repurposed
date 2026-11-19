@@ -182,11 +182,11 @@ public final class RoadMaintenanceChecks {
     throw new IllegalStateException("Road maintenance: bridge protection fixture could not select both placements");
 
    var ownerZones=new java.util.ArrayList<>(beforeOwnerZones);
-   ownerZones.add(new ZonePolicy.Zone("road-bridge-owner-protection","work",deck.getX(),deck.getZ(),deck.getX(),deck.getZ()));
+   ownerZones.add(new ZonePolicy.Zone("road-bridge-owner-protection","protected",deck.getX(),deck.getZ(),deck.getX(),deck.getZ()));
    ref.bellEntity().setAttached(VillagerPlus.ZONES,List.copyOf(ownerZones));ref.dirty();
    if(peerRef!=null) {
     var peerZones=new java.util.ArrayList<>(beforePeerZones);
-    peerZones.add(new ZonePolicy.Zone("road-bridge-peer-protection","work",protectedLogDeck.getX(),
+    peerZones.add(new ZonePolicy.Zone("road-bridge-peer-protection","protected",protectedLogDeck.getX(),
      protectedLogDeck.getZ(),protectedLogDeck.getX(),protectedLogDeck.getZ()));
     peerRef.bellEntity().setAttached(VillagerPlus.ZONES,List.copyOf(peerZones));peerRef.dirty();
    }
