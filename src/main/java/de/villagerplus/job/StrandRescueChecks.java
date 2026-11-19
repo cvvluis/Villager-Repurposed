@@ -177,6 +177,41 @@ public final class StrandRescueChecks {
 			require(!JobUtil.routeStrandSuspected(id, pit, T0 + 12_760L), "a gap above 400 ticks between failures restarts the count"); checks++;
 			JobUtil.clearRouteFailures(id);
 			require(!JobUtil.routeStrandSuspected(id, pit, T0 + 12_770L), "clearing the record removes the suspicion"); checks++;
+			// I: a resident boxed into a small room behind a wall-to-wall counter (trapdoor row under a block row, as in the taiga
+			// kitchen of the natural world: partial route of 5 nodes, which the old four-node limit never counted). The real long-route
+			// attempts feed the strand watch and the walk-back model proves the room is sealed, so the resident is brought back.
+			JobUtil.clearLongRoutes();
+			JobUtil.clearRouteFailures(id);
+			BlockState wall = Blocks.STONE_BRICKS.defaultBlockState();
+			for (int dx = 2; dx <= 8; dx++) for (int dz = -6; dz <= -1; dz++) for (int dy = 0; dy <= 3; dy++) {
+				boolean ring = dx == 2 || dx == 8 || dz == -6 || dz == -1;
+				level.setBlock(origin.offset(dx, dy, dz), ring ? wall : air, 3);
+			}
+			level.setBlock(origin.offset(5, 0, -1), Blocks.SPRUCE_DOOR.defaultBlockState(), 3);
+			level.setBlock(origin.offset(5, 1, -1), Blocks.SPRUCE_DOOR.defaultBlockState()
+				.setValue(net.minecraft.world.level.block.DoorBlock.HALF, net.minecraft.world.level.block.state.properties.DoubleBlockHalf.UPPER), 3);
+			for (int dx = 3; dx <= 7; dx++) {
+				level.setBlock(origin.offset(dx, 0, -3), Blocks.SPRUCE_TRAPDOOR.defaultBlockState()
+					.setValue(net.minecraft.world.level.block.TrapDoorBlock.HALF, net.minecraft.world.level.block.state.properties.Half.TOP), 3);
+				level.setBlock(origin.offset(dx, 1, -3), Blocks.BARREL.defaultBlockState(), 3);
+			}
+			BlockPos room = origin.offset(3, 0, -5);
+			BlockPos street = de.villagerplus.build.Builder.villageReturn(level, ref.bell());
+			require(street != null && !de.villagerplus.village.Sites.walksBackTo(level, room, street),
+				"the sealed back room has no way to the street in the walk-back model (street " + street + ", room " + room + ")"); checks++;
+			worker.teleportTo(room.getX() + 0.5, room.getY(), room.getZ() + 0.5);
+			require(JobUtil.countsAsStrandFailure(5) && JobUtil.countsAsStrandFailure(JobUtil.STRAND_MAX_ROUTE_NODES)
+				&& JobUtil.countsAsStrandFailure(8) && !JobUtil.countsAsStrandFailure(9),
+				"an unreachable partial route of up to eight nodes (the kitchen back room measured five) counts as a strand failure, a longer one does not"); checks++;
+			for (long dt : new long[] { 0L, 200L, 400L, 600L, 800L }) JobUtil.noteRouteFailure(id, worker.blockPosition(), T0 + 60_000L + dt);
+			require(JobUtil.routeStrandSuspected(id, worker.blockPosition(), T0 + 60_800L),
+				"repeated long-route failures from inside the sealed room raise the strand suspicion"); checks++;
+			require(JobManager.rescueStranded(ctx(level, worker, state, memory, ref, T0 + 60_800L))
+				&& worker.blockPosition().distManhattan(room) > 6,
+				"the resident boxed into the sealed room is brought back to the street"); checks++;
+			for (int dx = 2; dx <= 8; dx++) for (int dz = -6; dz <= -1; dz++) for (int dy = 0; dy <= 3; dy++) {
+				level.setBlock(origin.offset(dx, dy, dz), air, 3);
+			}
 			return checks;
 		} finally {
 			JobUtil.clearLongRoutes();

@@ -491,6 +491,12 @@ public final class BuilderPathChecks {
                 && !Builder.planOwnerExcluded(stuck, 100L + Builder.STUCK_OWNER_EXCLUSION_TICKS)
                 && !Builder.planOwnerExcluded(stuck, 100L + Builder.STUCK_OWNER_EXCLUSION_TICKS + 5),
                 "a benched owner is excluded from plan work exactly until the exclusion expires, then eligible again");
+            checks += require(Builder.standHandoverPermitted(Blueprints.GRANARY, 0) && Builder.standHandoverPermitted(Blueprints.STORAGE, 0),
+                "a civic plan hands a stuck owner over at step 0");
+            checks += require(Builder.standHandoverPermitted(Blueprints.GRANARY, Builder.MAX_STAND_HANDOVERS - 1)
+                && !Builder.standHandoverPermitted(Blueprints.GRANARY, Builder.MAX_STAND_HANDOVERS)
+                && !Builder.standHandoverPermitted(Blueprints.HOUSE, 0),
+                "the hand-over stays bounded per plan and is for civic plans only (a house keeps the old abort)");
             Builder.forgetStandWatch(key);
             best.remove(key); nodes.remove(key); failure.remove(key);
             return checks;

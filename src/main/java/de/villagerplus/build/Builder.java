@@ -5852,13 +5852,21 @@ public final class Builder {
 	}
 
 	/**
+	 * A civic plan may bench its stuck owner at any cursor, not only at step 0: aborting a plan with blocks already placed throws
+	 * the footprint away and restarts the same building at another site (natural run: a granary at step 119 of 437 dropped because
+	 * its owner was boxed into a room), while a hand-over keeps the plot and its materials.
+	 */
+	static boolean standHandoverPermitted(String planType, int handoversSoFar) {
+		return civicSite(planType) && handoversSoFar < MAX_STAND_HANDOVERS;
+	}
+
+	/**
 	 * The owner cannot reach the stand but the site can be walked from the village: the owner, not the plot, is the problem
 	 * (boxed in, caught in a fenced pen). Keep the plot and its cleared trees, bench this owner for a while and let the next
 	 * eligible resident take over. Limited per plan so a genuinely unreachable plot is still dropped.
 	 */
 	private static boolean handOverStuckOwner(Ctx c, VillageRef ref, VillageData d, BlockPos origin, Direction dir, List<Step> steps, String reason) {
-		if (!civicSite(d.planType) || d.planStep != 0 || steps == null) return false;
-		if (STAND_HANDOVERS.getOrDefault(origin.asLong(), 0) >= MAX_STAND_HANDOVERS) return false;
+		if (steps == null || !standHandoverPermitted(d.planType, STAND_HANDOVERS.getOrDefault(origin.asLong(), 0))) return false;
 		if (!siteWalkableFromStreet(c, ref, origin, dir, steps)) return false;
 		int count = STAND_HANDOVERS.merge(origin.asLong(), 1, Integer::sum);
 		excludePlanOwner(c.v().getUUID(), c.now() + STUCK_OWNER_EXCLUSION_TICKS);
@@ -5869,8 +5877,8 @@ public final class Builder {
 		noteStandProgress(origin.asLong(), c.now());
 		c.v().getNavigation().stop();
 		c.v().getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
-		LOGGER.info("Villagers: Repurposed: Bau '{}' Schritt 0: Besitzer {} kommt nicht zum Stand ({}), der Bauplatz ist von der Dorfstrasse aus begehbar: Besitzer pausiert {} Ticks, Plan bleibt (Uebergabe {}/{})",
-			d.planType, c.v().blockPosition().toShortString(), reason, STUCK_OWNER_EXCLUSION_TICKS, count, MAX_STAND_HANDOVERS);
+		LOGGER.info("Villagers: Repurposed: Bau '{}' Schritt {}: Besitzer {} kommt nicht zum Stand ({}), der Bauplatz ist von der Dorfstrasse aus begehbar: Besitzer pausiert {} Ticks, Plan bleibt (Uebergabe {}/{})",
+			d.planType, d.planStep, c.v().blockPosition().toShortString(), reason, STUCK_OWNER_EXCLUSION_TICKS, count, MAX_STAND_HANDOVERS);
 		return true;
 	}
 
