@@ -51,6 +51,17 @@ public final class JobUtil {
 	static final long STRAND_RECENT_TICKS = 400L;
 	static final long STRAND_QUIET_TICKS = 1200L;
 	static final int STRAND_MAX_ROUTE_NODES = 4;
+	/**
+	 * An unreachable long route of up to this many nodes counts as a failure for the strand watch. The partial route of a resident
+	 * boxed into a small room (observed: a sealed 5x4 kitchen back room behind a counter, route=5 nodes) is longer than the
+	 * {@link #STRAND_MAX_ROUTE_NODES} of a pit; the rescue itself still needs the block model to prove there is no way home.
+	 */
+	static final int STRAND_FAILURE_ROUTE_NODES = 8;
+
+	/** True when an unreachable long route of this many nodes is evidence for a boxed-in worker. */
+	static boolean countsAsStrandFailure(int partialRouteNodes) {
+		return partialRouteNodes <= STRAND_FAILURE_ROUTE_NODES;
+	}
 	private static final Map<UUID, StrandWatch> STRAND_WATCH = new HashMap<>();
 	private static final Map<UUID, Long> STRAND_QUIET_UNTIL = new HashMap<>();
 	private static final Map<UUID, Long> PERCH_NUDGE_AT = new HashMap<>();
@@ -454,7 +465,7 @@ public final class JobUtil {
 		var route=de.villagerplus.build.Builder.workPath(c,pos);
 		if(route==null||!route.canReach()) {
 			LONG_ROUTE_ATTEMPTS.put(workerId, new LongRouteAttempt(pos.immutable(), null, c.now() + LONG_ROUTE_CACHE_TICKS));
-			if (route == null || route.getNodeCount() <= STRAND_MAX_ROUTE_NODES) {
+			if (route == null || countsAsStrandFailure(route.getNodeCount())) {
 				noteRouteFailure(workerId, c.v().blockPosition(), c.now());
 				stepOffPerch(c);
 			}
