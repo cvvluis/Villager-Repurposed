@@ -10,6 +10,7 @@ Alle genannten Versionen gelten für Fabric, Minecraft 26.2 und Java 25. Die JAR
 
 - **Villagers use cobblestone variants.** Plain cobblestone block steps are paid first with andesite, diorite or granite (largest stock first); foundations, stairs and slabs still need real cobblestone. Miners and stone hands deliver variants too.
 - **Mines survive single-worker path failures.** Path failures are tracked per entrance and per worker, expire, and reset on any successful path. A mine closes only when two workers fail or one worker fails repeatedly over time.
+- **Masons can dig the whole mine.** The "lived below the village" rescue carried the plan's own mason back to the street whenever he went more than 12 blocks below it, so every mine section beyond number 12 was dug by helpers only (about two sections a day); a mason who works the mine is now left alone. A miner underground also turns back for a bigger load (36) than a resident on the surface (12), which saves most of the round trips through the single-file shaft.
 - **Placement and break effects.** Villager-placed blocks play the block's own placement sound with particles; dismantling ends each block with a break sound and particles.
 - **Larger walls.** The village wall radius cap is raised from 192 to 384 blocks. Saved plans stay backward compatible.
 - **Villager behaviour fixes.** Fence wood and starter seeds are gathered before the first field; guards keep watch from towers; long-route and mine-kit stalls are reported more clearly on the board; recipe, road and rail fixtures stabilised.

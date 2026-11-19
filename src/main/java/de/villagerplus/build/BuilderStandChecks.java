@@ -183,6 +183,22 @@ public final class BuilderStandChecks {
 			Builder.tick(new Ctx(level,worker,st,c.mem(),towerRef,now),true);
 			check(st.builderRelocations==relocations&&worker.position().equals(slopePosition),
 				"builder two blocks below street is not rescued relative to tower bell");passed++;
+			// A mason down in the village mine (the gallery runs up to 20 blocks below the street) is not a cave-bed case; one who is lost there is.
+			worker.setPos(preferred.getX()+0.5,floor.getY()-14,preferred.getZ()+0.5);
+			var galleryPosition=worker.position();int galleryRelocations=st.builderRelocations;long galleryMining=st.miningUntil;
+			st.miningUntil=now+60;
+			Builder.tick(new Ctx(level,worker,st,c.mem(),towerRef,now),true);
+			check(st.builderRelocations==galleryRelocations&&worker.position().equals(galleryPosition),
+				"mason working the mine fourteen blocks below the street is not carried back to it");passed++;
+			st.miningUntil=now-Builder.MINE_RESCUE_GRACE_TICKS+1;
+			Builder.tick(new Ctx(level,worker,st,c.mem(),towerRef,now),true);
+			check(st.builderRelocations==galleryRelocations&&worker.position().equals(galleryPosition),
+				"the grace period after the last mine reservation still protects the mason");passed++;
+			st.miningUntil=now-Builder.MINE_RESCUE_GRACE_TICKS;
+			Builder.tick(new Ctx(level,worker,st,c.mem(),towerRef,now),true);
+			check(st.builderRelocations==galleryRelocations+1&&worker.getY()>floor.getY()-5,
+				"a mason who has not worked the mine for a while is still carried out of a deep cave");passed++;
+			st.miningUntil=galleryMining;
 			worker.setPos(preferred.getX()+0.5,preferred.getY(),preferred.getZ()+0.5);
 			level.setBlock(street.above(),Blocks.STONE.defaultBlockState(),FLAGS);
 			forgetVillageStreetCache();

@@ -97,6 +97,22 @@ public final class PlanStoneSupply {
 		return carried >= DELIVERY_LOAD || (shortage > 0 && spare >= shortage);
 	}
 
+	/**
+	 * A miner who is down in the gallery only turns back for a bigger load: the way out and back (the gallery runs up to 20 blocks
+	 * deep, with single-file passing) costs far more than the few blocks that one more section yields, and a full load of twelve
+	 * used to send him up after every second section. A load that covers the whole shortage still goes up at once, and a pocket
+	 * that cannot take the next section sends him up through the capacity check in {@code Mining.dig} anyway.
+	 */
+	public static final int DEEP_DELIVERY_LOAD = 36;
+
+	/** {@link #cobbleDeliveryDue(ServerLevel, VillageData, Container, int)} for a resident who may be underground (needs {@link #DEEP_DELIVERY_LOAD} there). */
+	public static boolean cobbleDeliveryDue(ServerLevel level, VillageData data, Container stock, int carried, boolean underground) {
+		if (!cobbleDeliveryDue(level, data, stock, carried)) return false;
+		if (!underground || carried >= DEEP_DELIVERY_LOAD) return true;
+		int shortage = Math.max(cobbleShortage(data, stock), villageCobbleShortage(data, stock));
+		return shortage > 0 && carried - COBBLE_RESERVE >= shortage;
+	}
+
 	/** Starts plan mining with an actual stored pickaxe or one paid from loaded recipes and public stock. */
 	public static boolean supplyMiningPickaxe(Ctx c, Container stock) {
 		return supplyMiningPickaxe(c, stock, false);

@@ -191,6 +191,19 @@ public final class MineKitChecks {
 			check(!PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 11), "eleven cobblestones do not yet justify the walk while 18 are missing"); checks++;
 			check(PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 12), "a full load of twelve is delivered while the plan waits"); checks++;
 			check(!PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 0), "nothing carried, nothing to deliver"); checks++;
+			// Down in the gallery the way out is long: only a big load (or one that covers the whole shortage) sends the miner up.
+			check(PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 12, false) && !PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 12, true),
+				"twelve cobblestones are delivered from the surface but do not yet bring a miner out of the gallery"); checks++;
+			check(PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 20, true),
+				"a load that covers the whole shortage brings the miner out at once"); checks++;
+			data.wanted.clear();
+			data.wanted.add("minecraft:cobblestone#90");
+			check(!PlanStoneSupply.cobbleDeliveryDue(level, data, chest, PlanStoneSupply.DEEP_DELIVERY_LOAD - 1, true)
+				&& PlanStoneSupply.cobbleDeliveryDue(level, data, chest, PlanStoneSupply.DEEP_DELIVERY_LOAD, true)
+				&& PlanStoneSupply.cobbleDeliveryDue(level, data, chest, PlanStoneSupply.DEEP_DELIVERY_LOAD - 1, false),
+				"a deep miner turns back at the deep load, a resident on the surface at the ordinary load"); checks++;
+			data.wanted.clear();
+			data.wanted.add("minecraft:cobblestone#18");
 			data.wanted.clear();
 			data.wanted.add("minecraft:cobblestone#5");
 			check(PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 5 + PlanStoneSupply.COBBLE_RESERVE)

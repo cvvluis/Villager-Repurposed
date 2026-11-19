@@ -1023,6 +1023,9 @@ public final class Builder {
 		return exactMason(villager) || compatibleMason(villager);
 	}
 
+	/** A mason this long past his last mine reservation counts as lost underground (not as working the gallery). */
+	static final long MINE_RESCUE_GRACE_TICKS = 400L;
+
 	/** Run the existing single-cursor builder against the selected project's temporary legacy view. */
 	private static boolean tickProject(Ctx c, boolean mason, Container siteStock, List<String> cargoManifest,
 			int standSlot, boolean helper) {
@@ -1057,7 +1060,11 @@ public final class Builder {
 				return true;
 			}
 		}
-		if (!helper && mason && c.v().getY() < villageGroundY(c.level(), ref.bell()) - 12 && !de.villagerplus.job.Woodcutting.onWoodExpedition(c)) {
+		// A mason who is working the village mine is meant to be down there: the gallery runs up to 20 blocks below the street, so this
+		// "cave bed" rescue used to carry the plan's own miner back to the street every time he reached the sections below 12 blocks
+		// (the same exemption as JobManager.rescueStranded: a recent mine reservation plus a grace period).
+		if (!helper && mason && c.v().getY() < villageGroundY(c.level(), ref.bell()) - 12 && !de.villagerplus.job.Woodcutting.onWoodExpedition(c)
+			&& c.now() >= c.st().miningUntil + MINE_RESCUE_GRACE_TICKS) {
 			// A cave bed must not keep the mason underground: pathing from there never reaches a street stand.
 			if (c.mem().homeBed.isPresent() && c.mem().homeBed.get().getY() < villageGroundY(c.level(), ref.bell()) - 12) {
 				c.mem().homeBed = Optional.empty();
