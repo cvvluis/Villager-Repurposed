@@ -9,7 +9,8 @@ import net.minecraft.world.phys.AABB;
 
 /**
  * Traeger (Arbeitslose und Dorftrottel): raeumen auf. Sie sammeln Items ein, die schon lange herumliegen, und
- * bringen sie zur Dorfkiste.
+ * bringen sie zur Dorfkiste. Ohne lose Items raeumen sie falsch einsortierte Waren (Werkzeug im Materiallager, Material in der
+ * Werkzeugkammer, Fremdes im Kornspeicher) per StockPolicy-Routing in das richtige Depot um.
  */
 public class PorterJob implements Job {
 	@Override
@@ -38,6 +39,7 @@ public class PorterJob implements Job {
 			item = c.level().getEntitiesOfClass(ItemEntity.class, box, e -> e.isAlive() && e.getAge() > Config.PORTER_MIN_ITEM_AGE)
 				.stream().min(Comparator.comparingDouble(e -> e.distanceToSqr(c.v()))).orElse(null);
 			if (item == null) {
+				if (PorterSorting.work(c)) return true;
 				c.setIdle(0, 600);
 				return false;
 			}

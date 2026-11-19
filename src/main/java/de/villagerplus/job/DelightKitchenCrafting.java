@@ -368,12 +368,7 @@ final class DelightKitchenCrafting {
 	}
 
 	private static ItemStack withdrawFuel(Container storage) {
-		if (storage == null) return ItemStack.EMPTY;
-		for (int slot = 0; slot < storage.getContainerSize(); slot++) {
-			ItemStack stack = storage.getItem(slot);
-			if (!stack.isEmpty() && stack.is(ItemTags.COALS)) return storage.removeItem(slot, 1);
-		}
-		return ItemStack.EMPTY;
+		return storage == null ? ItemStack.EMPTY : SmithSmelting.withdrawFuel(storage);
 	}
 
 	private static boolean isUsefulPrep(ItemStack result, List<CookingPotRecipe> potRecipes) {

@@ -101,6 +101,26 @@ public final class SmithSmeltingChecks {
 			check(SmithSmelting.deliverClaimedOutput(level, ref, furnace) == 1
 				&& furnace.getItem(2).getCount() == 2 && furnace.getAttached(VillagerPlus.SMITH_FURNACE).isEmpty(),
 				"only the persisted batch amount is delivered, leaving unrelated excess untouched"); checks++;
+			// Fuel selection: public charcoal is burnt before coal, coal remains the fallback, nothing else is touched.
+			net.minecraft.world.SimpleContainer mixed = new net.minecraft.world.SimpleContainer(9);
+			mixed.setItem(0, new ItemStack(Items.COAL, 5));
+			mixed.setItem(1, new ItemStack(Items.CHARCOAL, 3));
+			mixed.setItem(2, new ItemStack(Items.IRON_INGOT, 2));
+			ItemStack burnt = SmithSmelting.withdrawFuel(mixed);
+			check(burnt.is(Items.CHARCOAL) && burnt.getCount() == 1 && countOf(mixed, Items.CHARCOAL) == 2
+				&& countOf(mixed, Items.COAL) == 5 && countOf(mixed, Items.IRON_INGOT) == 2,
+				"a smelt takes charcoal, not the earlier coal stack, when both are in public stock"); checks++;
+			net.minecraft.world.SimpleContainer coalOnly = new net.minecraft.world.SimpleContainer(9);
+			coalOnly.setItem(0, new ItemStack(Items.COAL, 2));
+			net.minecraft.world.SimpleContainer charcoalOnly = new net.minecraft.world.SimpleContainer(9);
+			charcoalOnly.setItem(4, new ItemStack(Items.CHARCOAL, 1));
+			ItemStack acrossStores = SmithSmelting.withdrawFuel(List.<Container>of(coalOnly, charcoalOnly));
+			check(acrossStores.is(Items.CHARCOAL) && countOf(coalOnly, Items.COAL) == 2 && countOf(charcoalOnly, Items.CHARCOAL) == 0,
+				"charcoal wins over coal even when the coal sits in an earlier public store"); checks++;
+			ItemStack fallback = SmithSmelting.withdrawFuel(List.<Container>of(coalOnly, charcoalOnly));
+			check(fallback.is(Items.COAL) && countOf(coalOnly, Items.COAL) == 1
+				&& SmithSmelting.withdrawFuel(new net.minecraft.world.SimpleContainer(3)).isEmpty(),
+				"without charcoal coal is still burnt, and an empty store yields no fuel"); checks++;
 			return checks;
 		} finally {
 			restore(savedStores);
@@ -135,6 +155,10 @@ public final class SmithSmeltingChecks {
 		if (home != null) stores.add(home);
 		stores.addAll(Lager.containers(level, ref.data()));
 		return stores;
+	}
+
+	private static int countOf(Container container, net.minecraft.world.item.Item item) {
+		return JobUtil.count(container, stack -> stack.is(item));
 	}
 
 	private static void check(boolean condition, String message) {
