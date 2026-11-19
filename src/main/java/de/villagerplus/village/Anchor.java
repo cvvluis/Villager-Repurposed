@@ -268,11 +268,11 @@ public final class Anchor {
 	/** Refresh the current wall segment during work and routine phases, including old-wall removal after expansion. */
 	public static void keepWallWorkLoaded(ServerLevel level, VillageRef ref, BlockPos worker) {
 		if (!Config.KEEP_VILLAGES_LOADED || !de.villagerplus.build.Blueprints.WALL.equals(ref.data().planType)) return;
-		int radius = ref.data().planVariant & 0xFF;
+		int radius = Development.wallPlanRadius(ref.data().planVariant);
 		int cursor = ref.data().planStep;
 		if (radius <= 0 || radius > Development.MAX_WALL_RADIUS) return;
 		if (cursor >= 8 * radius) {
-			int old = (ref.data().planVariant >>> 8) & 0xFF;
+			int old = Development.wallPlanLegacyInner(ref.data().planVariant);
 			cursor -= 8 * radius;
 			if (old <= 0 || old > Development.MAX_WALL_RADIUS || cursor >= 8 * old) return;
 			radius = old;
@@ -292,7 +292,7 @@ public final class Anchor {
 		int targetZ = (bell.getZ() + offset[1] + inward.getStepZ() * 11) >> 4;
 		int fromX = worker.getX() >> 4, fromZ = worker.getZ() >> 4;
 		int steps = Math.max(Math.abs(targetX - fromX), Math.abs(targetZ - fromZ));
-		// A legal village wall is at most 192 blocks from its bell. Do not accept unbounded remote-worker corridors.
+		// A legal village wall is at most MAX_WALL_RADIUS blocks from its bell. Do not accept unbounded remote-worker corridors.
 		if (steps <= 48) {
 			for (int i = 0; i <= steps; i++) {
 				int x = steps == 0 ? targetX : fromX + (int)Math.round((double)(targetX - fromX) * i / steps);
