@@ -296,6 +296,11 @@ public final class RoleCycleChecks {
 			List<BlockPos> railPath = railPath(level, station);
 			var posts = GuardDuty.posts(level, ref);
 			check(posts.stream().anyMatch(point -> point.getX() == post.getX() && point.getZ() == post.getZ()), "guard posts include the lantern tower");
+			check(GuardDuty.isTowerPost(level, post) && GuardDuty.isTowerPost(level, post.above()),
+				"a fence post under a lantern (and the cell above it) is recognised as a watchtower post");
+			check(!GuardDuty.isTowerPost(level, at.south(8).above(6)), "an ordinary position is not a tower post");
+			check(GuardDuty.postPauseTicks(true) == GuardDuty.TOWER_WATCH_TICKS && GuardDuty.postPauseTicks(true) > GuardDuty.postPauseTicks(false) * 5,
+				"a guard stays on a tower much longer than at a street post");
 			check(posts.stream().anyMatch(point -> point.distSqr(station) <= 16), "guard posts include the station");
 			check(posts.stream().anyMatch(point -> Math.abs(point.getX() - curve.getX()) <= 1 && Math.abs(point.getZ() - curve.getZ()) <= 1),
 				"guard patrol uses paved waypoints on a persisted curved street route");
