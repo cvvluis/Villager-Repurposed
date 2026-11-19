@@ -75,6 +75,7 @@ IFS=';' read -ra areas <<< "$forceload"
 for area in "${areas[@]}"; do "$py" tools/rcon.py "forceload add $area" >/dev/null; done
 "$py" tools/rcon.py 'weather clear' 'time set 1000' 'time query gametime'
 
+same=0; last_fp=""
 for ((i = 0; i < sprints; i++)); do
   kill -0 "$server_pid" 2>/dev/null || { echo "server exited during the run" >&2; exit 1; }
   "$py" tools/rcon.py "tick sprint $ticks" >/dev/null
@@ -84,6 +85,20 @@ for ((i = 0; i < sprints; i++)); do
     sleep 2
   done
   [[ "$(grep -c 'Sprint completed' "$log")" -gt "$i" ]] || { echo "sprint $((i + 1)) did not complete" >&2; exit 1; }
+  # Heartbeat + early stall stop (VP_STALL_SPRINTS consecutive sprints without any change; 0 = off).
+  # Progress fingerprint = sum of "Arbeiten N" over all villagers near the first forceload area + plan start/finish lines.
+  jobs="$("$py" tools/rcon.py "execute positioned ${VP_STATUS_POS:-122 69 -378} run villagerplus status" 2>/dev/null \
+    | grep -o 'Arbeiten [0-9]*' | awk '{s+=$2} END {print s+0}')"
+  plans="$(grep -c -E 'Bauplan [a-z_]+ (gestartet|fertiggestellt)' "$log" || true)"
+  fp="$jobs/$plans"
+  echo "HEARTBEAT sprint $((i + 1))/$sprints jobs=$jobs plans_events=$plans finished=$(grep -c 'fertiggestellt' "$log" || true)"
+  if [[ "$fp" == "${last_fp:-}" ]]; then same=$((same + 1)); else same=0; fi
+  last_fp="$fp"
+  if [[ "${VP_STALL_SPRINTS:-5}" -gt 0 && "$same" -ge "${VP_STALL_SPRINTS:-5}" ]]; then
+    echo "STALL: no change for $same sprints - stopping early. Status:"
+    "$py" tools/rcon.py "execute positioned ${VP_STATUS_POS:-122 69 -378} run villagerplus status" 2>/dev/null | head -n 40 | cut -c1-200
+    break
+  fi
 done
 "$py" tools/rcon.py 'time query gametime'
 
