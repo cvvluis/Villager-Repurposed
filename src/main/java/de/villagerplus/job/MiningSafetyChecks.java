@@ -729,6 +729,12 @@ public final class MiningSafetyChecks {
                 if (statuses.length() > 0) statuses.append(", ");
                 statuses.append(chunk).append('=').append(status == null ? "UNLOADED" : status);
                 if (status == null || !status.isOrAfter(FullChunkStatus.ENTITY_TICKING)) ready = false;
+                // The chunk status flips before the entity sections become accessible to entity queries; a worker spawned in
+                // that window is invisible to getEntitiesOfClass (the intermittent "visible=0" lease failure).
+                else if (!level.isPositionEntityTicking(chunk.getMiddleBlockPosition(e.getY()))) {
+                    ready = false;
+                    statuses.append("(entity sections not ticking yet)");
+                }
             }
             if (!ready) {
                 String currentStatus=statuses.toString();
