@@ -68,7 +68,7 @@ public final class RoadLightingChecks {
    // Center the registered footprint over the route so its radius covers both roadside candidates.
    BlockPos lampGround=at.offset(16,-1,0);
    int checks=0;
-   ref.bellEntity().setAttached(VillagerPlus.ZONES,List.of(new ZonePolicy.Zone("lamp-zone","farm",
+   ref.bellEntity().setAttached(VillagerPlus.ZONES,List.of(new ZonePolicy.Zone("lamp-zone","protected",
     16+at.getX(),at.getZ()-2,16+at.getX(),at.getZ()+2)));
    var zoned=Roads.nextRepair(level,ref);
    check(zoned!=null&&zoned.ground().equals(at.offset(32,0,2)),

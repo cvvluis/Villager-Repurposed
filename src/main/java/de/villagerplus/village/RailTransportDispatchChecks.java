@@ -48,10 +48,31 @@ public final class RailTransportDispatchChecks {
 		registerObserver();
 		Fixture fixture = PENDING.get(level);
 		if (fixture == null) {
-			fixture = prepare(level, at);
+			fixture = new Fixture(level.getGameTime());
 			PENDING.put(level, fixture);
+			// No player attends these far-away settlements. Production only simulates a village that a player attends
+			// or that is inside the one-village load budget (Anchor), and its budget release frees /forceload
+			// chunks, so the fixture holds both settlements and the track with expiring work leases instead.
+			fixture.leased = leaseChunks(at, at.east(64));
+			leaseChunks(level, fixture);
 			return -1;
 		}
+		if (!fixture.prepared) {
+			// Build on a later tick so the entity sections of the leased chunks are loaded before residents are spawned.
+			leaseChunks(level, fixture);
+			for (net.minecraft.world.level.ChunkPos chunk : fixture.leased) {
+				if (!de.villagerplus.world.LoadedColumns.readyChunk(level, chunk.x(), chunk.z())) return -1;
+			}
+			try {
+				prepare(level, fixture, at);
+			} catch (RuntimeException error) {
+				PENDING.remove(level);
+				throw error;
+			}
+			fixture.prepared = true;
+			return -1;
+		}
+		leaseChunks(level, fixture);
 		if (fixture.observation == null) {
 			releaseFuelAfterObservedWait(level, fixture);
 			if (level.getGameTime() - fixture.started < TIMEOUT) return -1;
@@ -105,7 +126,7 @@ public final class RailTransportDispatchChecks {
 
 	private static void observeNormalDispatch(ServerLevel level) {
 		Fixture fixture = PENDING.get(level);
-		if (fixture == null || fixture.observation != null) return;
+		if (fixture == null || !fixture.prepared || fixture.observation != null) return;
 		long now = level.getGameTime();
 		if (now < fixture.firstBoundary) return;
 		String key = Long.toString(fixture.peer.bell().asLong());
@@ -154,7 +175,7 @@ public final class RailTransportDispatchChecks {
 		fixture.fuelReleased = true;
 	}
 
-	private static Fixture prepare(ServerLevel level, BlockPos requested) {
+	private static void prepare(ServerLevel level, Fixture fixture, BlockPos requested) {
 		int x = requested.getX();
 		int z = requested.getZ();
 		level.getChunkAt(requested);
@@ -162,7 +183,6 @@ public final class RailTransportDispatchChecks {
 		BlockPos homeBell = new BlockPos(x, y, z);
 		BlockPos peerBell = homeBell.east(64);
 		level.getChunkAt(peerBell);
-		Fixture fixture = new Fixture(level.getGameTime());
 		try {
 			fixture.home = createVillage(level, fixture, homeBell, true);
 			fixture.peer = createVillage(level, fixture, peerBell, false);
@@ -189,10 +209,26 @@ public final class RailTransportDispatchChecks {
 			}
 			fixture.started = level.getGameTime();
 			fixture.firstBoundary = (fixture.started / DISPATCH_PERIOD + 1) * DISPATCH_PERIOD;
-			return fixture;
 		} catch (RuntimeException error) {
 			cleanup(level, fixture);
 			throw error;
+		}
+	}
+
+	private static List<net.minecraft.world.level.ChunkPos> leaseChunks(BlockPos home, BlockPos peer) {
+		List<net.minecraft.world.level.ChunkPos> chunks = new ArrayList<>();
+		for (int cx = (home.getX() - 24) >> 4; cx <= (peer.getX() + 24) >> 4; cx++) {
+			for (int cz = (home.getZ() - 24) >> 4; cz <= (home.getZ() + 24) >> 4; cz++) {
+				chunks.add(new net.minecraft.world.level.ChunkPos(cx, cz));
+			}
+		}
+		return chunks;
+	}
+
+	/** Renews the expiring entity-ticking lease on every fixture chunk; it lapses by itself after cleanup. */
+	private static void leaseChunks(ServerLevel level, Fixture fixture) {
+		for (net.minecraft.world.level.ChunkPos chunk : fixture.leased) {
+			level.getChunkSource().addTicketWithRadius(Anchor.VILLAGER_WORK, chunk, 2);
 		}
 	}
 
@@ -433,6 +469,8 @@ public final class RailTransportDispatchChecks {
 	private static final class Fixture {
 		private final Map<BlockPos, Cell> cells = new LinkedHashMap<>();
 		private final List<Villager> residents = new ArrayList<>();
+		private List<net.minecraft.world.level.ChunkPos> leased = List.of();
+		private boolean prepared;
 		private VillageRef home;
 		private VillageRef peer;
 		private Container stationInventory;
