@@ -55,6 +55,46 @@ public final class MilestoneWaitingChecks {
 			d.wanted.clear(); d.wanted.addAll(wanted); d.extra.planBuilder = owner; d.extra.planMaterialWait = materialWait;
 		}
 	}
+	/** G08: the railway station is the late milestone once kitchen, rail population and a metropolis neighbor exist. */
+	public static int stationMilestoneChecks(VillageRef ref) {
+		int checks = 0;
+		var oldSpecials = ref.bellEntity().getAttached(VillagerPlus.SPECIALS);
+		var oldNetwork = ref.bellEntity().getAttached(VillagerPlus.NETWORK);
+		var oldSchool = ref.data().extra.school;
+		try {
+			de.villagerplus.village.TradeNetwork base = de.villagerplus.village.Network.of(ref.bellEntity());
+			ref.bellEntity().setAttached(VillagerPlus.SPECIALS, Map.of());
+			ref.data().extra.school = Optional.of(ref.bell().north(24));
+			Specials.set(ref, Blueprints.GRANARY, ref.bell().north(8));
+			Specials.set(ref, Blueprints.TOOLSHED, ref.bell().north(16));
+			de.villagerplus.village.TradeNetwork.Link far = new de.villagerplus.village.TradeNetwork.Link(
+				"minecraft:overworld", ref.bell().east(200), "Fernheim", 0, true, 5, 1L);
+			int rail = de.villagerplus.village.Roads.RAIL_POP;
+			int metropolis = de.villagerplus.village.Roads.METROPOLIS;
+			de.villagerplus.village.Network.save(ref.bellEntity(), base.withLinks(List.of(far.withRelation(metropolis))));
+			check(Blueprints.KITCHEN.equals(Builder.nextSpecial(ref, rail)),
+				"the station never precedes the kitchen even with rail population and a metropolis neighbor"); checks++;
+			Specials.set(ref, Blueprints.KITCHEN, ref.bell().north(32));
+			check(Blueprints.STATION.equals(Builder.nextSpecial(ref, rail)),
+				"with kitchen, rail population and a metropolis neighbor the next milestone is the station"); checks++;
+			check(Builder.nextSpecial(ref, rail - 1) == null,
+				"the station stays gated below the rail population"); checks++;
+			de.villagerplus.village.Network.save(ref.bellEntity(), base.withLinks(List.of(far.withRelation(metropolis - 1))));
+			check(Builder.nextSpecial(ref, rail) == null,
+				"the station stays gated while the best neighbor is below the metropolis relation"); checks++;
+			de.villagerplus.village.Network.save(ref.bellEntity(), base.withLinks(List.of(far.withRelation(metropolis))));
+			Specials.set(ref, Blueprints.STATION, ref.bell().north(40));
+			check(Builder.nextSpecial(ref, rail) == null, "a registered station ends the milestone chain"); checks++;
+		} finally {
+			if (oldSpecials == null) ref.bellEntity().removeAttached(VillagerPlus.SPECIALS);
+			else ref.bellEntity().setAttached(VillagerPlus.SPECIALS, oldSpecials);
+			if (oldNetwork == null) ref.bellEntity().removeAttached(VillagerPlus.NETWORK);
+			else ref.bellEntity().setAttached(VillagerPlus.NETWORK, oldNetwork);
+			ref.data().extra.school = oldSchool;
+		}
+		return checks;
+	}
+
 	private record FixtureBlock(BlockPos pos, BlockState state) { }
 	private record FixtureCell(BlockState state, CompoundTag data) { }
 
@@ -246,6 +286,50 @@ public final class MilestoneWaitingChecks {
 					+ ", step=" + d.planStep + ", wanted=" + d.wanted + ", owner=" + d.planBuilder() + ", nextBuild=" + d.nextBuild
 					+ "}, pressure={emptySlot=" + JobUtil.hasEmptySlot(box) + ", needsStorage=" + Development.needsStorage(box, d, level)
 					+ ", storageFree=" + Builder.storageFree(full, ref) + ", unrelatedStock=" + filler + "}]"); checks++;
+
+			// R02 stall timer: nobody delivers a permanently unobtainable late material, so after the stall period the
+			// builder itself swaps the plan to the local palette (Builder.STALLED_PLAN_PALETTE_FALLBACK_TICKS = 3000).
+			BlockPos planOrigin = d.planOrigin.orElseThrow();
+			List<Step> cached = Builder.cachedPlanForCheck(planOrigin);
+			int lateIndex = -1;
+			if (cached != null) {
+				for (int i = Math.min(cached.size() - 1, d.planStep + 60); i < cached.size(); i++) {
+					Step step = cached.get(i);
+					if (!step.free() && !step.optional() && step.linkedTo() == null && step.tag() == null && step.item() != null) {
+						lateIndex = i;
+						break;
+					}
+				}
+			}
+			if (lateIndex < 0) throw new IllegalStateException("MILESTONE WAIT CHECK FAILED: granary plan has no paid step beyond the wish window");
+			List<Step> blocked = new ArrayList<>(cached);
+			Step late = blocked.get(lateIndex);
+			blocked.set(lateIndex, new Step(late.pos(), Items.OBSIDIAN, null, late.cost(), late.optional(), late.linkedTo(),
+				ignored -> Blocks.OBSIDIAN.defaultBlockState()));
+			Builder.replaceCachedPlanForCheck(planOrigin, blocked);
+			int stallStep = d.planStep;
+			int variantBefore = d.planVariant;
+			c.st().materialWaitUntil = 0;
+			Builder.tick(new Ctx(level, worker, c.st(), c.mem(), ref, now + 700), true);
+			c.st().materialWaitUntil = 0;
+			boolean earlyBusy = Builder.tick(new Ctx(level, worker, c.st(), c.mem(), ref, now + 2400), true);
+			List<Step> beforeStall = Builder.cachedPlanForCheck(planOrigin);
+			check((d.planVariant & 2) == 0 && d.planVariant == variantBefore && d.planStep == stallStep
+				&& beforeStall != null && beforeStall.get(lateIndex).item() == Items.OBSIDIAN,
+				"a plan that has waited less than the stall period keeps its unobtainable palette"
+					+ " [variant=" + d.planVariant + ", busy=" + earlyBusy + "]"); checks++;
+			c.st().materialWaitUntil = 0;
+			boolean stallBusy = Builder.tick(new Ctx(level, worker, c.st(), c.mem(), ref, now + 4000), true);
+			List<Step> afterStall = Builder.cachedPlanForCheck(planOrigin);
+			check(stallBusy && (d.planVariant & 2) != 0 && d.planStep == stallStep
+				&& afterStall != null && afterStall.size() == blocked.size()
+				&& afterStall.get(lateIndex).pos().equals(late.pos())
+				&& afterStall.get(lateIndex).item() != Items.OBSIDIAN
+				&& Supply.obtainable(Block.byItem(afterStall.get(lateIndex).item())),
+				"after the stall period the builder falls back to the local palette without moving the cursor"
+					+ " [busy=" + stallBusy + ", variant=" + d.planVariant + ", step=" + d.planStep + "/" + stallStep
+					+ ", lateItem=" + (afterStall == null ? "none" : afterStall.get(lateIndex).item()) + "]"); checks++;
+			Builder.restoreCachedPlanForCheck(planOrigin, null);
 			return checks;
 		} finally {
 			if (d.hasPlan() && d.planOrigin.equals(Optional.of(origin))) Builder.cancel(ref, now + 600);

@@ -2271,6 +2271,17 @@ public final class Caravan {
 		return true;
 	}
 
+	/** Check hook: runs the production camp construction (site choice, persisted manifest, placement). */
+	static boolean buildCampForChecks(ServerLevel level, State state, BlockPos bell) {
+		return buildCamp(level, state, bell);
+	}
+
+	/** Check hook: the persisted cleanup manifest stored on the village bell. */
+	static List<CaravanCampData.CampBlock> persistedCampBlocksForChecks(ServerLevel level, BlockPos bellPos) {
+		var bell = loadedBell(level, bellPos);
+		return bell == null ? List.of() : attachedCampBlocks(bell);
+	}
+
 	static boolean clearCampForDepartureForChecks(ServerLevel level, State state) {
 		return clearCampForDeparture(level, state);
 	}

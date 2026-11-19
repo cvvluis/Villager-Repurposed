@@ -65,14 +65,20 @@ public final class NetworkDiscoveryChecks {
 		BlockPos eastBell = new BlockPos(96, 72, 40);
 		TradeNetwork west = TradeNetwork.create(westBell, "plains");
 		TradeNetwork east = TradeNetwork.create(eastBell, "forest");
-		require(Network.canDiscoverLoadedNeighbor(west, east, dimension, westBell, eastBell, 5),
-			"a loaded real neighbor with residents is eligible for automatic discovery"); checks++;
-		require(!Network.canDiscoverLoadedNeighbor(west, null, dimension, westBell, eastBell, 5)
-			&& !Network.canDiscoverLoadedNeighbor(west, east, dimension, westBell, eastBell, 0),
+		require(!Network.canDiscoverLoadedNeighbor(west, east, dimension, westBell, eastBell, 5, false),
+			"an unknown loaded neighbor without a physical visit or trade contact is not discovered"); checks++;
+		Network.DiscoveryPair noContact = Network.discoverLoadedPair(west, east, dimension, westBell, eastBell,
+			"Westheim", "Ostheim", 4, 5, 12L, false);
+		require(!noContact.changed() && noContact.source().links().isEmpty() && noContact.target().links().isEmpty(),
+			"without contact neither village stores a link to the other"); checks++;
+		require(Network.canDiscoverLoadedNeighbor(west, east, dimension, westBell, eastBell, 5, true),
+			"a loaded real neighbor with residents is discovered once a player or resident has physically been there"); checks++;
+		require(!Network.canDiscoverLoadedNeighbor(west, null, dimension, westBell, eastBell, 5, true)
+			&& !Network.canDiscoverLoadedNeighbor(west, east, dimension, westBell, eastBell, 0, true),
 			"an unloaded bell or one without living residents is not a discovery candidate"); checks++;
 
 		Network.DiscoveryPair found = Network.discoverLoadedPair(west, east, dimension, westBell, eastBell,
-			"Westheim", "Ostheim", 4, 5, 12L);
+			"Westheim", "Ostheim", 4, 5, 12L, true);
 		TradeNetwork.Link westToEast = found.source().links().getFirst();
 		TradeNetwork.Link eastToWest = found.target().links().getFirst();
 		require(found.changed() && westToEast.bell().equals(eastBell) && westToEast.dimension().equals(dimension)
@@ -87,12 +93,12 @@ public final class NetworkDiscoveryChecks {
 			"both loaded reciprocal links resolve as stable action targets"); checks++;
 
 		Network.DiscoveryPair duplicate = Network.discoverLoadedPair(found.source(), found.target(), dimension,
-			westBell, eastBell, "Westheim", "Ostheim", 4, 5, 12L);
+			westBell, eastBell, "Westheim", "Ostheim", 4, 5, 12L, false);
 		require(!duplicate.changed() && duplicate.source().links().size() == 1 && duplicate.target().links().size() == 1,
 			"repeated discovery is idempotent and never duplicates either village link"); checks++;
 
 		Network.DiscoveryPair unloaded = Network.discoverLoadedPair(west, null, dimension, westBell, eastBell,
-			"Westheim", "Ostheim", 4, 5, 12L);
+			"Westheim", "Ostheim", 4, 5, 12L, true);
 		require(!unloaded.changed() && unloaded.source().equals(west) && unloaded.target() == null
 			&& !Network.reciprocalLink(unloaded.source(), unloaded.target(), dimension, westBell, eastBell),
 			"an unloaded neighboring bell remains undiscovered and cannot become an action target"); checks++;
@@ -102,16 +108,25 @@ public final class NetworkDiscoveryChecks {
 			fullLinks.add(new TradeNetwork.Link(dimension, new BlockPos(1000 + i * 32, 64, -300), "Existing" + i, 10, false, 1, 1L));
 		}
 		TradeNetwork fullWest = west.withLinks(fullLinks);
-		require(!Network.canDiscoverLoadedNeighbor(fullWest, east, dimension, westBell, eastBell, 5)
-			&& !Network.canDiscoverLoadedNeighbor(west, east.withLinks(fullLinks), dimension, westBell, eastBell, 5),
+		require(!Network.canDiscoverLoadedNeighbor(fullWest, east, dimension, westBell, eastBell, 5, true)
+			&& !Network.canDiscoverLoadedNeighbor(west, east.withLinks(fullLinks), dimension, westBell, eastBell, 5, true),
 			"discovery respects the link limit at both ends instead of creating a one-way overflow"); checks++;
 
 		TradeNetwork oneSided = west.withLinks(List.of(new TradeNetwork.Link(dimension, eastBell, "Ostheim", 42, true, 2, 10L)));
 		Network.DiscoveryPair repaired = Network.discoverLoadedPair(oneSided, east, dimension, westBell, eastBell,
-			"Westheim", "Ostheim", 4, 5, 12L);
+			"Westheim", "Ostheim", 4, 5, 12L, false);
 		require(repaired.changed() && Network.reciprocalLink(repaired.source(), repaired.target(), dimension, westBell, eastBell)
 			&& repaired.target().links().getFirst().relation() == 42 && repaired.target().links().getFirst().route(),
-			"a real loaded encounter completes a one-sided link while preserving its relation and route state"); checks++;
+			"a one-sided link saved earlier (legacy world) is completed without new contact and keeps its relation and route state"); checks++;
+		TradeNetwork.Link visited = new TradeNetwork.Link(dimension, eastBell, "Ostheim", 33, false, 2, 10L, 11L);
+		require(Network.canDiscoverLoadedNeighbor(west.withLinks(List.of(visited)), east, dimension, westBell, eastBell, 5, false),
+			"a neighbor already saved after a successful visit stays refreshable without a new physical contact"); checks++;
+
+		String nameA = Names.village("plains", westBell.asLong());
+		String nameB = Names.village("desert", westBell.asLong());
+		require(!nameA.isBlank() && nameA.equals(Names.village("plains", westBell.asLong()))
+			&& !nameB.isBlank() && !nameA.equals(nameB) && !nameA.equals(Names.village("plains", eastBell.asLong())),
+			"the own village name is procedural, stable for one bell, and depends on biome and bell position"); checks++;
 
 		List<Integer> markerCells = VillageMap.nearbyVillageMarkerIndices(4, -32, -32, 16,
 			new BlockPos(-24, 68, -24), List.of(new BlockPos(-24, 68, -24), new BlockPos(-24, 120, -24), new BlockPos(0, 70, 0),
