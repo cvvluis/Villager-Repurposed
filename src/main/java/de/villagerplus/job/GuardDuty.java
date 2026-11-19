@@ -29,6 +29,9 @@ public final class GuardDuty {
 	private static final int MAX_RAIL_POSTS = 12;
 	private static final int MAX_RAIL_SCAN_RADIUS = 24;
 	private static final int MAX_ROAD_PATROL_DISTANCE = 32;
+	/** A guard who reaches a watchtower stays up there this long before the patrol goes on. */
+	public static final long TOWER_WATCH_TICKS = 600L;
+	private static final long POST_PAUSE_TICKS = 40L;
 	private GuardDuty() { }
 
 	public static boolean work(Ctx c) {
@@ -44,14 +47,29 @@ public final class GuardDuty {
 		int index = Math.floorMod(c.st().patrolIndex, points.size());
 		BlockPos target = points.get(index);
 		c.st().target = target;
-		c.setActivity("patrouilliert Straßen und Bahn");
+		boolean tower = isTowerPost(c.level(), target);
+		c.setActivity(tower ? "hält Ausschau auf dem Turm" : "patrouilliert Straßen und Bahn");
 		Anim.hold(c, Items.IRON_SWORD);
 		if (!JobUtil.approach(c, target, 2.5)) return true;
 		c.st().patrolIndex = (index + 1) % points.size();
 		c.st().clearTarget();
-		c.st().cooldownUntil = c.now() + 40;
+		c.st().cooldownUntil = c.now() + postPauseTicks(tower);
 		c.mem().jobsDone++;
 		return true;
+	}
+
+	/** A tower post is a fence post with a lantern on top (see {@link #towers}); its walkable cell is the block above or the post itself. */
+	public static boolean isTowerPost(ServerLevel level, BlockPos post) {
+		for (BlockPos candidate : new BlockPos[] {post, post.below()}) {
+			if (!de.villagerplus.world.LoadedColumns.ready(level, candidate)) continue;
+			var state = level.getBlockState(candidate);
+			if ((state.is(Blocks.OAK_FENCE) || state.is(Blocks.SPRUCE_FENCE)) && level.getBlockState(candidate.above()).is(Blocks.LANTERN)) return true;
+		}
+		return false;
+	}
+
+	public static long postPauseTicks(boolean tower) {
+		return tower ? TOWER_WATCH_TICKS : POST_PAUSE_TICKS;
 	}
 
 	public static boolean raidNearby(ServerLevel level, BlockPos bell) {
