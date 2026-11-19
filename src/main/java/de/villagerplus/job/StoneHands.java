@@ -98,11 +98,11 @@ public final class StoneHands {
 		// A resident who mined for the plans delivers what he carries, whether or not his claim still stands (the cap on hands
 		// must never leave a load in somebody's pockets): when a useful load is on board, or the shortage is gone.
 		if (CARRIERS.contains(id)) {
-			int carried = JobUtil.count(c.v().getInventory(), stack -> stack.is(Items.COBBLESTONE));
+			int carried = JobUtil.count(c.v().getInventory(), de.villagerplus.build.CobbleLike::stone);
 			if (carried <= 0) {
 				CARRIERS.remove(id);
 			} else if ((!needed || PlanStoneSupply.cobbleDeliveryDue(c.level(), ref.data(), box, carried))
-				&& JobUtil.depositSurplus(c, stack -> stack.is(Items.COBBLESTONE), 1, 0)) {
+				&& JobUtil.depositSurplus(c, de.villagerplus.build.CobbleLike::stone, 1, 0)) {
 				return true;
 			}
 		}
@@ -135,9 +135,9 @@ public final class StoneHands {
 
 	/** Deliver a useful load of surface stone, else break the next exposed stone (by pickaxe if carried, otherwise by hand). */
 	static boolean surfaceStep(Ctx c, Container box) {
-		int carried = JobUtil.count(c.v().getInventory(), stack -> stack.is(Items.COBBLESTONE));
+		int carried = JobUtil.count(c.v().getInventory(), de.villagerplus.build.CobbleLike::stone);
 		if (PlanStoneSupply.cobbleDeliveryDue(c.level(), c.village().data(), box, carried)
-			&& JobUtil.depositSurplus(c, (ItemStack stack) -> stack.is(Items.COBBLESTONE), 1, 0)) {
+			&& JobUtil.depositSurplus(c, (ItemStack stack) -> de.villagerplus.build.CobbleLike.stone(stack), 1, 0)) {
 			return true;
 		}
 		return carried < SURFACE_LOAD && SurfaceStone.tick(c);

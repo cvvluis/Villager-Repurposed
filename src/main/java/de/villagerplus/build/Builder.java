@@ -4158,7 +4158,8 @@ public final class Builder {
 			return false;
 		}
 		for (Step s : steps) {
-			if (!s.free() && s.linkedTo() == null && ((s.item() != null && stack.is(s.item())) || (s.tag() != null && stack.is(s.tag())))) {
+			if (!s.free() && s.linkedTo() == null && ((s.item() != null && stack.is(s.item())) || (s.tag() != null && stack.is(s.tag()))
+				|| (CobbleLike.substitutable(s) && CobbleLike.variant(stack)))) {
 				return true;
 			}
 		}
@@ -4221,7 +4222,17 @@ public final class Builder {
 		Map<Item, Integer> cargo = de.villagerplus.job.BuildHaul.inTransit(cargoManifest);
 		cargo.forEach((item, count) -> available.merge(item, count, Builder::saturatingCount));
 		Map<String, Long> remaining = new java.util.TreeMap<>();
+		// Plain cobblestone block steps may be paid with natural stone variants; foundations and crafted shapes may not.
+		int variantSteps = 0;
+		for (Step step : demandWindow) if (CobbleLike.substitutable(step) && !step.optional() && step.cost() > 0) variantSteps += step.cost();
 		for (DemandTarget target : targets) {
+			if (target.tag() == null && target.request() == Items.COBBLESTONE && variantSteps > 0) {
+				for (Map.Entry<Item, Integer> request : CobbleLike.demand(available, target.count(), variantSteps, publicStock).entrySet()) {
+					String id = BuiltInRegistries.ITEM.getKey(request.getKey()).toString();
+					remaining.merge(id, (long) request.getValue(), (a, b) -> Math.min(Integer.MAX_VALUE, a + b));
+				}
+				continue;
+			}
 			int left = consumeAvailable(available, target.request(), target.count());
 			if (target.tag() != null && left > 0) {
 				List<Item> alternatives = new ArrayList<>(available.keySet());
@@ -4439,7 +4450,8 @@ public final class Builder {
 				if (JobUtil.count(siteStock, stack -> stack.is(entry.getKey())) < entry.getValue()) return false;
 			}
 			return JobUtil.count(siteStock, stack -> (step.item() != null && stack.is(step.item()))
-				|| (step.tag() != null && stack.is(step.tag()))) >= step.cost();
+				|| (step.tag() != null && stack.is(step.tag()))
+				|| (CobbleLike.substitutable(step) && CobbleLike.variant(stack))) >= step.cost();
 		}
 		return true;
 	}
@@ -5338,6 +5350,8 @@ public final class Builder {
 						PLAN_DIAGNOSTICS.put(origin.asLong(), describeStep(level, s, d.planStep, steps.size()) + "; kein Zielzustand");
 						return madeProgress;
 					}
+					// Paid with a stand-in stone: the wall shows that stone, not a cobblestone nobody paid for.
+					if (payment != null) ns = CobbleLike.placed(s, paid, ns);
 					if (payment != null) {
 						Item paidItem = payment.item();
 						int taken = JobUtil.take(siteStock, stack -> stack.is(paidItem), payment.count());
@@ -6627,7 +6641,7 @@ public final class Builder {
 	// --- Bezahlen -------------------------------------------------------------------------------
 
 	/** Nimmt die Kosten aus der Kiste und gibt den zu setzenden Block zurueck (null = nicht bezahlbar). */
-	private record Payment(Item item, int count, Block block) { }
+	record Payment(Item item, int count, Block block) { }
 
 	private static void refund(ServerLevel level, Ctx c, Container box, ItemStack stack) {
 		JobUtil.depositTo(box, stack);
@@ -6635,7 +6649,13 @@ public final class Builder {
 	}
 
 	/** Select a complete payment without mutating storage; consumption happens only when the block can be placed. */
-	private static Payment paymentFor(Step s, Container box) {
+	static Payment paymentFor(Step s, Container box) {
+		// A stand-in stone pays a plain cobblestone block first: the cobblestone itself stays free for foundations and for the
+		// stairs and slabs that only cobblestone can serve.
+		if (CobbleLike.substitutable(s)) {
+			Item variant = CobbleLike.variantFor(box, s.cost());
+			if (variant != null) return new Payment(variant, s.cost(), Block.byItem(variant));
+		}
 		if (s.item() != null && JobUtil.count(box, st -> st.is(s.item())) >= s.cost()) {
 			return new Payment(s.item(), s.cost(), Block.byItem(s.item()));
 		}

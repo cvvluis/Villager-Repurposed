@@ -287,13 +287,14 @@ public final class Mining {
 		ensureMineEntrance(c.level(), ref, m, c.v(), c.now());
 		// Cobblestone the village plan is waiting for goes to the public chest as soon as a useful load is on board. Residents who
 		// mine for the plan without owning it used to keep it until their pockets held 64 items, while the plan waited for it.
+		// The stone variants broken out of the same rock (andesite, diorite, granite) pay plain cobblestone steps too, so they travel with it.
 		if (need == Need.STONE && PlanStoneSupply.cobbleDeliveryDue(c.level(), ref.data(), box,
-				JobUtil.count(c.v().getInventory(), stack -> stack.is(net.minecraft.world.item.Items.COBBLESTONE)))) {
+				JobUtil.count(c.v().getInventory(), de.villagerplus.build.CobbleLike::stone))) {
 			if (c.v().getY() < m.entrance.getY() - 0.5 && nearest(m, c.v().position()) >= 1) {
 				requestCapacityReturn(c, m);
 				return true;
 			}
-			if (JobUtil.depositSurplus(c, stack -> stack.is(net.minecraft.world.item.Items.COBBLESTONE), 1, PlanStoneSupply.COBBLE_RESERVE)) {
+			if (JobUtil.depositSurplus(c, de.villagerplus.build.CobbleLike::stone, 1, PlanStoneSupply.COBBLE_RESERVE)) {
 				return true;
 			}
 		}
