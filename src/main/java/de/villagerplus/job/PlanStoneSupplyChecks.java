@@ -124,7 +124,7 @@ public final class PlanStoneSupplyChecks {
     && !PlanStoneSupply.needsFurnace(level, data, stock)
     && !PlanStoneSupply.craftRequestedBricks(level, data, full, true), "abandoned plan stops sourcing and crafting");
   int pickaxeChecks = pickaxeRecipeChecks(level) + storedPickaxeCheck(level);
-  return 18 + pickaxeChecks;
+  return 18 + pickaxeChecks + de.villagerplus.build.CobbleLikeChecks.run();
  }
 
  private static int pickaxeRecipeChecks(ServerLevel level) {
