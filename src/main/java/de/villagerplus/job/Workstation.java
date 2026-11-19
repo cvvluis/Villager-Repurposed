@@ -94,7 +94,7 @@ public final class Workstation {
 			if (c.level().getBlockState(spot).is(block)) c.level().setBlock(spot, Blocks.AIR.defaultBlockState(), 3);
 			return false;
 		}
-		c.level().playSound(null, spot, net.minecraft.sounds.SoundEvents.WOOD_PLACE, net.minecraft.sounds.SoundSource.BLOCKS, 0.8F, 1.0F);
+		Anim.blockPlace(c.level(), spot, state, 0.8F, 1.0F);
 		JobUtil.swing(c.v());
 		c.mem().jobsDone++;
 		c.st().cooldownUntil = c.now() + 20;
@@ -171,8 +171,7 @@ public final class Workstation {
 			if (c.level().getBlockState(spot).is(Blocks.ANVIL)) c.level().setBlock(spot, Blocks.AIR.defaultBlockState(), 3);
 			return false;
 		}
-		c.level().playSound(null, spot, net.minecraft.sounds.SoundEvents.ANVIL_PLACE,
-			net.minecraft.sounds.SoundSource.BLOCKS, 0.8F, 1.0F);
+		Anim.blockPlace(c.level(), spot, state, 0.8F, 1.0F);
 		JobUtil.swing(c.v());
 		c.mem().jobsDone++;
 		c.st().cooldownUntil = c.now() + 20;
@@ -291,7 +290,7 @@ public final class Workstation {
 		furnace.setAttached(VillagerPlus.COMMUNAL_FURNACE, 0);
 		furnace.setAttached(VillagerPlus.SMITH_FURNACE, ItemStack.EMPTY);
 		furnace.setChanged();
-		c.level().playSound(null, spot, net.minecraft.sounds.SoundEvents.STONE_PLACE, net.minecraft.sounds.SoundSource.BLOCKS, 0.8F, 1.0F);
+		Anim.blockPlace(c.level(), spot, Blocks.FURNACE.defaultBlockState(), 0.8F, 1.0F);
 		JobUtil.swing(c.v());
 		c.mem().jobsDone++;
 		c.st().cooldownUntil = c.now() + 20;

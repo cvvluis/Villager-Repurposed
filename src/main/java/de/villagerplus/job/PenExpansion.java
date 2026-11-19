@@ -288,8 +288,7 @@ public final class PenExpansion {
 			return false;
 		}
 		BlockPos soundAt = changedBlocks.keySet().stream().findFirst().orElse(current.annexGate());
-		level.playSound(null, soundAt, net.minecraft.sounds.SoundEvents.WOOD_PLACE,
-			net.minecraft.sounds.SoundSource.BLOCKS, 0.8F, 1.0F);
+		Anim.blockPlace(level, soundAt, level.getBlockState(soundAt), 0.8F, 1.0F);
 		JobUtil.swing(c.v());
 		c.mem().jobsDone++;
 		c.st().cooldownUntil = c.now() + 40;

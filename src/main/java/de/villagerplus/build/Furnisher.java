@@ -634,6 +634,7 @@ public final class Furnisher {
 		if (cargoStack.isEmpty()) return true;
 		if (!c.level().setBlock(target, desired, 3) || !c.level().getBlockState(target).is(block)) return true;
 		if (!consumeSchoolCargo(c, cargoStack)) return true;
+		de.villagerplus.job.Anim.blockPlace(c.level(), target, desired, 0.8F, 1.0F);
 		c.setActivity("richtet die Schule ein");
 		JobUtil.swing(c.v());
 		c.mem().jobsDone++;
@@ -816,6 +817,7 @@ public final class Furnisher {
 				furnace.setAttached(de.villagerplus.VillagerPlus.SMITH_FURNACE, net.minecraft.world.item.ItemStack.EMPTY);
 				furnace.setChanged();
 			}
+			de.villagerplus.job.Anim.blockPlace(level, p, state, 0.8F, 1.0F);
 			return true;
 		}
 		return false;

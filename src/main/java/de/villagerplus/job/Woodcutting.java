@@ -1256,6 +1256,7 @@ public final class Woodcutting {
 				|| !c.level().setBlock(base, sapling.defaultBlockState(), 3)) return false;
 			stack.shrink(1);
 			inv.setChanged();
+			Anim.blockPlace(c.level(), base, sapling.defaultBlockState(), 0.8F, 1.0F);
 			return true;
 		}
 		return false;

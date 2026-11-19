@@ -968,7 +968,7 @@ public final class Market {
      }
      take(stores,st.item(),st.cost());
     }
-    c.level().setBlock(st.pos(),desired,3); JobUtil.swing(c.v()); Anim.hold(c,Items.STONE_AXE);
+    c.level().setBlock(st.pos(),desired,3); Anim.blockPlace(c.level(),st.pos(),desired,0.8F,1.0F); JobUtil.swing(c.v()); Anim.hold(c,Items.STONE_AXE);
    }
    int n=progress+1; updateShop(c.village(),s.progress(n,c.now(),n==steps.size()));
    c.village().data().removeMarketDemands(s.owner());

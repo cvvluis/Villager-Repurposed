@@ -321,6 +321,7 @@ public final class DemolitionWorldChecks {
 			check(!Demolition.skipDuringDemolition(waterloggedStair)
 				&& Demolition.skipDuringDemolition(Blocks.WATER.defaultBlockState()),
 				"waterlogged building blocks are removed while free water is skipped"); passed++;
+			passed += provePacedEffects(level, ref, origin, steps);
 			return passed;
 		} finally {
 			for (ItemEntity item : level.getEntitiesOfClass(ItemEntity.class, fixtureBounds)) {
@@ -332,6 +333,45 @@ public final class DemolitionWorldChecks {
 			if (oldZones == null) ref.bellEntity().removeAttached(VillagerPlus.ZONES); else ref.bellEntity().setAttached(VillagerPlus.ZONES, oldZones);
 			ref.data().buildProjects.clear(); ref.data().buildProjects.addAll(oldProjects);
 			ref.dirty();
+		}
+	}
+
+	/** B03: drives the real Demolition.work loop and proves tool swing/hit sounds, crack stages 0-9 and break sound+particles are issued. */
+	private static int provePacedEffects(ServerLevel level, VillageRef ref, BlockPos origin, List<Step> steps) {
+		var type = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getValue(net.minecraft.resources.Identifier.parse("minecraft:villager"));
+		var v = (net.minecraft.world.entity.npc.villager.Villager) type.spawn(level, origin.above(), net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+		if (v == null) throw new IllegalStateException("DEMOLITION WORLD CHECK FAILED: cannot spawn demolition worker");
+		v.addTag("vp090_fixture");
+		v.setNoAi(true);
+		var state = new de.villagerplus.job.JobState();
+		long hits0 = de.villagerplus.job.Anim.hitSoundCount();
+		long breaks0 = de.villagerplus.job.Anim.breakEffectCount();
+		int maxStage = -1, removed = 0;
+		long now = level.getGameTime();
+		try {
+			for (int n = 0; n < 40 && removed == 0; n++) {
+				for (Step s : steps) {
+					if (de.villagerplus.world.LoadedColumns.ready(level, s.pos()) && !Demolition.skipDuringDemolition(level.getBlockState(s.pos()))
+						&& !(level.getBlockEntity(s.pos()) instanceof Container)) {
+						v.teleportTo(s.pos().getX() + 0.5, origin.getY(), s.pos().getZ() + 0.5);
+						break;
+					}
+				}
+				now += 6;
+				int before = Demolition.jobs(ref).isEmpty() ? 0 : Demolition.jobs(ref).get(0).index();
+				Demolition.work(new de.villagerplus.job.Ctx(level, v, state, v.getAttachedOrCreate(VillagerPlus.MEMORY), ref, now), ref);
+				maxStage = Math.max(maxStage, de.villagerplus.job.Anim.breakingStage(v));
+				if (de.villagerplus.job.Anim.breakEffectCount() > breaks0) removed++;
+			}
+			check(maxStage == 9 && de.villagerplus.job.Anim.hitSoundCount() - hits0 >= 10,
+				"B03 demolition issues a swing plus hit sound for every crack stage 0-9 before the block is removed [maxStage=" + maxStage
+				+ ", hits=" + (de.villagerplus.job.Anim.hitSoundCount() - hits0) + "]");
+			check(removed == 1 && de.villagerplus.job.Anim.breakEffectCount() - breaks0 == 1,
+				"B03 demolition ends the block with exactly one break sound plus particle burst");
+			return 2;
+		} finally {
+			de.villagerplus.job.Anim.cancelBreaking(v);
+			v.discard();
 		}
 	}
 

@@ -88,6 +88,7 @@ public class MasonJob implements Job {
 		}
 		if (JobUtil.take(box, s -> s.is(Items.TORCH), 1) == 1) {
 			c.level().setBlock(p, Blocks.TORCH.defaultBlockState(), 3);
+			Anim.blockPlace(c.level(), p, Blocks.TORCH.defaultBlockState(), 0.7F, 1.0F);
 			Anim.hold(c, Items.TORCH);
 			JobUtil.swing(c.v());
 			c.setActivity("stellt Fackeln auf");

@@ -1605,6 +1605,7 @@ public class FarmerJob implements Job {
 			}
 		}
 		for (ItemStack drop : plantDrops) if (!drop.isEmpty()) JobUtil.give(c.level(), c.v(), drop.copy());
+		Anim.blockPlace(c.level(), pos, c.level().getBlockState(pos), 0.8F, 1.0F);
 		if (!plants.isEmpty()) JobUtil.swing(c.v());
 		ExpansionPlan next = plan.next();
 		if (!saveExpansionPlan(c.v(), next)) {

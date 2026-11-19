@@ -33,6 +33,7 @@ public final class Anim {
 	private static final java.util.Map<Villager, HeldHand> HELD_HANDS = new java.util.IdentityHashMap<>();
 	private static final java.util.Map<Villager, BreakDiagnostic> BREAK_DIAGNOSTICS = new java.util.IdentityHashMap<>();
 	private static boolean registered;
+	private static long placeEffects, breakEffects, hitSounds;
 
 	private static final class HeldHand {
 		ItemStack previous;
@@ -205,6 +206,7 @@ public final class Anim {
 		v.getLookControl().setLookAt(work.pos.getX() + 0.5, work.pos.getY() + 0.5, work.pos.getZ() + 0.5);
 		JobUtil.swing(v);
 		work.swungAt = now;
+		hitSounds++;
 		work.context.level().playSound(null, work.pos, work.state.getSoundType().getHitSound(),
 			net.minecraft.sounds.SoundSource.BLOCKS, 0.6F, 0.9F);
 	}
@@ -343,11 +345,26 @@ public final class Anim {
 
 	/** Brockelnde Block-Partikel + Geraeusch (wie beim Abbauen). */
 	public static void blockBreak(ServerLevel level, BlockPos pos, BlockState state) {
+		breakEffects++;
 		level.levelEvent(2001, pos, Block.getId(state));
 	}
 
+	/** Final removal effect of a paced dismantling: the block's break sound plus a bounded particle burst. */
+	public static void blockBroken(ServerLevel level, BlockPos pos, BlockState state) {
+		breakEffects++;
+		level.sendParticles(new net.minecraft.core.particles.BlockParticleOption(ParticleTypes.BLOCK, state),
+			pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 10, 0.3, 0.3, 0.3, 0.05);
+		level.playSound(null, pos, state.getSoundType().getBreakSound(), net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 0.9F);
+	}
+
+	/** Development counters (no allocation): effects issued since start; used by in-world checks to prove calls happen. */
+	public static long placeEffectCount() { return placeEffects; }
+	public static long breakEffectCount() { return breakEffects; }
+	public static long hitSoundCount() { return hitSounds; }
+
 	/** Plays the placed block's sound and sends a bounded burst of its own particles to tracking clients. */
 	public static void blockPlace(ServerLevel level, BlockPos pos, BlockState state, float volume, float pitch) {
+		placeEffects++;
 		level.playSound(null, pos, state.getSoundType().getPlaceSound(), net.minecraft.sounds.SoundSource.BLOCKS, volume, pitch);
 		level.sendParticles(new net.minecraft.core.particles.BlockParticleOption(ParticleTypes.BLOCK, state),
 			pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 6, 0.25, 0.25, 0.25, 0.05);

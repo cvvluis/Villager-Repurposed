@@ -21,7 +21,6 @@ import java.util.Set;
 import java.util.function.BooleanSupplier;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -332,9 +331,7 @@ public final class Demolition {
 				return true;
 			}
 			CLAIMS.remove(new Key(level, pos));
-			level.sendParticles(new net.minecraft.core.particles.BlockParticleOption(net.minecraft.core.particles.ParticleTypes.BLOCK, state),
-				pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, 10, 0.3, 0.3, 0.3, 0.05);
-			level.playSound(null, pos, state.getSoundType().getBreakSound(), SoundSource.BLOCKS, 1.0F, 0.9F);
+			Anim.blockBroken(level, pos, state);
 			// A parallel worker may have removed a later step. Never skip the still occupied cursor block.
 			if (pos.equals(steps.get(i).pos())) i++;
 			c.mem().jobsDone++;

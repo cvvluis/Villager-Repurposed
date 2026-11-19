@@ -147,6 +147,7 @@ public final class AnimChecks {
 			level.setBlock(first, Blocks.STONE.defaultBlockState(), 3);
 			level.setBlock(second, Blocks.STONE.defaultBlockState(), 3);
 			var stone = level.getBlockState(first);
+			long hits0 = Anim.hitSoundCount();
 			for (int stage = 0; stage <= 9; stage++) {
 				Ctx c = context(level, ref, v, st, now + stage * 6L);
 				check(!Anim.breakStep(c, first, stone, Items.IRON_PICKAXE) && Anim.breakingStage(v) == stage,
@@ -155,6 +156,12 @@ public final class AnimChecks {
 					"same-tick duplicate cannot advance stage " + stage); checks++;
 			}
 			check(v.getMainHandItem().is(Items.IRON_PICKAXE), "tool is equipped before animation"); checks++;
+			check(Anim.hitSoundCount() - hits0 == 10, "ten crack stages issue exactly ten swing+hit-sound strokes (duplicates add none)"); checks++;
+			long placed0 = Anim.placeEffectCount(), broken0 = Anim.breakEffectCount();
+			Anim.blockPlace(level, first, stone, 0.8F, 1.0F);
+			Anim.blockBroken(level, first, stone);
+			check(Anim.placeEffectCount() - placed0 == 1 && Anim.breakEffectCount() - broken0 == 1,
+				"placement and final-break effects are each issued exactly once per call"); checks++;
 			check(Anim.breakStep(context(level, ref, v, st, now + 60), first, stone, Items.IRON_PICKAXE)
 				&& Anim.breakingStage(v) == -1, "completion follows visible stage nine and clears progress"); checks++;
 			check(level.getBlockState(first) == stone, "animation does not mutate or duplicate block drops"); checks++;

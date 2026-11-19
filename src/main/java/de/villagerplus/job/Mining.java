@@ -617,6 +617,7 @@ public final class Mining {
 			before.forEach((restore, state) -> c.level().setBlock(restore, state, 3));
 			return false;
 		}
+		for (BlockPos pos : cells) Anim.blockPlace(c.level(), pos, Blocks.OAK_PLANKS.defaultBlockState(), 0.6F, 1.0F);
 		return true;
 	}
 
@@ -1708,6 +1709,7 @@ public final class Mining {
 						&& JobUtil.count(c.v().getInventory(), stack -> stack.is(materials.fenceItem())) > 0
 						&& level.setBlock(position, materials.fence().defaultBlockState(), 3)) {
 						JobUtil.take(c.v().getInventory(), stack -> stack.is(materials.fenceItem()), 1);
+						Anim.blockPlace(level, position, materials.fence().defaultBlockState(), 0.8F, 1.0F);
 					}
 				}
 			}
@@ -1717,6 +1719,7 @@ public final class Mining {
 					&& JobUtil.count(c.v().getInventory(), stack -> stack.is(materials.plankItem())) > 0
 					&& level.setBlock(beam, materials.planks().defaultBlockState(), 3)) {
 					JobUtil.take(c.v().getInventory(), stack -> stack.is(materials.plankItem()), 1);
+					Anim.blockPlace(level, beam, materials.planks().defaultBlockState(), 0.8F, 1.0F);
 				}
 			}
 		}
@@ -1728,6 +1731,7 @@ public final class Mining {
 				&& JobUtil.count(c.v().getInventory(), stack -> stack.is(Items.TORCH)) > 0
 				&& level.setBlock(spot, Blocks.WALL_TORCH.defaultBlockState().setValue(WallTorchBlock.FACING, facing), 3)) {
 				JobUtil.take(c.v().getInventory(), stack -> stack.is(Items.TORCH), 1);
+				Anim.blockPlace(level, spot, Blocks.WALL_TORCH.defaultBlockState(), 0.7F, 1.0F);
 			}
 		}
 	}
@@ -2250,6 +2254,7 @@ public final class Mining {
 			Item used = fill;
 			if (level.setBlock(floor, Block.byItem(used).defaultBlockState(), 3)) {
 				JobUtil.take(inventory, stack -> stack.is(used), 1);
+				Anim.blockPlace(level, floor, Block.byItem(used).defaultBlockState(), 0.8F, 1.0F);
 				return true;
 			}
 		}

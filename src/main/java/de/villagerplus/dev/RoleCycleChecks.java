@@ -742,7 +742,10 @@ public final class RoleCycleChecks {
 			check(JobUtil.count(ref.chest(level), stack -> stack.is(Items.FURNACE)) == 1
 				&& JobUtil.count(ref.chest(level), stack -> stack.is(Items.COBBLESTONE)) == 0, "eight cobblestone become one furnace");
 			state.cooldownUntil = 0;
+			long placeEffects0 = de.villagerplus.job.Anim.placeEffectCount();
 			check(Workstation.ensure(context(level, ref, smith, state), Blocks.FURNACE), "smith places the crafted furnace");
+			check(de.villagerplus.job.Anim.placeEffectCount() - placeEffects0 == 1,
+				"B03 placing the furnace issues exactly one placement sound plus particle burst through Anim.blockPlace");
 			check(Workstation.find(level, at, Blocks.FURNACE, 8) != null
 				&& JobUtil.count(ref.chest(level), stack -> stack.is(Items.FURNACE)) == 0, "the furnace leaves the chest and stands in the village");
 		} finally {

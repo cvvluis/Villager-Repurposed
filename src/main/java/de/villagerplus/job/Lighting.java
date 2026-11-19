@@ -280,7 +280,8 @@ public final class Lighting {
 			RecipeCrafting.commit(stock, List.of(), List.of(new ItemStack(item)));
 			return false;
 		}
-		c.level().playSound(null, spot, SoundEvents.WOOD_PLACE, SoundSource.BLOCKS, 0.7F, 1.0F);
+		Anim.hold(c, item);
+		Anim.blockPlace(c.level(), spot, state, 0.7F, 1.0F);
 		JobUtil.swing(c.v());
 		c.mem().jobsDone++;
 		c.st().lightAt = c.now() + 20;
