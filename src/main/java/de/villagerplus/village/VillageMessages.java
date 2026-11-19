@@ -18,6 +18,11 @@ public final class VillageMessages {
             .append(message.copy());
     }
 
+    /** The villager's own name, or a translatable stand-in (e.g. "message.villagerplus.name_the_villager") when it has none. */
+    public static Component nameOr(String name, String fallbackKey) {
+        return name == null || name.isEmpty() ? Component.translatable(fallbackKey) : Component.literal(name);
+    }
+
     public static void system(Player player, Component message) {
         player.sendSystemMessage(format(message));
     }

@@ -436,7 +436,7 @@ public final class Mining {
 			}
 		}
 		if (stand > 0 && !safeCell(c, bottom(m, stand))) {
-			finishMine(c, ref, m, "Die Mine wurde geschlossen (Hohlraum unter dem Stollen).");
+			finishMine(c, ref, m, "message.villagerplus.mine_closed_hollow");
 			exitStep(c);
 			return true;
 		}
@@ -456,7 +456,7 @@ public final class Mining {
 				return true;
 			}
 			if (result == MineWalk.BLOCKED) {
-				finishMine(c, ref, m, "Die Mine wurde wegen eines blockierten Laufwegs geschlossen.");
+				finishMine(c, ref, m, "message.villagerplus.mine_closed_blocked");
 				if (here >= 1) exitStep(c);
 				else clearMineRoute(c.v());
 				return true;
@@ -657,7 +657,7 @@ public final class Mining {
 				why[1]++;
 				continue;
 			}
-			JobUtil.tellNearbyPlayers(level, c.v(), 48, Component.literal("Das Dorf legt eine Mine an."));
+			JobUtil.tellNearbyPlayers(level, c.v(), 48, Component.translatable("message.villagerplus.mine_started"));
 			MINE_CREATE_FAILS.remove(ref.bell().asLong());
 			return Optional.of(m);
 		}
@@ -1615,7 +1615,7 @@ public final class Mining {
 					c.setActivity("wartet auf Bruchstein für eine sichere Minenterrasse");
 					return;
 				}
-				finishMine(c, ref, m, "Die Mine wurde geschlossen (Hohlraum unter dem Stollenprofil).");
+				finishMine(c, ref, m, "message.villagerplus.mine_closed_hollow_profile");
 				return;
 			}
 		}
@@ -1625,7 +1625,7 @@ public final class Mining {
 			return;
 		}
 		if (!plan.safe()) {
-			finishMine(c, ref, m, "Die Mine wurde wegen eines unsicheren oder geschützten Stollenabschnitts geschlossen.");
+			finishMine(c, ref, m, "message.villagerplus.mine_closed_unsafe");
 			return;
 		}
 		List<BlockPos> dug = new ArrayList<>();
@@ -1649,7 +1649,7 @@ public final class Mining {
 		c.mem().jobsDone++;
 		m.index++;
 		if (m.index >= descent(m) + MAX_HORIZONTAL) {
-			finishMine(c, ref, m, "Die Mine ist ausgebeutet.");
+			finishMine(c, ref, m, MINE_EXHAUSTED_KEY);
 		}
 		ref.dirty();
 	}
@@ -2309,7 +2309,11 @@ public final class Mining {
 	/** Entrances that never worked (no path, nothing dug): not archived, only avoided when choosing a new site. */
 	private static final java.util.Set<BlockPos> BAD_ENTRANCES = new java.util.HashSet<>();
 
-	private static void finishMine(Ctx c, VillageRef ref, VillageData.Mine m, String message) {
+	/** Translation key of the "mine exhausted" closure; the other closure keys mean the mine was closed for safety. */
+	static final String MINE_EXHAUSTED_KEY = "message.villagerplus.mine_exhausted";
+
+	/** {@code messageKey} is the translation key of the closure notice shown to nearby players. */
+	private static void finishMine(Ctx c, VillageRef ref, VillageData.Mine m, String messageKey) {
 		m.done = true;
 		// An entrance nobody ever dug into is not an "old mine": remember it as a bad spot (this session) instead of
 		// walling it up and fencing off the surrounding land for good, so the village can pick another site.
@@ -2324,10 +2328,10 @@ public final class Mining {
 			ref.data().mine = Optional.empty();
 		}
 		ref.dirty();
-		if (!unused) barricade(c.level(), ref, m, message.contains("ausgebeutet"));
+		if (!unused) barricade(c.level(), ref, m, MINE_EXHAUSTED_KEY.equals(messageKey));
 		c.st().mineCheckAt = c.now() + 12000;
-		org.slf4j.LoggerFactory.getLogger("villagerplus").info("Villagers: Repurposed: Mine bei {} beendet bei Abschnitt {}: {}", m.entrance, m.index, message);
-		JobUtil.tellNearbyPlayers(c.level(), c.v(), 48, Component.literal(message));
+		org.slf4j.LoggerFactory.getLogger("villagerplus").info("Villagers: Repurposed: Mine bei {} beendet bei Abschnitt {}: {}", m.entrance, m.index, messageKey);
+		JobUtil.tellNearbyPlayers(c.level(), c.v(), 48, Component.translatable(messageKey));
 		c.level().playSound(null, m.entrance, SoundEvents.ANVIL_PLACE, SoundSource.BLOCKS, 0.5F, 1.0F);
 	}
 

@@ -19,6 +19,12 @@ Dorfbewohner haben Namen, feste Häuser mit Schild, einen festen Tagesplan und e
 mit Doppelkiste und wächst selbstständig. Server- und Client-Mod (der Info-Knopf braucht die Mod auch beim Spieler; Einzelspieler funktioniert), benötigt Fabric Loader 0.20.1+,
 Fabric API und Java 25.
 
+## Translatable texts (unreleased)
+
+Player-facing messages and the village board buttons are now translation keys (`assets/villagerplus/lang/de_de.json` and `en_us.json`), so the mod follows the client language (German and English). The German wording is unchanged.
+
+**Important:** translatable components are resolved by the *client*. A client without this mod therefore shows the raw keys (for example `message.villagerplus.festival`) when it joins a dedicated server that runs the mod. The mod is required on the client side anyway; texts that are still built from plain strings (for example village statistics lines, demolition and relocation results, profession names) stay German in every language.
+
 ## Neu in 0.10.8: Dorfkarte lädt keine Chunks mehr (Playtest 11)
 
 Beim Betreten eines Dorfs im großen Modpack hing der Server-Thread in der Relief-Abtastung der großen Dorftafel (`VillageMap.grid` / `classifyFine`): `hasChunkAt` galt nur für die Zellmitte, `getHeight`/`getBlockState` haben fehlende Nachbarspalten synchron erzeugt (`getChunkBlocking`). Das Bild blieb stehen, der Server meldete „Can't keep up“.

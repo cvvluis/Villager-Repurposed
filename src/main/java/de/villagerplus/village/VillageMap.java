@@ -124,7 +124,7 @@ public final class VillageMap {
 			line.append(Component.literal("│").withStyle(ChatFormatting.DARK_GRAY));
 			out.add(line);
 		}
-		out.add(Component.literal("└" + "─".repeat(CELLS * 2) + "┘  Norden oben, 1 Feld = " + overviewSize + "×" + overviewSize + " Blöcke").withStyle(ChatFormatting.DARK_GRAY));
+		out.add(Component.literal("└" + "─".repeat(CELLS * 2) + "┘  ").append(Component.translatable("message.villagerplus.map_scale", overviewSize, overviewSize)).withStyle(ChatFormatting.DARK_GRAY));
 		out.add(legend());
 
 		// Balkendiagramme.
@@ -137,9 +137,11 @@ public final class VillageMap {
 		int mood = pop == 0 ? 0 : moodSum / pop;
 		int score = Wealth.score(level, ref, pop);
 		out.add(Component.empty());
-		out.add(bar("Einwohner  ", pop / (double) Config.MAX_VILLAGERS, ChatFormatting.GREEN, pop + " von " + Config.MAX_VILLAGERS));
-		out.add(bar("Stimmung   ", mood / 100.0, mood >= 60 ? ChatFormatting.GREEN : mood >= 35 ? ChatFormatting.YELLOW : ChatFormatting.RED, mood + " %"));
-		out.add(bar("Reichtum   ", Math.min(1.0, score / 350.0), ChatFormatting.GOLD, score + " Punkte (Stufe " + Wealth.tier(score) + ")"));
+		out.add(bar(Component.translatable("message.villagerplus.map_bar_population"), pop / (double) Config.MAX_VILLAGERS, ChatFormatting.GREEN,
+			Component.translatable("message.villagerplus.map_bar_population_value", pop, Config.MAX_VILLAGERS)));
+		out.add(bar(Component.translatable("message.villagerplus.map_bar_mood"), mood / 100.0, mood >= 60 ? ChatFormatting.GREEN : mood >= 35 ? ChatFormatting.YELLOW : ChatFormatting.RED, Component.literal(mood + " %")));
+		out.add(bar(Component.translatable("message.villagerplus.map_bar_wealth"), Math.min(1.0, score / 350.0), ChatFormatting.GOLD,
+			Component.translatable("message.villagerplus.map_bar_wealth_value", score, Wealth.tier(score))));
 		List<net.minecraft.world.Container> boxes = Balance.storage(level, ref);
 		long[] stock = new long[Balance.Kind.values().length];
 		long max = 1;
@@ -147,19 +149,20 @@ public final class VillageMap {
 			stock[k.ordinal()] = Balance.stock(boxes, k);
 			max = Math.max(max, stock[k.ordinal()]);
 		}
-		String[] labels = {"Essen      ", "Holz       ", "Stein      ", "Metall     "};
+		String[] labels = {"message.villagerplus.map_bar_food", "message.villagerplus.map_bar_wood", "message.villagerplus.map_bar_stone", "message.villagerplus.map_bar_metal"};
 		ChatFormatting[] colors = {ChatFormatting.RED, ChatFormatting.GOLD, ChatFormatting.GRAY, ChatFormatting.AQUA};
 		for (Balance.Kind k : Balance.Kind.values()) {
-			out.add(bar(labels[k.ordinal()], stock[k.ordinal()] / (double) max, colors[k.ordinal()], stock[k.ordinal()] + " Einheiten"));
+			out.add(bar(Component.translatable(labels[k.ordinal()]), stock[k.ordinal()] / (double) max, colors[k.ordinal()],
+				Component.translatable("message.villagerplus.map_bar_units", stock[k.ordinal()])));
 		}
 		out.add(Component.empty());
-		out.add(Component.literal("Karawanenorte").withStyle(ChatFormatting.GOLD));
+		out.add(Component.translatable("message.villagerplus.map_caravan_places").withStyle(ChatFormatting.GOLD));
 		out.addAll(partnerDisplayLines(Network.of(ref.bellEntity()), level.getGameTime() / 24000L));
 		out.add(Component.empty());
-		out.add(Component.literal("Nachbardörfer").withStyle(ChatFormatting.AQUA));
+		out.add(Component.translatable("message.villagerplus.map_neighbor_villages").withStyle(ChatFormatting.AQUA));
 		List<String> visibleNeighbors = neighborSummaryRows(neighborRows);
 		if (visibleNeighbors.isEmpty()) {
-			out.add(Component.literal("Keine echten Nachbardörfer im bekannten Umfeld.").withStyle(ChatFormatting.GRAY));
+			out.add(Component.translatable("message.villagerplus.map_no_neighbors").withStyle(ChatFormatting.GRAY));
 		} else {
 			for (String neighbor : visibleNeighbors) out.add(Component.literal("◆ " + neighbor).withStyle(ChatFormatting.AQUA));
 		}
@@ -189,23 +192,23 @@ public final class VillageMap {
 
 	private static Component legend() {
 		MutableComponent l = Component.empty();
-		String[][] items = {{"⌂", "Glocke", "WHITE"}, {"▣", "Kiste", "YELLOW"}, {"✉", "Tafel", "AQUA"}, {"✎", "Schule", "BLUE"}, {"▤", "Lager", "GRAY"},
-			{"❖", "Gehege", "RED"}, {"▼", "Mine", "DARK_RED"}, {"▽", "Alte Mine", "DARK_GRAY"}, {"■", "Bebauung", "GOLD"}, {"▒", "Feld", "GREEN"}, {"≈", "Wasser", "AQUA"},
-			{"░", "Weg", "YELLOW"}, {"♣", "Wald", "DARK_GREEN"}, {"•", "Dorfbewohner", "GREEN"}, {"▧", "Baustelle", "GOLD"},
-			{"◆", "Nachbardorf", "AQUA"}};
+		String[][] items = {{"⌂", "message.villagerplus.map_legend_bell", "WHITE"}, {"▣", "message.villagerplus.map_legend_chest", "YELLOW"}, {"✉", "message.villagerplus.map_legend_board", "AQUA"}, {"✎", "message.villagerplus.map_legend_school", "BLUE"}, {"▤", "message.villagerplus.map_legend_storage", "GRAY"},
+			{"❖", "message.villagerplus.map_legend_pen", "RED"}, {"▼", "message.villagerplus.map_legend_mine", "DARK_RED"}, {"▽", "message.villagerplus.map_legend_old_mine", "DARK_GRAY"}, {"■", "message.villagerplus.map_legend_built", "GOLD"}, {"▒", "message.villagerplus.map_legend_field", "GREEN"}, {"≈", "message.villagerplus.map_legend_water", "AQUA"},
+			{"░", "message.villagerplus.map_legend_path", "YELLOW"}, {"♣", "message.villagerplus.map_legend_forest", "DARK_GREEN"}, {"•", "message.villagerplus.map_legend_villager", "GREEN"}, {"▧", "message.villagerplus.map_legend_construction", "GOLD"},
+			{"◆", "message.villagerplus.map_legend_neighbor", "AQUA"}};
 		for (String[] it : items) {
-			l.append(Component.literal(it[0] + " " + it[1] + "  ").withStyle(ChatFormatting.valueOf(it[2])));
+			l.append(Component.literal(it[0] + " ").append(Component.translatable(it[1])).append("  ").withStyle(ChatFormatting.valueOf(it[2])));
 		}
 		return l;
 	}
 
-	private static Component bar(String label, double fraction, ChatFormatting color, String text) {
+	private static Component bar(Component label, double fraction, ChatFormatting color, Component text) {
 		int width = 20;
 		int filled = (int) Math.round(Math.max(0.0, Math.min(1.0, fraction)) * width);
-		return Component.literal(label).withStyle(ChatFormatting.GRAY)
+		return label.copy().withStyle(ChatFormatting.GRAY)
 			.append(Component.literal("█".repeat(filled)).withStyle(color))
 			.append(Component.literal("░".repeat(width - filled)).withStyle(ChatFormatting.DARK_GRAY))
-			.append(Component.literal(" " + text).withStyle(ChatFormatting.WHITE));
+			.append(Component.literal(" ").append(text).withStyle(ChatFormatting.WHITE));
 	}
 
 	private static void put(char[][] mark, ChatFormatting[][] color, int originX, int originZ, int cellSize, BlockPos p, char ch, ChatFormatting c, boolean override) {

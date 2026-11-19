@@ -235,7 +235,7 @@ public final class VillageAdmin {
 			admin = new Admin(Optional.of(elected.getUUID()), mem.name, admin.focus(), admin.focusDay(), admin.diplomacyDay(), admin.woodStem(), admin.rusticStone());
 			save(ref, admin);
 			LOGGER.info("Villagers: Repurposed: {} ist jetzt Buergermeister (Glocke {})", mem.name, ref.bell().toShortString());
-			JobUtil.tellNearbyPlayers(level, elected, 64, Component.literal(mem.name + " ist jetzt Bürgermeister des Dorfes."));
+			JobUtil.tellNearbyPlayers(level, elected, 64, Component.translatable("message.villagerplus.mayor_elected", mem.name));
 			mayor = elected;
 		}
 
@@ -243,8 +243,7 @@ public final class VillageAdmin {
 			Focus scanned = scan(level, ref.bell());
 			if (!scanned.name().equals(admin.focus())) {
 				LOGGER.info("Villagers: Repurposed: Dorf an Glocke {} richtet sich auf {} aus", ref.bell().toShortString(), scanned.label);
-				JobUtil.tellNearbyPlayers(level, mayor, 64, Component.literal(admin.mayorName() + " richtet das Dorf auf "
-					+ scanned.label + " aus."));
+				JobUtil.tellNearbyPlayers(level, mayor, 64, Component.translatable("message.villagerplus.mayor_focus", admin.mayorName(), scanned.label));
 			}
 			admin = new Admin(admin.mayor(), admin.mayorName(), scanned.name(), now, admin.diplomacyDay(), admin.woodStem(), admin.rusticStone());
 			save(ref, admin);

@@ -66,11 +66,10 @@ public final class Networking {
 			if (ref != null) {
 				var renamed = de.villagerplus.village.Network.rename(level, ref, payload.name());
 				if (renamed.isPresent()) {
-					VillageMessages.system(player, net.minecraft.network.chat.Component.literal("Das Dorf heißt jetzt „" + renamed.get() + "“."));
+					VillageMessages.system(player, net.minecraft.network.chat.Component.translatable("message.villagerplus.village_renamed", renamed.get()));
 				} else {
-					VillageMessages.system(player, net.minecraft.network.chat.Component.literal(
-						"Ungültiger Dorfname. Erlaubt sind 1–" + de.villagerplus.village.Network.MAX_MANUAL_VILLAGE_NAME_CODE_POINTS
-							+ " Unicode-Zeichen ohne Steuer- oder Formatzeichen."));
+					VillageMessages.system(player, net.minecraft.network.chat.Component.translatable("message.villagerplus.village_rename_invalid",
+						de.villagerplus.village.Network.MAX_MANUAL_VILLAGE_NAME_CODE_POINTS));
 				}
 				de.villagerplus.block.DorftafelBlock.open(level, player, payload.board());
 			}
@@ -90,7 +89,7 @@ public final class Networking {
 					String what = ref.data().planType;
 					de.villagerplus.build.Builder.cancel(ref, level.getGameTime());
 					de.villagerplus.village.Journal.add(level, ref, "Bauen", player.getName().getString(), "Bauauftrag abgebrochen: " + what, 0);
-					VillageMessages.system(player, net.minecraft.network.chat.Component.literal("Bauauftrag abgebrochen: " + what + ". Das Dorf plant frühestens in einer Minute neu."));
+					VillageMessages.system(player, net.minecraft.network.chat.Component.translatable("message.villagerplus.build_cancelled", what));
 				}
 			} else if (payload.kind().equals("villager")) {
 				net.minecraft.world.entity.Entity e = level.getEntity(payload.villager());
@@ -105,7 +104,8 @@ public final class Networking {
 					v.getNavigation().stop();
 					v.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
 					String name = v.getAttachedOrCreate(de.villagerplus.VillagerPlus.MEMORY).name;
-					VillageMessages.system(player, net.minecraft.network.chat.Component.literal((name.isEmpty() ? "Der Dorfbewohner" : name) + " bricht die Aufgabe ab und sucht sich eine neue."));
+					VillageMessages.system(player, net.minecraft.network.chat.Component.translatable("message.villagerplus.task_cancelled",
+						VillageMessages.nameOr(name, "message.villagerplus.name_the_villager")));
 				}
 			}
 			de.villagerplus.block.DorftafelBlock.open(level, player, payload.board());
@@ -155,8 +155,10 @@ public final class Networking {
 				de.villagerplus.job.Apprentices.plan(v, id.toString());
 				var apprenticeship = de.villagerplus.job.Apprentices.get(v);
 				String name = v.getAttachedOrCreate(de.villagerplus.VillagerPlus.MEMORY).name;
-				VillageMessages.system(player, net.minecraft.network.chat.Component.literal((name.isEmpty() ? "Das Kind" : name) + (id.getPath().equals("none")
-					? " hat keinen Lehrlingsberuf mehr." : " lernt künftig " + de.villagerplus.job.Apprentices.professionName(id.toString()) + " (" + apprenticeship.lessonXp() + " XP).")));
+				VillageMessages.system(player, id.getPath().equals("none")
+					? net.minecraft.network.chat.Component.translatable("message.villagerplus.apprentice_none", VillageMessages.nameOr(name, "message.villagerplus.name_the_child"))
+					: net.minecraft.network.chat.Component.translatable("message.villagerplus.apprentice_learns", VillageMessages.nameOr(name, "message.villagerplus.name_the_child"),
+						de.villagerplus.job.Apprentices.professionName(id.toString()), apprenticeship.lessonXp()));
 				de.villagerplus.block.DorftafelBlock.open(level, player, payload.board());
 				return;
 			}
@@ -170,8 +172,8 @@ public final class Networking {
 			v.setOffers(null);
 			v.refreshBrain(level);
 			String name = v.getAttachedOrCreate(de.villagerplus.VillagerPlus.MEMORY).name;
-			VillageMessages.system(player, net.minecraft.network.chat.Component.literal((name.isEmpty() ? "Der Dorfbewohner" : name) + " arbeitet jetzt als "
-				+ de.villagerplus.village.Names.profession(v.getVillagerData().profession()) + "."));
+			VillageMessages.system(player, net.minecraft.network.chat.Component.translatable("message.villagerplus.works_as",
+				VillageMessages.nameOr(name, "message.villagerplus.name_the_villager"), de.villagerplus.village.Names.profession(v.getVillagerData().profession())));
 			de.villagerplus.block.DorftafelBlock.open(level, player, payload.board());
 		});
 		PayloadTypeRegistry.clientboundPlay().register(BoardData.TYPE, BoardData.CODEC);

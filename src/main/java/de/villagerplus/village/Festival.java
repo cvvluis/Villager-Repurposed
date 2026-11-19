@@ -70,7 +70,7 @@ public final class Festival {
 		long[] s = state(level, ref);
 		if (s[2] == 0) {
 			s[2] = 1;
-			JobUtil.tellNearbyPlayers(level, c.v(), 64, Component.literal("Dorffest! Das ganze Dorf feiert heute Abend an der Glocke."));
+			JobUtil.tellNearbyPlayers(level, c.v(), 64, Component.translatable("message.villagerplus.festival"));
 			level.playSound(null, ref.bell(), SoundEvents.BELL_BLOCK, SoundSource.BLOCKS, 2.0F, 1.0F);
 		}
 		c.setActivity("feiert beim Dorffest");

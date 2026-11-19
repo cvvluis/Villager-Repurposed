@@ -35,7 +35,7 @@ import net.minecraft.world.level.block.entity.SignText;
  * {@code /villagerplus tafel <reiter>} aufrufen. Schleichen + Rechtsklick zeigt direkt die Expeditionen.
  */
 public final class Board {
-	public static final String[][] TABS = {{"uebersicht", "Übersicht"}, {"details", "Details"}, {"expeditionen", "Expeditionen"}};
+	public static final String[][] TABS = {{"uebersicht", "message.villagerplus.board_tab_overview"}, {"details", "message.villagerplus.board_tab_details"}, {"expeditionen", "message.villagerplus.board_tab_expeditions"}};
 
 	private Board() {
 	}
@@ -114,12 +114,12 @@ public final class Board {
 	}
 
 	private static Component header(String active) {
-		MutableComponent h = Component.literal("══ Dorftafel ══  ").withStyle(ChatFormatting.GOLD);
+		MutableComponent h = Component.literal("══ ").append(Component.translatable("message.villagerplus.board_title")).append(" ══  ").withStyle(ChatFormatting.GOLD);
 		for (String[] tab : TABS) {
 			boolean on = tab[0].equals(active);
 			Style style = Style.EMPTY.withColor(on ? ChatFormatting.YELLOW : ChatFormatting.AQUA).withUnderlined(!on)
 				.withClickEvent(new ClickEvent.RunCommand("villagerplus tafel " + tab[0]));
-			h.append(Component.literal("[" + tab[1] + "] ").withStyle(style));
+			h.append(Component.literal("[").append(Component.translatable(tab[1])).append("] ").withStyle(style));
 		}
 		return h;
 	}

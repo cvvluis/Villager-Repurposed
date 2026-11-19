@@ -446,7 +446,7 @@ public final class MineLifecycleChecks {
 			level.setBlock(partialCap, Blocks.AIR.defaultBlockState(), 3);
 			publicStock.setItem(0, new ItemStack(Items.SPRUCE_PLANKS, 24)); // the complete roof-and-cap seal of this fixture costs 24 planks
 			worker.setPos(entrance.getX() + 2.5, entrance.getY() - 2, entrance.getZ() + 1.5);
-			invokeFinish(context, ref, mine, "Die Mine ist ausgebeutet.");
+			invokeFinish(context, ref, mine, Mining.MINE_EXHAUSTED_KEY);
 			check(mine.done && data.mine.isEmpty() && data.extra.oldMines.size() == 1
 				&& data.extra.oldMines.getFirst() == mine && level.getBlockState(entrance).isAir()
 				&& publicStock.getItem(0).getCount() == 24 && publicStock.getItem(1).getCount() == 1,
@@ -517,7 +517,7 @@ public final class MineLifecycleChecks {
 			check(level.getBlockEntity(entrance.above().relative(Direction.WEST)) instanceof SignBlockEntity sign
 				&& signText(sign).contains("[VERSCHLOSSEN - ERSCHÖPFT]"), "closure sign visibly marks exhausted mine"); checks++;
 
-			invokeFinish(context, ref, mine, "Die Mine ist ausgebeutet.");
+			invokeFinish(context, ref, mine, Mining.MINE_EXHAUSTED_KEY);
 			check(data.mine.isEmpty() && data.extra.oldMines.size() == 1, "repeated completion does not duplicate the archived entrance"); checks++;
 
 			CompoundTag savedBell = bell.saveWithFullMetadata(level.registryAccess());

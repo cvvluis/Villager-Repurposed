@@ -132,9 +132,8 @@ public final class Guests {
 			spawned++;
 		}
 		if (spawned > 0) {
-			JobUtil.tellNearbyPlayers(level, who, 60, Component.literal(caravan
-				? "Eine Reisegruppe aus " + town + " nähert sich dem Dorf."
-				: "Ein Gast aus " + town + " nähert sich dem Dorf."));
+			JobUtil.tellNearbyPlayers(level, who, 60, Component.translatable(caravan
+				? "message.villagerplus.guests_group_approaching" : "message.villagerplus.guests_guest_approaching", town));
 		}
 	}
 
@@ -240,7 +239,7 @@ public final class Guests {
 			dropGiftRemainder(level, ref, StockPolicy.insertVillage(level, ref, new ItemStack(Items.EMERALD, 1)));
 		}
 		dropGiftRemainder(level, ref, StockPolicy.insertVillage(level, ref, goods));
-		JobUtil.tellNearbyPlayers(level, guest, 48, Component.literal("Ein Gast aus " + s.home + " bringt Gastgeschenke in die Dorfkiste."));
+		JobUtil.tellNearbyPlayers(level, guest, 48, Component.translatable("message.villagerplus.guests_gifts", s.home));
 	}
 
 	private static void dropGiftRemainder(ServerLevel level, VillageRef ref, ItemStack rest) {
@@ -259,7 +258,7 @@ public final class Guests {
 		guest.removeTag(TAG);
 		guest.setCustomName(null);
 		guest.getAttachedOrCreate(VillagerPlus.MEMORY).name = "";
-		JobUtil.tellNearbyPlayers(level, guest, 48, Component.literal("Ein Gast aus " + s.home + " lässt sich im Dorf nieder!"));
+		JobUtil.tellNearbyPlayers(level, guest, 48, Component.translatable("message.villagerplus.guests_settled", s.home));
 		return true;
 	}
 }

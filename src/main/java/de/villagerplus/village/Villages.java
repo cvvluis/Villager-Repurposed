@@ -344,7 +344,7 @@ public final class Villages {
 			return;
 		}
 		if (placeCenter(level, ref, who)) {
-			JobUtil.tellNearbyPlayers(level, who, 40, Component.literal("Die Dorfbewohner haben eine Dorfmitte mit Dorfkiste angelegt."));
+			JobUtil.tellNearbyPlayers(level, who, 40, Component.translatable("message.villagerplus.village_center_built"));
 		}
 	}
 
@@ -423,7 +423,7 @@ public final class Villages {
 					org.slf4j.LoggerFactory.getLogger("villagerplus").info(
 						"Villagers: Repurposed: kompakte Starter-Dorfkiste bei {} errichtet (Plaza folgt bei freier Flaeche)",
 						ref.data().chest.orElse(ref.bell()).toShortString());
-					JobUtil.tellNearbyPlayers(level, who, 40, Component.literal("Die Dorfbewohner haben eine Starter-Dorfkiste angelegt; der Dorfplatz folgt."));
+					JobUtil.tellNearbyPlayers(level, who, 40, Component.translatable("message.villagerplus.village_starter_chest"));
 					return true;
 				}
 				org.slf4j.LoggerFactory.getLogger("villagerplus").warn(

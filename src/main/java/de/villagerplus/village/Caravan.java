@@ -361,7 +361,7 @@ public final class Caravan {
 				state.reward += 2;
 				persistVisitState(level, state);
 
-				VillageMessages.system(player, Component.literal("Das Partnerdorf bedankt sich für dein Geschenk (+2 Beziehung)."));
+				VillageMessages.system(player, Component.translatable("message.villagerplus.caravan_gift_thanks"));
 
 			}
 
@@ -2492,7 +2492,7 @@ public final class Caravan {
 
 				var player = level.getNearestPlayer(trader, 12);
 
-				if (player != null) VillageMessages.system(player, Component.literal("Handel abgeschlossen: Beziehung +" + reward));
+				if (player != null) VillageMessages.system(player, Component.translatable("message.villagerplus.caravan_trade_done", reward));
 
 			}
 
@@ -3569,9 +3569,7 @@ public final class Caravan {
 		if (!transacted) return false;
 
 		Journal.add(level,ref,"Handel",town,"Karawane: verkauft ["+String.join(", ",sold)+"], gekauft ["+String.join(", ",bought)+"]",units);
-		Component msg = Component.literal("Die Karawane aus " + town + " tauscht Waren: verkauft [" + String.join(", ", sold)
-
-			+ "], gekauft [" + String.join(", ", bought) + "].");
+		Component msg = Component.translatable("message.villagerplus.caravan_trades", town, String.join(", ", sold), String.join(", ", bought));
 
 		org.slf4j.LoggerFactory.getLogger("villagerplus").info("Villagers: Repurposed: {} (Wunschliste {})", msg.getString(), wishes);
 

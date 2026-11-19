@@ -573,7 +573,7 @@ public final class Demolition {
 		ref.dirty();
 		clearSite(level, b.origin());
 		Journal.add(level, ref, "Bauen", c.mem().name, label(b.type()) + " abgerissen, Gelände renaturiert", 0);
-		JobUtil.tellNearbyPlayers(level, c.v(), 40, net.minecraft.network.chat.Component.literal("Abriss fertig: " + label(b.type()) + " – Material liegt in der Dorfkiste."));
+		JobUtil.tellNearbyPlayers(level, c.v(), 40, net.minecraft.network.chat.Component.translatable("message.villagerplus.demolition_done", label(b.type())));
 	}
 
 	/** Füllt den alten Baukörper bis zur früheren Geländeebene und stellt eine natürliche Deckschicht her. */

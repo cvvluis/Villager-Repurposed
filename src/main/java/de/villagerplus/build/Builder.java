@@ -4249,15 +4249,15 @@ public final class Builder {
 		List<Gap> publicMissing = publicStock == null ? required
 			: missing(c.level(), demandWindow, 0, new net.minecraft.world.CompoundContainer(publicStock, siteStock), support);
 		if (announce && !publicMissing.isEmpty()) {
-			MutableComponent msg = Component.literal("Für " + label(type) + " fehlt in der Dorfkiste (die Dorfbewohner beschaffen es): ");
+			MutableComponent list = Component.empty();
 			int shown = Math.min(7, publicMissing.size());
 			for (int i = 0; i < shown; i++) {
-				msg.append(i == 0 ? Component.empty() : Component.literal(", ")).append(publicMissing.get(i).text());
+				list.append(i == 0 ? Component.empty() : Component.literal(", ")).append(publicMissing.get(i).text());
 			}
 			if (publicMissing.size() > shown) {
-				msg.append(Component.literal(" …"));
+				list.append(Component.literal(" …"));
 			}
-			JobUtil.tellNearbyPlayers(c.level(), c.v(), 32, msg);
+			JobUtil.tellNearbyPlayers(c.level(), c.v(), 32, Component.translatable("message.villagerplus.build_missing_in_chest", label(type), list));
 		}
 		ref.dirty();
 		if (construction != null && construction.origin().equals(origin) && !construction.prepared()
@@ -5317,7 +5317,7 @@ public final class Builder {
 							return madeProgress;
 						}
 						JobUtil.tellNearbyPlayers(level, c.v(), 32,
-							Component.literal("Dem Baumeister geht das Material aus – die Dorfbewohner beschaffen Nachschub."));
+							Component.translatable("message.villagerplus.builder_out_of_material"));
 						updateWanted(c, ref, d.planType, steps, box, siteStock, cargoManifest, origin, d.planStep, false);
 						d.planProgress = c.now();
 						ref.dirty();
@@ -6532,7 +6532,7 @@ public final class Builder {
 		forgetStandWatch(origin.asLong());
 		PLAN_DIAGNOSTICS.remove(origin.asLong());
 		if (REPAIRS.remove(origin.asLong())) {
-			JobUtil.tellNearbyPlayers(c.level(), c.v(), 40, Component.literal("Ausgebessert: " + label(d.planType) + "."));
+			JobUtil.tellNearbyPlayers(c.level(), c.v(), 40, Component.translatable("message.villagerplus.build_repaired", label(d.planType)));
 			PALETTES.remove(origin.asLong());
 			FOOT.remove(origin.asLong());
 			STEPS.remove(origin.asLong());
@@ -6603,7 +6603,7 @@ public final class Builder {
 			case Blueprints.TOWNHALL -> d.townHallBuilt = true;
 			default -> d.wellBuilt = true;
 		}
-		JobUtil.tellNearbyPlayers(c.level(), c.v(), 40, Component.literal("Fertig: " + label(d.planType) + " – das Dorf wächst!"));
+		JobUtil.tellNearbyPlayers(c.level(), c.v(), 40, Component.translatable("message.villagerplus.build_finished", label(d.planType)));
 		// Completed buildings persist their palette in the Built record; the transient lookup cache is no longer needed.
 		PALETTES.remove(origin.asLong());
 		STYLES.remove(origin.asLong());
@@ -6679,7 +6679,7 @@ public final class Builder {
 			if (have < e.getValue()) {
 				int amount = e.getValue() - have;
 				Component name = k.item() != null ? new ItemStack(k.item()).getHoverName()
-					: Component.literal(k.tag().equals(ItemTags.BEDS) ? "Bett" : "Holztür");
+					: Component.translatable(k.tag().equals(ItemTags.BEDS) ? "message.villagerplus.gap_bed" : "message.villagerplus.gap_wooden_door");
 				// Bett/Tuer mit Tag sind nur dann "Wunsch", wenn es keinen exakten Gegenstand gibt - Betten baut der Schaefer.
 				Item request=k.tag()!=null && k.tag().equals(ItemTags.BEDS)?Items.BED.white() : k.item()!=null?k.item():Items.OAK_DOOR;
 				gaps.add(new Gap(request, k.tag(), amount, e.getValue(), Component.literal(amount + "x ").append(name)));
@@ -7017,9 +7017,9 @@ public final class Builder {
 		d.planProgress = c.now();
 		d.claimPlanBuilder(c.v().getUUID());
 		ref.dirty();
-		JobUtil.tellNearbyPlayers(level, c.v(), 48, Component.literal(old > 0
-			? "Das Dorf ist gewachsen: Die Stadtmauer wird weiter draussen neu gebaut (Radius " + old + " -> " + radius + ")."
-			: "Das Dorf beginnt mit dem Bau einer Stadtmauer (Radius " + radius + ")."));
+		JobUtil.tellNearbyPlayers(level, c.v(), 48, old > 0
+			? Component.translatable("message.villagerplus.wall_regrow", old, radius)
+			: Component.translatable("message.villagerplus.wall_start", radius));
 		return true;
 	}
 
@@ -7050,7 +7050,7 @@ public final class Builder {
 				d.nextBuild = c.now() + 1200;
 				d.wanted.clear();
 				ref.dirty();
-				JobUtil.tellNearbyPlayers(level, c.v(), 48, Component.literal("Die Stadtmauer wurde ausgebessert."));
+				JobUtil.tellNearbyPlayers(level, c.v(), 48, Component.translatable("message.villagerplus.wall_repaired"));
 				return true;
 			}
 			d.wallBuilt = true;
@@ -7058,7 +7058,7 @@ public final class Builder {
 			d.nextBuild = c.now() + Config.BUILD_COOLDOWN;
 			d.wanted.clear();
 			ref.dirty();
-			JobUtil.tellNearbyPlayers(level, c.v(), 48, Component.literal("Die Stadtmauer ist fertig!"));
+			JobUtil.tellNearbyPlayers(level, c.v(), 48, Component.translatable("message.villagerplus.wall_finished"));
 			c.mem().jobsDone++;
 			return true;
 		}
@@ -7143,7 +7143,7 @@ public final class Builder {
 		if (JobUtil.take(box, s -> s.is(wallItem), 1) < 1) {
 			addWanted(ref.data(), new Step(p, wallItem, null, 1, false, null, b -> style.wall().defaultBlockState()), box);
 			ref.dirty();
-			JobUtil.tellNearbyPlayers(level, c.v(), 32, Component.literal("Für die Stadtmauer fehlt Material – die Dorfbewohner beschaffen Nachschub."));
+			JobUtil.tellNearbyPlayers(level, c.v(), 32, Component.translatable("message.villagerplus.wall_missing_material"));
 			ref.data().planProgress = c.now();
 			c.st().cooldownUntil = c.now() + 600;
 			return false;

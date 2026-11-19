@@ -165,7 +165,7 @@ public class VillagerPlusClient implements ClientModInitializer {
 			state.guiTop = top;
 			state.buttonX = Math.max(4, Math.min(left, width - 52));
 			state.buttonY = Math.max(2, Math.min(top - 22, height - 22));
-			Button info = Button.builder(Component.literal("Info"), b -> {
+			Button info = Button.builder(Component.translatable("gui.villagerplus.info_button"), b -> {
 				state.visible = !state.visible;
 				state.rowOffset = 0;
 				state.rowLineOffset = 0;

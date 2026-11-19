@@ -99,7 +99,7 @@ public final class Staffing {
 			ResourceKey<VillagerProfession> key = Compat.preferredKey(level, job, CRITICAL.get(i));
 			candidate.setVillagerData(candidate.getVillagerData().withProfession(level.registryAccess(), key).withLevel(2));
 			String name = candidate.getAttachedOrCreate(VillagerPlus.MEMORY).name;
-			JobUtil.tellNearbyPlayers(level, candidate, 48, Component.literal((name.isEmpty() ? "Ein Dorfbewohner" : name) + " übernimmt die Arbeit als " + LABEL.get(i) + "."));
+			JobUtil.tellNearbyPlayers(level, candidate, 48, Component.translatable("message.villagerplus.staffing_takes_over", VillageMessages.nameOr(name, "message.villagerplus.name_a_villager"), LABEL.get(i)));
 			return;
 		}
 		// Arbeitsmarkt: bis zu 3 Umbesetzungen je Durchlauf (alle 400 Ticks), damit ein frisches Dorf in wenigen Minuten Berufe verteilt bekommt.
@@ -260,7 +260,7 @@ public final class Staffing {
 		candidate.setVillagerData(candidate.getVillagerData().withProfession(level.registryAccess(), key).withLevel(2));
 		candidate.setOffers(null);
 		String name = candidate.getAttachedOrCreate(VillagerPlus.MEMORY).name;
-		JobUtil.tellNearbyPlayers(level, candidate, 48, Component.literal((name.isEmpty() ? "Ein Dorfbewohner" : name) + " schult um zum " + underLabel + " (das Dorf braucht mehr davon)."));
+		JobUtil.tellNearbyPlayers(level, candidate, 48, Component.translatable("message.villagerplus.staffing_retrains", VillageMessages.nameOr(name, "message.villagerplus.name_a_villager"), underLabel));
 		return true;
 	}
 
@@ -308,7 +308,7 @@ public final class Staffing {
 		v.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.JOB_SITE);
 		v.setVillagerData(v.getVillagerData().withProfession(level.registryAccess(), key).withLevel(2));
 		String name = memory.name;
-		JobUtil.tellNearbyPlayers(level, v, 48, Component.literal((name.isEmpty() ? "Ein Dorfbewohner" : name) + " hilft vorübergehend als " + label + " aus."));
+		JobUtil.tellNearbyPlayers(level, v, 48, Component.translatable("message.villagerplus.staffing_helps_out", VillageMessages.nameOr(name, "message.villagerplus.name_a_villager"), label));
 		return true;
 	}
 
@@ -354,7 +354,7 @@ public final class Staffing {
 		v.setVillagerData(v.getVillagerData().withProfession(level.registryAccess(), originalKey).withLevel(Math.max(1, Math.min(5, assignment.level()))));
 		clearTemporary(v);
 		String name = memory.name;
-		JobUtil.tellNearbyPlayers(level, v, 48, Component.literal((name.isEmpty() ? "Ein Dorfbewohner" : name) + " kehrt zu seiner früheren Arbeit zurück."));
+		JobUtil.tellNearbyPlayers(level, v, 48, Component.translatable("message.villagerplus.staffing_returns", VillageMessages.nameOr(name, "message.villagerplus.name_a_villager")));
 		return true;
 	}
 

@@ -700,6 +700,10 @@ public final class Checks090 {
    int count=de.villagerplus.village.MarketSitePreparationChecks.run(level,at.east(24));
    source.sendSuccess(()->Component.literal("VP090 marketprep PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("langkeys")) {
+   int count=de.villagerplus.dev.LangKeyChecks.run();
+   source.sendSuccess(()->Component.literal("VP090 langkeys PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("statusformat")) {
    int count=de.villagerplus.village.VillageStatusFormatChecks.run();
    source.sendSuccess(()->Component.literal("VP090 statusformat PASS "+count+" checks"),false);return count;
