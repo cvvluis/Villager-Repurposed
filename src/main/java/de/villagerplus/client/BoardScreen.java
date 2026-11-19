@@ -312,7 +312,7 @@ public class BoardScreen extends Screen {
 	}
 
 	public BoardScreen(BoardData data) {
-		super(Component.literal("Dorftafel"));
+		super(Component.translatable("message.villagerplus.board_title"));
 		this.data = data;
 	}
 
