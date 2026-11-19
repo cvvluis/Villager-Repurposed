@@ -531,7 +531,16 @@ public final class FarmerExpansionChecks {
 				"a full farmer inventory leaves the mature crop intact and retries without spilling drops [deferred="
 					+ deferred + ", crop=" + level.getBlockState(cropPos) + ", loose=" + looseBefore + "->" + looseAfter
 					+ ", produced=" + JobUtil.count(inventory, new FarmerJob().produce()) + ", now=" + actionTime + "]");
-			return 121;
+			// A farmer blocked on the field fence kit makes public wood count as demand, independent of plans and balance.
+			long waitNow = level.getGameTime();
+			FarmerJob.setFenceWoodWaitForTest(ref, 0);
+			check(!FarmerJob.fenceWoodWanted(ref, waitNow), "without a fence-kit wait there is no extra wood demand");
+			FarmerJob.setFenceWoodWaitForTest(ref, waitNow + 600);
+			check(FarmerJob.fenceWoodWanted(ref, waitNow) && Woodcutting.needed(level, ref, ref.data(), ref.chest(level)),
+				"a farmer waiting for fence wood counts as wood demand for the woodcutting rule");
+			check(!FarmerJob.fenceWoodWanted(ref, waitNow + 601), "the fence wood demand expires with the wait");
+			FarmerJob.setFenceWoodWaitForTest(ref, 0);
+			return 124;
 		} finally {
 			for (Villager villager : fixtures) villager.discard();
 			oldExpansionPlans.forEach((villager, plan) -> { if (!villager.isRemoved()) villager.addTag(plan); });

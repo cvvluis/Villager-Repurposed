@@ -999,6 +999,21 @@ public class FarmerJob implements Job {
 	private static final Map<Long, FenceWait> FENCE_WAIT = new java.util.HashMap<>();
 	private static final long FENCE_WAIT_TICKS = 6000L;
 
+	/**
+	 * True while a farmer of this village is waiting for public wood to make the field fence kit. The woodcutting rule
+	 * treats this as wood demand, so wood is cut even when plans or the balance would otherwise say there is enough.
+	 */
+	public static boolean fenceWoodWanted(VillageRef ref, long now) {
+		FenceWait wait = FENCE_WAIT.get(ref.bell().asLong());
+		return wait != null && now < wait.until();
+	}
+
+	/** Test hook: marks or clears the fence-wood wait of a village. */
+	static void setFenceWoodWaitForTest(VillageRef ref, long until) {
+		if (until <= 0) FENCE_WAIT.remove(ref.bell().asLong());
+		else FENCE_WAIT.put(ref.bell().asLong(), new FenceWait(until, 0));
+	}
+
 	/** Public wood the fence kit could be made from (logs, planks, sticks, fences); a change reopens a waiting field plan. */
 	static int woodSignature(List<Container> stores) {
 		int total = 0;
@@ -1100,6 +1115,8 @@ public class FarmerJob implements Job {
 				farmBlocked(c, "blocked: no fence kit (wood signature " + woodSignature + ")");
 				FENCE_WAIT.put(ref.bell().asLong(), new FenceWait(c.now() + FENCE_WAIT_TICKS, woodSignature));
 				c.st().materialWaitUntil = c.now() + 600;
+				// Nobody else may be cutting wood for the first field: the waiting farmer fetches the wood himself.
+				if (Woodcutting.tick(c)) return true;
 				return false;
 			}
 		}

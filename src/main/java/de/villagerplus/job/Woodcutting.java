@@ -55,6 +55,8 @@ public final class Woodcutting {
 
 	public static boolean needed(net.minecraft.server.level.ServerLevel level, VillageRef ref, VillageData d, Container box) {
 		if (planNeedsWood(d)) return true;
+		// A farmer who cannot fence the first field waits for public wood: that is demand too.
+		if (FarmerJob.fenceWoodWanted(ref, level.getGameTime())) return true;
 		// Kein festes Limit: Holz wird beschafft, solange es im Vergleich zu Essen, Stein und Metall nicht im Ueberfluss da ist.
 		return de.villagerplus.village.Balance.wants(level, ref, de.villagerplus.village.Balance.Kind.WOOD);
 	}
