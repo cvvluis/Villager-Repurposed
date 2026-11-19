@@ -61,7 +61,8 @@ public final class RailTransportDispatchChecks {
 			// Build on a later tick so the entity sections of the leased chunks are loaded before residents are spawned.
 			leaseChunks(level, fixture);
 			for (net.minecraft.world.level.ChunkPos chunk : fixture.leased) {
-				if (!de.villagerplus.world.LoadedColumns.readyChunk(level, chunk.x(), chunk.z())) return -1;
+				if (!de.villagerplus.world.LoadedColumns.readyChunk(level, chunk.x(), chunk.z())
+					|| !level.isPositionEntityTicking(chunk.getMiddleBlockPosition(level.getMinY() + 64))) return -1;
 			}
 			try {
 				prepare(level, fixture, at);
