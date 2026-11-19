@@ -135,6 +135,31 @@ public final class MineKitChecks {
 			add(worker.getInventory(), planks, 5);
 			var carried = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now + 200L), ref, mine);
 			check(carried == Mining.SupplyStatus.READY, "a miner that carries the next structure digs at once, got " + carried); checks++;
+
+			// 6. Before the first walk out to the shaft the kit for the first support ahead is taken along (no turn-round at the
+			// shaft later): at index 0 the next section needs nothing, the support at index 2 does.
+			Mining.resetKitWaitForTest();
+			mine.index = 0;
+			worker.getInventory().clearContent();
+			chest.clearContent();
+			add(chest, fence, 6);
+			add(chest, planks, 5);
+			var outbound = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now + 300L), ref, mine);
+			check(outbound == Mining.SupplyStatus.BUSY && count(worker.getInventory(), fence) == 6 && count(worker.getInventory(), planks) >= 5
+				&& count(chest, fence) == 0,
+				"a miner still outside the gallery takes the first support kit ahead from the depot before walking out, got " + outbound
+					+ " (fences " + count(worker.getInventory(), fence) + ", planks " + count(worker.getInventory(), planks) + ")"); checks++;
+			var outboundReady = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now + 360L), ref, mine);
+			check(outboundReady == Mining.SupplyStatus.READY, "with that kit on board the plain sections are dug at once, got " + outboundReady); checks++;
+			// A depot that holds nothing never holds the miner back (and no kit is invented): he digs the plain sections.
+			Mining.resetKitWaitForTest();
+			worker.getInventory().clearContent();
+			chest.clearContent();
+			worker.setPos(chestPos.getX() + 40.5, chestPos.getY(), chestPos.getZ() + 0.5);
+			var bare = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now + 400L), ref, mine);
+			check(bare == Mining.SupplyStatus.READY && worker.getInventory().isEmpty() && isEmpty(chest),
+				"an empty depot does not send a miner out of his way or hold him back, got " + bare); checks++;
+			worker.setPos(chestPos.getX() - 0.5, chestPos.getY(), chestPos.getZ() + 0.5);
 			return checks;
 		} finally {
 			if (worker != null) worker.discard();
