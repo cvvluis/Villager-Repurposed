@@ -2,6 +2,16 @@
 
 **Current handoff, 30.10.2026.** GitHub repository: https://github.com/LvisXVI/Villager-Repurposed (private, branch `main`). Current code and the evidence below take precedence over older sections.
 
+## Run 19.11.2026 - state on main v0.11.0 and open PRs
+
+- main is at v0.11.0 (merge cd5c905). This branch (`claude/village-growth-1111`) is the old internal-docs line; code work now happens on branches from main.
+- **Found: v0.11.0 crashed on server start** (`RecipeIndex.rebuild` assembled every crafting recipe with an empty grid; the vanilla decorated pot recipe throws). Fix: PR #16 (`claude/hotfix-recipe-index`), reproduced and verified on the dev server only.
+- Open draft PRs (none merged, no release without the owner's approval): #16 start crash, #17 English change notes, #18 repaired fixtures (12 stale groups: healer, craftrecipes, charcoal, caravanr02, caravanroad, projectvisibility, g02, roadbridge, wallconstruction, a04lease, tafelgross, civic/plazageometry), #19 first-field fence wood demand, #20 gaps G14/G08/K03/R02, #21 gaps J10/J09/J07, #22 first-field seeds, #23 J12 tower watch.
+- `claude/integration` merges #19, #21, #20, #22. Full run of all 130 single groups on it: all green except lightspacing, railtransportdispatch, roads, roadterrain, roadlighting, roadwork (agent `claude/road-checks` investigating), the restart pairs (red by design as single groups) and four groups that run 0 checks without client (board, plaza, toast, trader).
+- Natural run (taiga seed 4242, 72k ticks, integration): still NO building finished and no `Bauplan farm`. Farm blockers: `no usable seed` (9x). Granary 437 steps stalled up to 15k ticks, storage 266 steps stalled 17.5k ticks. After the seed change the next blocker was seen once: `no fence kit`, which #19 addresses; no continuous run shows a field starting yet. Agent `claude/stall-fix` is investigating what the stalled plans wait for.
+- Pending agents at the time of writing: road checks, stall analysis, translatable texts (160 `Component.literal` -> keys).
+- Honesty: all results are dev-server fixtures or tiny natural runs (n=1..2, forceload instead of a player); nothing played in the client or the full modpack.
+
 ## Run 18.11.2026 (4) – Freeze on entering a village fixed (0.10.8)
 
 - Evidence (stall dumps, watchdog crash 18:04, log from 17:59): the server thread was in `DorftafelNameBlockEntity.tick` → `sampleRelief` → `VillageMap.grid`/`classifyFine` → `Level.getHeight`/`getBlockState` → `ServerChunkCache.getChunkBlocking`. `hasChunkAt` at the cell center is not enough: the chunk holder can exist while `getChunk` still waits and generates terrain. An empty relief was retried every 20 ticks. The StallWatchdog counted stacks with `managedBlock`/`pollTask` as a pause and swallowed exactly `getChunkBlocking`. The client heartbeat hung on the tick, not on the frame. `RenderTypes.debugQuads()` is missing in Iris (`minecraft:pipeline/debug_quads`).
