@@ -351,6 +351,7 @@ public class FarmerJob implements Job {
 				c.setIdle(0, 200);
 				return false;
 			}
+			if (forageBeforeFarHarvest(c, target)) return true;
 			resetApproach(c);
 			st.forageTarget = null;
 			st.target = target;
@@ -407,6 +408,27 @@ public class FarmerJob implements Job {
 		if (ref == null || ref.data().farms > 0 || carried >= SEED_DEPOSIT_BATCH
 			|| c.now() - c.st().forageLastRollAt > SEED_DEPOSIT_IDLE_TICKS) return true;
 		return publicFarmSeedCount(Balance.storage(c.level(), ref)) + carried >= VISIBLE_STARTER_FIELD_SEEDS;
+	}
+
+	/**
+	 * Natural runs (48k ticks, taiga CTOV village): the generated field lies 30-60 blocks away, its long route kept aborting and the
+	 * farmers were pulled into construction and mining, so only two crops were harvested (4 seeds) and the grass foraging, which ran
+	 * only when no crop was ripe, never started. While the first field lacks its seeds a far ripe crop therefore must not hide the grass.
+	 */
+	static boolean forageSeedsBeforeFarHarvest(int completedFarms, int publicSeeds, int carriedSeeds, boolean farTarget) {
+		return completedFarms == 0 && farTarget && publicSeeds + carriedSeeds < VISIBLE_STARTER_FIELD_SEEDS;
+	}
+
+	private static boolean forageBeforeFarHarvest(Ctx c, BlockPos cropTarget) {
+		VillageRef ref = c.village();
+		if (ref == null || ref.data().farms > 0) return false;
+		boolean far = cropTarget.distSqr(c.v().blockPosition()) > FAR_HARVEST_DISTANCE * FAR_HARVEST_DISTANCE;
+		int carried = JobUtil.count(c.v().getInventory(), stack -> stack.is(Items.WHEAT_SEEDS));
+		if (!forageSeedsBeforeFarHarvest(ref.data().farms, publicFarmSeedCount(Balance.storage(c.level(), ref)), carried, far)) return false;
+		// Only when grass exists: without it the forage path would fall back to fishing and starve the harvest.
+		if (c.st().forageTarget == null) c.st().forageTarget = findSeedGrass(c, ref);
+		if (c.st().forageTarget == null) return false;
+		return forageStarterWheatSeeds(c);
 	}
 
 	/** Collects real vanilla seed drops from wild grass so a village without an existing field can start one. */

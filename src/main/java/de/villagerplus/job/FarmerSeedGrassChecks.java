@@ -254,7 +254,35 @@ public final class FarmerSeedGrassChecks {
 			require(released && state.forageTarget == null && FarmerJob.rejectedForageTarget(state, grass)
 				&& state.cooldownUntil > routeAbortAt && level.getBlockState(grass).is(Blocks.SHORT_GRASS),
 				"after a bounded unreachable-route abort, the farmer releases that patch and can choose another without altering it");
-			return 5;
+
+			// A ripe generated crop far away must not hide the grass while the first field lacks its seeds (natural run: 0 forages, 2 harvests in 48k ticks).
+			BlockPos farCrop = grass.offset(-30, 0, 0);
+			set(level, before, farCrop, Blocks.WHEAT.defaultBlockState().setValue(net.minecraft.world.level.block.CropBlock.AGE, 7));
+			worker.getInventory().clearContent();
+			memory.workSpots.clear();
+			memory.workSpots.add(farCrop.immutable());
+			for (int farms = 0; farms <= 1; farms++) {
+				villageData.farms = farms;
+				state.target = null;
+				state.forageTarget = grass.immutable();
+				state.forageRejectedTarget = null;
+				state.cooldownUntil = 0; state.idleUntil[0] = 0; state.idleUntil[1] = 0;
+				state.walkStart = 0; state.bestDist = 0; state.lastMoveAt = 0; state.stuckCount = 0;
+				context = new Ctx(level, worker, state, memory, ref, routeAbortAt + 400L + farms * 400L);
+				boolean worked = new FarmerJob().primary(context);
+				if (farms == 0) {
+					require(worked && state.target == null && grass.equals(state.forageTarget),
+						"without a field and seeds a far ripe crop does not keep the farmer from the seed grass");
+				} else {
+					require(worked && farCrop.equals(state.target),
+						"once the first field exists the same far ripe crop is harvested as before");
+				}
+			}
+			state.target = null;
+			require(FarmerJob.forageSeedsBeforeFarHarvest(0, 7, 0, true) && !FarmerJob.forageSeedsBeforeFarHarvest(0, 4, 4, true)
+				&& !FarmerJob.forageSeedsBeforeFarHarvest(0, 0, 0, false) && !FarmerJob.forageSeedsBeforeFarHarvest(1, 0, 0, true),
+				"the grass-first rule needs no field, a far crop and fewer than eight seeds");
+			return 8;
 		} finally {
 			if (worker != null) {
 				JobUtil.clearLongRoute(worker);
