@@ -182,8 +182,73 @@ public final class CaravanCampChecks {
   check(!level.hasChunkAt(far)&&pending.size()==1&&pending.getFirst().pos().equals(far),"unloaded camp positions stay queued without chunk loading");checks++;
   checks+=blockedCampSiteFallback(level,at.offset(64,0,0));
   checks+=campManifestCleanup(level,at.offset(96,0,0));
+  checks+=realCampLifecycle(level,at.offset(0,0,160));
   checks+=CaravanCampSecurityChecks.runWorld(level,at.offset(32,0,0));
   return checks;
+ }
+
+ /** Runs the production Caravan.buildCamp on a prepared pad, then the guard and the departure cleanup (K03). */
+ private static int realCampLifecycle(ServerLevel level,BlockPos bellPos) {
+  BlockPos center=bellPos.east(36);
+  Map<BlockPos,BlockState> layout=Caravan.campLayout(center);
+  List<BlockPos> touched=new java.util.ArrayList<>(layout.keySet());
+  touched.add(bellPos);
+  for(int x=-3;x<=3;x++)for(int z=-4;z<=3;z++)touched.add(center.offset(x,-1,z));
+  touched.add(CaravanSites.armedGuardSpot(CaravanCampSecurity.post(List.copyOf(layout.keySet()))));
+  Map<BlockPos,Cell> before=new LinkedHashMap<>();
+  for(BlockPos pos:touched) {
+   level.getChunkAt(pos);BlockEntity be=level.getBlockEntity(pos);
+   before.putIfAbsent(pos,new Cell(level.getBlockState(pos),be==null?null:be.saveWithFullMetadata(level.registryAccess())));
+  }
+  java.util.UUID owner=java.util.UUID.randomUUID();
+  try {
+   for(BlockPos pos:before.keySet()) {level.removeBlockEntity(pos);level.setBlock(pos,Blocks.AIR.defaultBlockState(),3);}
+   for(int x=-3;x<=3;x++)for(int z=-3;z<=3;z++)level.setBlock(center.offset(x,-1,z),Blocks.STONE.defaultBlockState(),3);
+   for(int x=-2;x<=2;x++)level.setBlock(center.offset(x,-1,-4),Blocks.STONE.defaultBlockState(),3);
+   level.setBlock(bellPos,Blocks.BELL.defaultBlockState(),3);
+   Caravan.State state=new Caravan.State(owner,level.dimension(),bellPos,bellPos.east(60),-1,level.getGameTime());
+   check(Caravan.buildCampForChecks(level,state,bellPos),"the production camp builder places the camp on a clear pad");
+   boolean everyCell=true;
+   for(var entry:layout.entrySet())everyCell&=level.getBlockState(entry.getKey()).is(entry.getValue().getBlock());
+   check(state.campBuilt&&state.camp.size()==layout.size()&&state.campBlocks.size()==layout.size()&&everyCell&&state.camp.containsAll(layout.keySet()),
+    "built camp state records every tent, hitching, barrel, smoker, cauldron and campfire cell exactly as placed");
+   check(Caravan.persistedCampBlocksForChecks(level,bellPos).size()==layout.size(),
+    "the cleanup manifest is persisted on the village bell before the blocks are placed");
+   check(!level.getBlockState(center.offset(3,0,0)).getValue(CampfireBlock.LIT),
+    "the built campfire waits unlit for real village fuel");
+   var guard=CaravanCampSecurity.ensureArmedGuard(level,owner,state.camp);
+   BlockPos post=CaravanCampSecurity.post(state.camp);
+   check(guard!=null&&!guard.isRemoved()&&post!=null&&guard.blockPosition().equals(CaravanSites.armedGuardSpot(post))
+    &&guard.getMainHandItem().is(Items.IRON_SWORD),
+    "the armed guard stands at the built camp's exterior post with an iron sword");
+   check(Caravan.clearCampForDepartureForChecks(level,state),"departure cleanup runs for the built camp");
+   boolean allGone=true;
+   for(BlockPos pos:layout.keySet())allGone&=level.getBlockState(pos).isAir();
+   check(allGone&&!state.campBuilt&&state.camp.isEmpty()&&state.campBlocks.isEmpty()
+    &&guard.isRemoved()&&state.armedGuardRemoved&&state.guardDutyEnded
+    &&Caravan.persistedCampBlocksForChecks(level,bellPos).isEmpty(),
+    "departure removes every camp block and the armed guard and empties the persisted manifest");
+   check(Caravan.buildCampForChecks(level,state,bellPos)&&state.campBuilt&&everyCellPresent(level,layout),
+    "the same pad can host the next visit's camp after cleanup");
+   Caravan.clearCampForDepartureForChecks(level,state);
+   return 7;
+  } finally {
+   CaravanCampSecurity.removeArmedGuard(level,owner);
+   for(BlockPos pos:before.keySet())level.removeBlockEntity(pos);
+   for(BlockPos pos:before.keySet())level.setBlock(pos,Blocks.AIR.defaultBlockState(),3);
+   before.forEach((pos,cell)->level.setBlock(pos,cell.state(),3));
+   before.forEach((pos,cell)->{
+    if(cell.data()!=null) {
+     BlockEntity be=BlockEntity.loadStatic(pos,cell.state(),cell.data().copy(),level.registryAccess());
+     if(be!=null)level.setBlockEntity(be);
+    }
+   });
+  }
+ }
+
+ private static boolean everyCellPresent(ServerLevel level,Map<BlockPos,BlockState> layout) {
+  for(var entry:layout.entrySet())if(!level.getBlockState(entry.getKey()).is(entry.getValue().getBlock()))return false;
+  return true;
  }
 
  private static int campManifestCleanup(ServerLevel level,BlockPos center) {

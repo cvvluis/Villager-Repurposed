@@ -304,11 +304,14 @@ public final class Network {
 	 * is not currently available; callers must not synthesize a reciprocal side or spend a link slot in that case.
 	 */
 	static boolean canDiscoverLoadedNeighbor(TradeNetwork source, TradeNetwork target, String dimension,
-		BlockPos sourceBell, BlockPos targetBell, int targetPopulation) {
+		BlockPos sourceBell, BlockPos targetBell, int targetPopulation, boolean physicalContact) {
 		if (source == null || target == null || dimension == null || dimension.isBlank() || dimension.length() > 128
 			|| sourceBell == null || targetBell == null || sourceBell.equals(targetBell) || targetPopulation <= 0) return false;
 		int sourceIndex = source.linkIndex(dimension, targetBell);
 		int targetIndex = target.linkIndex(dimension, sourceBell);
+		// An unknown neighbor is only discovered after contact: a player or resident physically at the other bell.
+		// A link that is already saved (legacy worlds, earlier contact, caravan visits) stays discoverable and refreshable.
+		if (sourceIndex < 0 && targetIndex < 0 && !physicalContact) return false;
 		return (sourceIndex >= 0 || source.links().size() < TradeNetwork.MAX_LINKS)
 			&& (targetIndex >= 0 || target.links().size() < TradeNetwork.MAX_LINKS);
 	}
@@ -316,9 +319,9 @@ public final class Network {
 	/** Reconciles the reciprocal persistent link pair after both real villages have been resolved from loaded bells. */
 	static DiscoveryPair discoverLoadedPair(TradeNetwork source, TradeNetwork target, String dimension,
 		BlockPos sourceBell, BlockPos targetBell, String sourceName, String targetName,
-		int sourcePopulation, int targetPopulation, long populationDay) {
+		int sourcePopulation, int targetPopulation, long populationDay, boolean physicalContact) {
 		if (source == null || target == null || sourcePopulation < 0
-			|| !canDiscoverLoadedNeighbor(source, target, dimension, sourceBell, targetBell, targetPopulation)) {
+			|| !canDiscoverLoadedNeighbor(source, target, dimension, sourceBell, targetBell, targetPopulation, physicalContact)) {
 			return new DiscoveryPair(source, target, false);
 		}
 
@@ -474,6 +477,28 @@ public final class Network {
 		return Map.copyOf(populations);
 	}
 
+	/** A player or a living resident of either village stands within this range of the other village's bell. */
+	static final double CONTACT_RADIUS = 40.0;
+
+	/** True when a player or a resident of one village is physically at the other village's bell (a real visit). */
+	static boolean physicalContact(ServerLevel level, BlockPos sourceBell, BlockPos targetBell, List<Villager> residents) {
+		double r2 = CONTACT_RADIUS * CONTACT_RADIUS;
+		for (net.minecraft.server.level.ServerPlayer player : level.players()) {
+			if (player.isSpectator() || !player.isAlive()) continue;
+			if (player.blockPosition().distSqr(targetBell) <= r2) return true;
+		}
+		for (Villager villager : residents) {
+			if (!villager.isAlive() || Guests.isGuest(villager)) continue;
+			Optional<net.minecraft.core.GlobalPos> meeting = villager.getBrain().getMemory(
+				net.minecraft.world.entity.ai.memory.MemoryModuleType.MEETING_POINT);
+			if (meeting.isEmpty() || !meeting.get().dimension().equals(level.dimension())) continue;
+			BlockPos home = meeting.get().pos();
+			if (home.equals(sourceBell) && villager.blockPosition().distSqr(targetBell) <= r2) return true;
+			if (home.equals(targetBell) && villager.blockPosition().distSqr(sourceBell) <= r2) return true;
+		}
+		return false;
+	}
+
 	/** Discovers only actual nearby bell block entities whose loaded residents identify them as active villages. */
 	private static NeighborDiscovery discoverLoadedNeighbors(ServerLevel level, VillageRef source) {
 		if (!validVillageRef(level, source)) return new NeighborDiscovery(of(source.bellEntity()), Map.of());
@@ -489,6 +514,7 @@ public final class Network {
 		int sourcePopulation = populations.getOrDefault(source.bell().asLong(), 0);
 		long day = level.getGameTime() / 24000L;
 		boolean changed = false;
+		List<Villager> residents = Villages.residentIndex(level).villagers();
 		for (BlockPos position : nearby) {
 			if (position.equals(source.bell()) || source.bell().distSqr(position) > MAX_DISTANCE * MAX_DISTANCE
 				|| !de.villagerplus.world.LoadedColumns.ready(level, position)) continue;
@@ -500,7 +526,8 @@ public final class Network {
 			if (population <= 0) continue;
 			TradeNetwork peer = of(bell);
 			DiscoveryPair pair = discoverLoadedPair(current, peer, dim(level), source.bell(), neighbor.bell(),
-				villageName(source), villageName(neighbor), sourcePopulation, population, day);
+				villageName(source), villageName(neighbor), sourcePopulation, population, day,
+				physicalContact(level, source.bell(), neighbor.bell(), residents));
 			DiscoveryPair forward = reconcilePendingActions(pair.source(), pair.target(), dim(level), source.bell(), neighbor.bell(), level.getGameTime());
 			DiscoveryPair reverse = reconcilePendingActions(forward.target(), forward.source(), dim(level), neighbor.bell(), source.bell(), level.getGameTime());
 			TradeNetwork nextSource = reverse.target();

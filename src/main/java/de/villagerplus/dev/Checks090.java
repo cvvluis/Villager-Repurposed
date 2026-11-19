@@ -522,7 +522,7 @@ public final class Checks090 {
   }
   if(mode.equals("milestones")) {
    var ref=fixtureForEquipment(level,A);
-   int count=de.villagerplus.build.MilestoneWaitingChecks.run(level,ref);
+   int count=de.villagerplus.build.MilestoneWaitingChecks.run(level,ref)+de.villagerplus.build.MilestoneWaitingChecks.stationMilestoneChecks(ref);
    source.sendSuccess(()->Component.literal("VP090 milestones PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("minewalk")) {
