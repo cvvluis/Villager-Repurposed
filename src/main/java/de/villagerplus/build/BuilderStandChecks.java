@@ -185,6 +185,7 @@ public final class BuilderStandChecks {
 				"builder two blocks below street is not rescued relative to tower bell");passed++;
 			worker.setPos(preferred.getX()+0.5,preferred.getY(),preferred.getZ()+0.5);
 			level.setBlock(street.above(),Blocks.STONE.defaultBlockState(),FLAGS);
+			forgetVillageStreetCache();
 			check(!street.equals(Builder.villageReturn(level,floor.above(7))),
 				"bell return rejects a street with blocked headroom");passed++;
 			level.setBlock(street.above(),Blocks.AIR.defaultBlockState(),FLAGS);
@@ -197,6 +198,7 @@ public final class BuilderStandChecks {
 
 			for(int x=-8;x<=8;x++)for(int z=-8;z<=8;z++)
 				level.setBlock(floor.offset(x,-1,z),Blocks.WATER.defaultBlockState(),FLAGS);
+			forgetVillageStreetCache();
 			check(Builder.villageReturn(level,floor.above(7))==null,
 				"no dry arrival returns null instead of falling back onto the bell");passed++;
 			plan(d,worker.getUUID(),origin,now,new ItemStack(Items.COBBLESTONE,64),new ItemStack(Items.COBBLESTONE,64));int count=site(d,origin,s->s.is(Items.COBBLESTONE));
@@ -391,6 +393,13 @@ public final class BuilderStandChecks {
 		for(ItemStack st:d.buildProject(origin).map(p->p.haul().siteStock()).orElse(List.of()))if(filter.test(st))n+=st.getCount();
 		return n;
 	}
+	/** Builder.villageReturn caches its street for 200 ticks; the fixture edits terrain within one tick and needs a fresh lookup. */
+	private static void forgetVillageStreetCache() throws ReflectiveOperationException {
+		var field=Builder.class.getDeclaredField("VILLAGE_STREET_CACHE");
+		field.setAccessible(true);
+		((java.util.Map<?,?>)field.get(null)).clear();
+	}
+
 	private static void check(boolean condition,String message) {
 		if(!condition)throw new IllegalStateException("BUILDER STAND CHECK FAILED: "+message);
 	}

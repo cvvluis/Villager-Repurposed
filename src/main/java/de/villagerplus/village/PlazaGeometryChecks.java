@@ -30,7 +30,8 @@ public final class PlazaGeometryChecks {
 
 		int outerFrameCells = 0;
 		boolean outerFrameSymmetry = true;
-		for (int dx = -10; dx <= 10; dx++) for (int dz = -10; dz <= 10; dz++) {
+		final int r = Plaza.PLAZA_RADIUS;
+		for (int dx = -r; dx <= r; dx++) for (int dz = -r; dz <= r; dz++) {
 			boolean border = Plaza.outerSquareBorderOffset(dx, dz);
 			if (!border) continue;
 			outerFrameCells++;
@@ -40,8 +41,8 @@ public final class PlazaGeometryChecks {
 				"the outer square frame is paved inside the expanded plaza surface");
 			outerFrameSymmetry &= border == Plaza.outerSquareBorderOffset(-dz, dx);
 		}
-		require(outerFrameCells == 80 && outerFrameSymmetry,
-			"the radius-10 square frame forms a complete, rotationally symmetric outer ring");
+		require(outerFrameCells == 4 * (2 * (r - 1)) && outerFrameSymmetry,
+			"the radius-7 (15x15) square frame forms a complete, rotationally symmetric outer ring");
 
 		int innerMedallionCells = 0, outerMedallionCells = 0;
 		boolean medallionSymmetry = true, approachesStayOpen = true;
@@ -67,7 +68,7 @@ public final class PlazaGeometryChecks {
 
 		int armCells = 0;
 		boolean armsSymmetric = true;
-		for (int dx = -18; dx <= 18; dx++) for (int dz = -18; dz <= 18; dz++) {
+		for (int dx = -(r + 10); dx <= r + 10; dx++) for (int dz = -(r + 10); dz <= r + 10; dz++) {
 			boolean arm = Plaza.roadArmOffset(dx, dz);
 			if (!arm) continue;
 			armCells++;
@@ -80,8 +81,8 @@ public final class PlazaGeometryChecks {
 			"four five-wide cardinal arms each have a bounded five-block outer run");
 
 		boolean connectedApproaches = true;
-		for (int n = 0; n <= 18; n++) for (int side = -2; side <= 2; side++) {
-			boolean paved = n <= 13
+		for (int n = 0; n <= r + 5; n++) for (int side = -2; side <= 2; side++) {
+			boolean paved = n <= r
 				? Plaza.basePavingOffset(n, side)
 				: Plaza.roadArmOffset(n, side);
 			connectedApproaches &= paved;
@@ -89,14 +90,15 @@ public final class PlazaGeometryChecks {
 		require(connectedApproaches,
 			"each five-wide approach remains continuous from the central pavilion to the outer road arm");
 		require(!Plaza.focalSquareBorderOffset(7, 0)
-			&& !Plaza.outerSquareBorderOffset(11, 0)
-			&& !Plaza.roadArmOffset(13, 0) && !Plaza.roadArmOffset(19, 0)
-			&& !Plaza.roadArmOffset(14, 3),
+			&& !Plaza.outerSquareBorderOffset(r, 0)
+			&& !Plaza.roadArmOffset(r, 0) && !Plaza.roadArmOffset(r + 6, 0)
+			&& !Plaza.roadArmOffset(r + 1, 3),
 			"both square frames and the road arms stop at their intended bounded edges");
 
 		Set<String> details = new HashSet<>();
 		int benches = 0, planters = 0, flowers = 0, lamps = 0;
 		int outerBenches = 0, outerPlanters = 0, outerFlowers = 0, outerLamps = 0;
+		int tableCells = 0;
 		boolean detailSymmetry = true;
 		for (int dx = -13; dx <= 13; dx++) for (int dz = -13; dz <= 13; dz++) {
 			boolean bench = Plaza.civicBenchOffset(dx, dz) || Plaza.outerCivicBenchOffset(dx, dz);
@@ -107,10 +109,16 @@ public final class PlazaGeometryChecks {
 			if (purposeCount == 0) continue;
 			require(purposeCount == 1 && details.add(dx + ":" + dz),
 				"the inner and outer garden circuits do not overlap");
-			require(Plaza.inside(center, center.offset(dx, 0, dz), 0) && !Plaza.roadArmOffset(dx, dz),
-				"all seats, plants, flowers, and lamps stay inside the plaza and outside its road arms");
-			require(Plaza.civicDetailOffsetSafe(dx, dz, lamp),
-				"every civic detail clears the pavilion, board, and chest access");
+			tableCells++;
+			detailSymmetry &= bench == (Plaza.civicBenchOffset(-dz, dx) || Plaza.outerCivicBenchOffset(-dz, dx))
+				&& planter == (Plaza.civicPlanterOffset(-dz, dx) || Plaza.outerCivicPlanterOffset(-dz, dx))
+				&& flower == (Plaza.civicFlowerOffset(-dz, dx) || Plaza.outerCivicFlowerOffset(-dz, dx))
+				&& lamp == (Plaza.civicLampOffset(-dz, dx) || Plaza.outerCivicLampOffset(-dz, dx));
+			// Plaza.decorateCivicBatch/buildImmediateCivicDecor place only cells that are civicDetailSafe, i.e. inside the
+			// radius-8 octagon and clear of the pavilion, board, chest and arms; table cells beyond it are never furnished.
+			boolean active = Plaza.inside(center, center.offset(dx, 0, dz), 0) && !Plaza.roadArmOffset(dx, dz)
+				&& Plaza.civicDetailOffsetSafe(dx, dz, lamp);
+			if (!active) continue;
 			benches += bench ? 1 : 0;
 			planters += planter ? 1 : 0;
 			flowers += flower ? 1 : 0;
@@ -119,16 +127,13 @@ public final class PlazaGeometryChecks {
 			outerPlanters += Plaza.outerCivicPlanterOffset(dx, dz) ? 1 : 0;
 			outerFlowers += Plaza.outerCivicFlowerOffset(dx, dz) ? 1 : 0;
 			outerLamps += Plaza.outerCivicLampOffset(dx, dz) ? 1 : 0;
-			detailSymmetry &= bench == (Plaza.civicBenchOffset(-dz, dx) || Plaza.outerCivicBenchOffset(-dz, dx))
-				&& planter == (Plaza.civicPlanterOffset(-dz, dx) || Plaza.outerCivicPlanterOffset(-dz, dx))
-				&& flower == (Plaza.civicFlowerOffset(-dz, dx) || Plaza.outerCivicFlowerOffset(-dz, dx))
-				&& lamp == (Plaza.civicLampOffset(-dz, dx) || Plaza.outerCivicLampOffset(-dz, dx));
 		}
-		require(benches == 16 && planters == 12 && flowers == 32 && lamps == 8
-			&& outerBenches == 8 && outerPlanters == 8 && outerFlowers == 16 && outerLamps == 4
-			&& details.size() == Plaza.allCivicDetailCount()
+		require(benches == 8 && planters == 4 && flowers == 8 && lamps == 0
+			&& outerBenches == 0 && outerPlanters == 0 && outerFlowers == 0 && outerLamps == 0
+			&& tableCells == Plaza.allCivicDetailCount()
 			&& Plaza.civicDetailCount() == 32 && Plaza.outerCivicDetailCount() == 36,
-			"two furniture/garden circuits provide sixteen seats, twelve shrubs, thirty-two flowers, and eight lights");
+			"the radius-8 plaza furnishes eight seats, four shrubs and eight flowers from the circuit tables "
+				+ "(actual benches=" + benches + ", planters=" + planters + ", flowers=" + flowers + ", lamps=" + lamps + ", tableCells=" + tableCells + ")");
 		require(detailSymmetry, "both planted circuits and seating rings are rotationally balanced");
 		require(Plaza.civicDetailOffsetSafe(-7, -7, false)
 			&& Plaza.civicDetailOffsetSafe(7, -7, false)

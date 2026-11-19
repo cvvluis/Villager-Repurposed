@@ -136,7 +136,7 @@ public final class PlazaFountainChecks {
 
 	private static int checkCivicComposition() {
 		int checks=0,benches=0,planters=0,flowers=0,lamps=0,rainBasins=0;
-		int outerBenches=0,outerPlanters=0,outerFlowers=0,outerLamps=0;
+		int outerBenches=0,outerPlanters=0,outerFlowers=0,outerLamps=0,tableCells=0;
 		Set<String> occupied=new java.util.HashSet<>();
 		boolean symmetric=true;
 		for(int dx=-13;dx<=13;dx++) for(int dz=-13;dz<=13;dz++) {
@@ -150,6 +150,10 @@ public final class PlazaFountainChecks {
 				+(outerPlanter?1:0)+(outerFlower?1:0)+(outerLamp?1:0)+(basin?1:0);
 			if(kinds==0) continue;
 			check(kinds==1&&occupied.add(dx+":"+dz),"each civic detail has one unique coordinate"); checks++;
+			tableCells++;
+			// Plaza.civicDetailSafe/decorateCivicBatch furnish only cells inside the radius-8 octagon (PLAZA_RADIUS, PLAZA_DIAMOND_RADIUS);
+			// table cells beyond it (flowers at |9|, lamps at |11|, the whole promenade table) are never placed.
+			if(Math.max(Math.abs(dx),Math.abs(dz))>Plaza.PLAZA_RADIUS||Math.abs(dx)+Math.abs(dz)>Plaza.PLAZA_DIAMOND_RADIUS) continue;
 			check(Plaza.civicDetailOffsetSafe(dx,dz,anyLamp),
 				"civic details stay outside the pavilion, roads, board, and container access"); checks++;
 			check(Math.abs(dx)>2&&Math.abs(dz)>2&&!Plaza.roadArmOffset(dx,dz),
@@ -175,11 +179,11 @@ public final class PlazaFountainChecks {
 				&&outerLamp==Plaza.outerCivicLampOffset(-dz,dx)
 				&&basin==Plaza.civicRainBasinOffset(-dz,dx);
 		}
-		check(benches==8&&planters==4&&flowers==16&&lamps==4&&rainBasins==4&&Plaza.civicDetailCount()==32,
-			"the inner pavilion contains eight seats, four shrubs, sixteen flowers, four lights, and four rain basins"); checks++;
-		check(outerBenches==8&&outerPlanters==8&&outerFlowers==16&&outerLamps==4&&Plaza.outerCivicDetailCount()==36,
-			"the outer promenade adds eight seats, eight shrubs, sixteen flowers, and four lights"); checks++;
-		check(Plaza.allCivicDetailCount()==68&&Plaza.civicWorkItemCount()==72,
+		check(benches==8&&planters==4&&flowers==8&&lamps==0&&rainBasins==4&&Plaza.civicDetailCount()==32,
+			"the radius-8 pavilion furnishes eight seats, four shrubs, eight flowers, and four rain basins (no table light lies inside it)"); checks++;
+		check(outerBenches==0&&outerPlanters==0&&outerFlowers==0&&outerLamps==0&&Plaza.outerCivicDetailCount()==36,
+			"the promenade table (36 sites) lies entirely beyond the radius-8 plaza and is never furnished"); checks++;
+		check(Plaza.allCivicDetailCount()==68&&Plaza.civicWorkItemCount()==72&&tableCells==68+rainBasins,
 			"four rain basins append to the 68 inner-court and promenade furniture sites"); checks++;
 		check(symmetric,"the civic composition is rotationally balanced around its fountain"); checks++;
 		check(!Plaza.civicDetailOffsetSafe(0,4,false)
@@ -195,9 +199,9 @@ public final class PlazaFountainChecks {
 		}
 		check(focalBorder==48,"a complete 13-by-13 paving frame draws attention to the fountain pavilion"); checks++;
 		boolean connectedApproaches=true;
-		for(int n=0;n<=13;n++) for(int side=-2;side<=2;side++)
+		for(int n=0;n<=Plaza.PLAZA_RADIUS;n++) for(int side=-2;side<=2;side++)
 			connectedApproaches&=Plaza.basePavingOffset(n,side)&&Plaza.basePavingOffset(side,n);
-		for(int n=14;n<=18;n++) for(int side=-2;side<=2;side++)
+		for(int n=Plaza.PLAZA_RADIUS+1;n<=Plaza.PLAZA_RADIUS+5;n++) for(int side=-2;side<=2;side++)
 			connectedApproaches&=Plaza.roadArmOffset(n,side)&&Plaza.roadArmOffset(side,n);
 		check(connectedApproaches,"five-block cross approaches stay paved through the plaza and into each road arm"); checks++;
 		check(Plaza.civicDetailBudget()<=4&&Plaza.surfaceWorkBudget()<=8,

@@ -155,13 +155,14 @@ public final class CivicCenterChecks {
             if (palette.base() != palette.floor()) {
                 int stockBefore = count(chest, palette.base().asItem());
                 int outer = Plaza.PLAZA_RADIUS - 1;
-                int batchCursor = Plaza.SURFACE_CELLS - 16;
+                int side = Plaza.PLAZA_RADIUS * 2 + 1;
+                // Start the batch at the frame corner (-outer,-outer): one budget of 8 cells covers dz = -outer .. 0 of that frame column.
+                int batchCursor = (Plaza.PLAZA_RADIUS - outer) * side + (Plaza.PLAZA_RADIUS - outer);
                 Plaza.SurfaceBatch outerFrame = Plaza.upgradeSurface(level, ref, center, palette, batchCursor, java.util.Set.of());
-                int paid = count(chest, palette.base().asItem());
-                require(!outerFrame.pending()
+                require(outerFrame.cursor() == batchCursor + 8 && !outerFrame.pending()
                     && level.getBlockState(center.offset(-outer, -1, -outer)).is(palette.base())
                     && level.getBlockState(center.offset(-outer, -1, -3)).is(palette.base())
-                    && paid < stockBefore,
+                    && count(chest, palette.base().asItem()) == stockBefore - 8,
                     "the compact courtyard frame is built in a safe batch and paid from public stock");
                 layoutChecks++;
             }

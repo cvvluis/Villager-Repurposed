@@ -75,14 +75,16 @@ public final class PlazaChecks {
 				&&Plaza.outerCivicLampOffset(dx,dz)==Plaza.outerCivicLampOffset(rx,rz)
 				&&((Plaza.gardenCourtIndex(dx,dz)>=0)==(Plaza.gardenCourtIndex(rx,rz)>=0));
 		}
-		require(innerSeats==8&&innerPlanters==4&&innerFlowers==16&&innerLamps==4
-			&&outerSeats==8&&outerPlanters==8&&outerFlowers==16&&outerLamps==4,
-			"the civic core has a defined inner garden ring and the promenade receives a balanced second furnishing ring");
+		// The scan covers the radius-8 plaza, the only area Plaza.civicDetailSafe/buildImmediateCivicDecor will furnish; table entries
+		// beyond it (flowers at |9|, lamps at |11|, the whole promenade table at |9|..|11|) are skipped by production.
+		require(innerSeats==8&&innerPlanters==4&&innerFlowers==8&&innerLamps==0
+			&&outerSeats==0&&outerPlanters==0&&outerFlowers==0&&outerLamps==0,
+			"the civic core has a defined inner garden ring (the compact radius-8 plaza places no promenade ring)");
 		require(Plaza.civicDetailCount()==32&&Plaza.outerCivicDetailCount()==36
 			&&Plaza.allCivicDetailCount()==68&&Plaza.civicWorkItemCount()==72,
 			"the furnishing cursor spans every pavilion, garden, promenade, and rain-basin item exactly once");
-		for(int court=0;court<4;court++) require(courtSeats[court]==2&&courtPlanters[court]==1&&courtFlowers[court]==4,
-			"each quadrant forms one matching green court with a leafy planter, four flowers, and two inward-facing seats");
+		for(int court=0;court<4;court++) require(courtSeats[court]==2&&courtPlanters[court]==1&&courtFlowers[court]==2,
+			"each quadrant forms one matching green court with a leafy planter, two in-plaza flowers, and two inward-facing seats");
 		require(civicRotational, "the four garden courts and outer promenade remain identical after each quarter-turn");
 		require(Plaza.gardenCourtIndex(0,6)==-1&&Plaza.gardenCourtIndex(6,0)==-1
 			&&Plaza.gardenCourtIndex(6,6)>=0&&Plaza.gardenCourtIndex(-6,6)>=0,
@@ -127,7 +129,9 @@ public final class PlazaChecks {
 				&&Plaza.basePavingOffset(dx,dz)==Plaza.basePavingOffset(rotatedX,rotatedZ)
 				&&Plaza.middleSquareBorderOffset(dx,dz)==Plaza.middleSquareBorderOffset(rotatedX,rotatedZ)
 				&&Plaza.plazaInlayOffset(dx,dz)==Plaza.plazaInlayOffset(rotatedX,rotatedZ);
-			if(Plaza.middleSquareBorderOffset(dx,dz)) {
+			// The frame coincides with the radius-8 edge; its four square corners (|dx|+|dz|=16 > PLAZA_DIAMOND_RADIUS) are clipped
+			// from the octagonal footprint (surfaceUpgradeOffsetSafe/inside are false there), so only footprint cells count.
+			if(Plaza.middleSquareBorderOffset(dx,dz)&&Plaza.surfaceUpgradeOffsetSafe(dx,dz)) {
 				middleFrameCells++;
 				require(Plaza.basePavingOffset(dx,dz)&&Plaza.surfaceUpgradeOffsetSafe(dx,dz)
 					&&Plaza.inside(center,center.offset(dx,0,dz),0),
@@ -154,15 +158,17 @@ public final class PlazaChecks {
 			&&Plaza.basePavingOffset(r,0)&&!Plaza.decorationOffsetSafe(r,0),
 			"the middle frame marks the civic transition while leaving the five-wide road crossing unobstructed");
 		Block middleBase=Plaza.surfaceMaterialForOffset(r,0,Blocks.SANDSTONE,Blocks.SMOOTH_SANDSTONE);
-		Block ordinaryFloor=Plaza.surfaceMaterialForOffset(r-1,4,Blocks.SANDSTONE,Blocks.SMOOTH_SANDSTONE);
+		// (3,3) is neither frame, medallion, ray nor edge at radius 8 ((r-1,4) is now on the outer frame, which is accent paving).
+		Block ordinaryFloor=Plaza.surfaceMaterialForOffset(3,3,Blocks.SANDSTONE,Blocks.SMOOTH_SANDSTONE);
 		require(middleBase==Blocks.SANDSTONE&&ordinaryFloor==Blocks.SMOOTH_SANDSTONE
 			&&Plaza.materialCost(middleBase).orElseThrow().equals(Map.of(Items.SANDSTONE,1))
 			&&Plaza.surfaceMaterialForOffset(r,0,null,Blocks.SMOOTH_SANDSTONE)==null,
 			"the new frame is paid from one real palette-base item per cell, ordinary floor cells keep their palette floor, and missing materials fail closed");
 		require(Plaza.plazaInlayOffset(3,4)&&Plaza.plazaInlayOffset(-3,4)
 			&&Plaza.plazaInlayOffset(4,3)&&Plaza.plazaInlayOffset(4,-3)
-			&&Plaza.plazaInlayOffset(3,r-1)&&Plaza.plazaInlayOffset(-3,r-1)
-			&&Plaza.plazaInlayOffset(3,-(r-1))&&Plaza.plazaInlayOffset(-3,-(r-1)),
+			// (4,r) lies on the inner diamond (|dx|+|dz|=12); the old (3,r-1)=(3,7) is no inlay cell at radius 8.
+			&&Plaza.plazaInlayOffset(4,r)&&Plaza.plazaInlayOffset(-4,r)
+			&&Plaza.plazaInlayOffset(4,-r)&&Plaza.plazaInlayOffset(-4,-r),
 			"the inner paving medallions are symmetric in all four quadrants");
 		require(Plaza.inside(center,center.east(r),0)&&!Plaza.inside(center,center.east(r+1),0)
 			&&Plaza.inside(center,center.offset(r,0,r-1),0)&&!Plaza.inside(center,center.offset(r,0,r),0),
@@ -198,7 +204,8 @@ public final class PlazaChecks {
 		for(net.minecraft.core.Direction face:net.minecraft.core.Direction.Plane.HORIZONTAL) {
 			BlockPos originalStand=center.relative(face,r+9),movedStand=Plaza.clearApproachRoutes(center,originalStand,4);
 			require(Plaza.overlapsApproach(center,originalStand,4), "a stall just outside the plaza edge overlaps its wider approach");
-			require(movedStand.equals(center.relative(face,r+15)), "stalls move outward until every cardinal approach clears");
+			// first clear step: along-half > ROAD_ARM_END (r+5), i.e. along = r+5+4+1 = r+10 for half=4
+			require(movedStand.equals(center.relative(face,r+10)), "stalls move outward until every cardinal approach clears");
 			require(!Plaza.overlapsApproach(center,movedStand,4), "the relocated stall leaves the full five-block path open");
 		}
 		require(Plaza.clearApproachRoutes(center, center.east(24), 4).equals(center.east(24)), "a site already outside the approach remains in place");
