@@ -2011,7 +2011,7 @@ public final class Mining {
 		MineSupplies missing = missingMineSupplies(inventory, required, materials);
 		// Supports, ribs and torches stop the digging; the paved walkway strip does not (a village without oak planks must not
 		// wait ten minutes for one), so a section that needs no structure is dug at once with what the resident carries.
-		if (missing.structural().empty()) return SupplyStatus.READY;
+		if (missing.structural().empty()) return anticipateKit(c, ref, mine, materials);
 		if (c.v().getY() < mine.entrance.getY() - 0.5 && nearest(mine, c.v().position()) >= 1) {
 			// Leave by the saved route first; the movement guard keeps the return trip inside the gallery.
 			c.st().miningUntil = c.now();
@@ -2096,6 +2096,49 @@ public final class Mining {
 		ref.dirty();
 		Anim.hold(c, missing.fences() > 0 ? materials.fenceItem()
 			: missing.framePlanks() > 0 ? materials.plankItem() : Items.TORCH);
+		c.st().cooldownUntil = c.now() + 10;
+		c.setActivity("nimmt echte Stollenstützen und Fackeln mit");
+		return SupplyStatus.BUSY;
+	}
+
+	/**
+	 * Before the first walk out to the shaft: the next section needs no structure, but the first support or light within the
+	 * look-ahead will. A miner who finds that out only at the shaft walks the whole way back to the village chest and out again
+	 * (about 1500 ticks a round trip), which left the mine two or three sections a working day. While the resident still stands
+	 * outside the gallery he therefore takes that kit along when the depot already holds it complete (or crafts it when he stands
+	 * at the chest anyway). Never blocking: with nothing to take the plain sections are dug at once, the rule at the support stays.
+	 */
+	private static SupplyStatus anticipateKit(Ctx c, VillageRef ref, VillageData.Mine mine, MineFrameMaterials materials) {
+		if (inMineArea(mine, c.v())) return SupplyStatus.READY;
+		MineSupplies ahead = null;
+		int last = Math.min(mine.index + KIT_LOOKAHEAD_SECTIONS, descent(mine) + MAX_HORIZONTAL);
+		for (int i = mine.index + 1; i < last && ahead == null; i++) {
+			VillageData.Mine section = new VillageData.Mine(mine.entrance, mine.dir, i, mine.targetY, false);
+			MineSupplies need = mineSuppliesForNextSection(c.level(), section, materials).structural();
+			if (!need.empty()) ahead = need;
+		}
+		if (ahead == null) return SupplyStatus.READY;
+		Container inventory = c.v().getInventory();
+		MineSupplies missing = missingMineSupplies(inventory, ahead, materials);
+		BlockPos chestPos = ref.chestPos(c.level());
+		Container chest = ref.chest(c.level());
+		if (missing.structural().empty() || chestPos == null || chest == null) return SupplyStatus.READY;
+		boolean stocked = hasMineSupplies(chest, missing.structural(), materials);
+		boolean atChest = c.v().blockPosition().closerThan(chestPos, 4.5);
+		if (!stocked && !atChest) return SupplyStatus.READY;
+		if (!stocked) {
+			return craftMineSupplies(c, chest, chestPos, inventory, missing.structural(), materials)
+				? SupplyStatus.BUSY : SupplyStatus.READY;
+		}
+		Map<Item, Integer> grab = mineSupplyItems(missing.structural(), materials);
+		if (!fits(inventory, stacksOf(grab))) return SupplyStatus.READY;
+		if (!atChest && !JobUtil.approachLong(c, chestPos, 4.5)) {
+			c.setActivity("holt Stollenmaterial aus dem Dorflager");
+			return SupplyStatus.BUSY;
+		}
+		if (!takeMineItems(chest, grab)) return SupplyStatus.READY;
+		for (ItemStack stack : stacksOf(grab)) JobUtil.give(c.level(), c.v(), stack);
+		ref.dirty();
 		c.st().cooldownUntil = c.now() + 10;
 		c.setActivity("nimmt echte Stollenstützen und Fackeln mit");
 		return SupplyStatus.BUSY;
