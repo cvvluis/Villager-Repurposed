@@ -131,7 +131,7 @@ public final class VillagerInfoChecks {
 				&& VillageStats.constructionStallLine(data.buildProjects.getFirst(), projectProgress + 35_999L) == null,
 				"the normal pause between construction steps stays below the builder's own stall timeout");
 			check(("Stillstand|1 Std.|-1").equals(VillagerInfo.stallLine(data, projectProgress + 72_000L))
-				&& "Kein Baufortschritt seit 1 Std.".equals(VillageStats.constructionStallLine(data.buildProjects.getFirst(), projectProgress + 72_000L)),
+				&& "Kein Bau- oder Materialfortschritt seit 1 Std. Spielzeit.".equals(VillageStats.constructionStallLine(data.buildProjects.getFirst(), projectProgress + 72_000L)),
 				"a runnable project with no progress beyond the builder timeout receives a compact German stall duration");
 
 			data.buildProjects.clear();
@@ -186,7 +186,7 @@ public final class VillagerInfoChecks {
 				"a legacy plan in its builder reassignment grace period is not reported as stalled");
 			data.extra.planBuilder = java.util.Optional.empty();
 			check(("Stillstand|1 Std.|-1").equals(VillagerInfo.stallLine(data, projectProgress + 72_000L))
-				&& "Kein Baufortschritt seit 1 Std.".equals(VillageStats.legacyConstructionStallLine(data, projectProgress + 72_000L)),
+				&& "Kein Bau- oder Materialfortschritt seit 1 Std. Spielzeit.".equals(VillageStats.legacyConstructionStallLine(data, projectProgress + 72_000L)),
 				"a legacy plan without a known wait still reports genuinely stale progress");
 		} finally {
 			Villages.forget(villager.getUUID());

@@ -2721,8 +2721,15 @@ public class BoardScreen extends Screen {
 
 	private static String compactStallLine(String line) {
 		String content = line;
-		String legacyPrefix = "Kein Baufortschritt seit ";
-		if (content.startsWith(legacyPrefix)) content = "Stillstand: " + content.substring(legacyPrefix.length());
+		// The server line is "Kein Bau- oder Materialfortschritt seit <duration> Spielzeit."; older saves and builds said
+		// "Kein Baufortschritt seit <duration>". Both are shown as the compact "Stillstand: <duration>" line.
+		for (String prefix : new String[] {"Kein Bau- oder Materialfortschritt seit ", "Kein Baufortschritt seit "}) {
+			if (content.startsWith(prefix)) {
+				content = "Stillstand: " + content.substring(prefix.length());
+				break;
+			}
+		}
+		if (content.startsWith("Stillstand: ") && content.endsWith(" Spielzeit.")) content = content.substring(0, content.length() - " Spielzeit.".length());
 		Matcher seconds = RAW_SECONDS.matcher(content);
 		StringBuffer normalized = new StringBuffer();
 		while (seconds.find()) {
