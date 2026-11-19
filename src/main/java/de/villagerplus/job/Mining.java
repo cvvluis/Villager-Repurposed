@@ -77,6 +77,8 @@ public final class Mining {
 	static final int WAITING_STAND_COUNT = 36;
 	static final int MINE_WORK_STAND_COUNT = 3;
 	private static final int WAITING_STAND_SCAN_MARGIN = 16;
+	/** Residents farther than this from the portal do not take part in its single-file admission yet. */
+	static final double ADMISSION_NEAR_BLOCKS = 20.0;
 	private static final int MINE_RESERVATION_TICKS = 80;
 	private static final int OCCUPIED_SEAL_RETRY_TICKS = 200;
 	private static final int BLOCKED_SEAL_RETRY_TICKS = 1200;
@@ -634,6 +636,8 @@ public final class Mining {
 
 	/** Failed site searches per village (by bell), so the next search looks farther out. */
 	private static final Map<Long, Integer> MINE_CREATE_FAILS = new HashMap<>();
+	/** Valid entrance sites gathered before the nearest one that the village can walk to is chosen. */
+	static final int MINE_SITE_CANDIDATES = 5;
 
 	private static Optional<VillageData.Mine> create(Ctx c, VillageRef ref) {
 		ServerLevel level = c.level();
@@ -641,6 +645,7 @@ public final class Mining {
 		// Every failed round widens the ring (up to +24 blocks): a village that already lost a mine to a cave has fewer sites left near it.
 		int failedRounds = MINE_CREATE_FAILS.getOrDefault(ref.bell().asLong(), 0);
 		int ring = 24 + 8 * Math.min(failedRounds, 3);
+		List<VillageData.Mine> candidates = new ArrayList<>();
 		for (int attempt = 0; attempt < 200; attempt++) {
 			double angle = c.v().getRandom().nextDouble() * Math.PI * 2;
 			double dist = 14 + c.v().getRandom().nextInt(ring);
@@ -687,8 +692,15 @@ public final class Mining {
 				why[6]++;
 				continue;
 			}
+			// Collect a few valid sites and take the one nearest the bell (below): the first site found used to win, up to 38 blocks out
+			// (45 after failed rounds), and every trip to it cost the village hundreds of ticks per load of cobblestone.
+			candidates.add(m);
+			if (candidates.size() >= MINE_SITE_CANDIDATES) break;
+		}
+		candidates.sort(java.util.Comparator.comparingLong(cand -> horizontalSq(cand.entrance, ref.bell())));
+		for (VillageData.Mine m : candidates) {
 			// The village must be able to walk there: an entrance on an unreachable ledge would park every miner forever.
-			var route = de.villagerplus.build.Builder.workPath(c, entrance);
+			var route = de.villagerplus.build.Builder.workPath(c, m.entrance);
 			if (route == null || !route.canReach()) {
 				why[1]++;
 				continue;
@@ -1684,6 +1696,7 @@ public final class Mining {
 		}
 		c.mem().jobsDone++;
 		m.index++;
+		LOGGER.info("Mine {}: Abschnitt {} gegraben (Tick {}, {} Bloecke, Eingang {})", c.mem().name, m.index, c.now(), dug.size(), m.entrance.toShortString());
 		if (m.index >= descent(m) + MAX_HORIZONTAL) {
 			finishMine(c, ref, m, MINE_EXHAUSTED_KEY);
 		}
@@ -2020,6 +2033,7 @@ public final class Mining {
 			KIT_SKIP_UNTIL.put(entranceKey, c.now() + KIT_SKIP_TICKS);
 			return SupplyStatus.READY;
 		}
+		lastKitDepotEmpty = false;
 		SupplyStatus supplies = ensureMineSupplies(c, ref, m);
 		if (supplies == SupplyStatus.READY) {
 			KIT_WAIT_SINCE.remove(entranceKey);
@@ -2030,6 +2044,8 @@ public final class Mining {
 			// rest periods in between do not, so the limit is a share of a working day and not a share of the calendar.
 			Long last = KIT_WAIT_LAST.get(entranceKey);
 			long step = last == null || last > c.now() ? 0L : Math.min(KIT_WAIT_STEP_CAP, c.now() - last);
+			// Waiting for a depot that holds nothing to make a kit from only runs the clock out: charge it four times as fast.
+			if (lastKitDepotEmpty) step *= 4L;
 			if (since == null) {
 				KIT_WAIT_SINCE.put(entranceKey, c.now());
 				KIT_WAIT_SPENT.put(entranceKey, 0L);
@@ -2040,6 +2056,16 @@ public final class Mining {
 			KIT_WAIT_INDEX.put(entranceKey, m.index);
 		}
 		return supplies;
+	}
+
+	/** Set by {@link #ensureMineSupplies} when it gave up because the depot holds no timber, fence, torch or coal at all. */
+	private static boolean lastKitDepotEmpty;
+
+	/** True when the public chest holds nothing a kit could be made of (logs, planks, sticks, fences, torches, coal). */
+	static boolean kitDepotEmpty(Container chest) {
+		return JobUtil.count(chest, stack -> stack.is(net.minecraft.tags.ItemTags.LOGS) || stack.is(net.minecraft.tags.ItemTags.PLANKS)
+			|| stack.is(net.minecraft.tags.ItemTags.COALS) || stack.is(Items.STICK) || stack.is(Items.TORCH)
+			|| stack.is(net.minecraft.tags.ItemTags.WOODEN_FENCES)) == 0;
 	}
 
 	/** Restock at the village chest before the next structural section; excavation never conjures its supports or light. */
@@ -2062,6 +2088,12 @@ public final class Mining {
 		BlockPos chestPos = ref.chestPos(c.level());
 		Container chest = ref.chest(c.level());
 		if (chestPos == null || chest == null) {
+			c.setActivity("wartet auf Stützen- und Fackelmaterial im Dorflager");
+			return SupplyStatus.WAITING;
+		}
+		// Nothing to fetch and nothing to craft from: do not walk to the depot (up to 60 blocks and back) for a kit that is not there.
+		lastKitDepotEmpty = kitDepotEmpty(chest);
+		if (lastKitDepotEmpty) {
 			c.setActivity("wartet auf Stützen- und Fackelmaterial im Dorflager");
 			return SupplyStatus.WAITING;
 		}
@@ -2411,6 +2443,11 @@ public final class Mining {
 	static boolean mineEntranceAdmissionBlocked(Ctx c, VillageData.Mine mine) {
 		if (c == null || c.v() == null || c.level() == null || mine == null
 			|| inMineArea(mine, c.v())) return false;
+		// Admission is single file AT the portal. A resident still far away (it holds no lane yet, see holdsLaneNow) is simply on
+		// its way: queueing it there parked it 50 blocks from the shaft, where it was put back on the street again and again.
+		double farX = c.v().getX() - (mine.entrance.getX() + 0.5);
+		double farZ = c.v().getZ() - (mine.entrance.getZ() + 0.5);
+		if (farX * farX + farZ * farZ > ADMISSION_NEAR_BLOCKS * ADMISSION_NEAR_BLOCKS) return false;
 		MineRoute current = mineRoute(c.v());
 		boolean currentHasAdmission = routeMatchesMine(current, c.level(), mine) && current.index() >= 0;
 		AABB portal = new AABB(mine.entrance).inflate(0.35, 0.15, 0.35);
@@ -2555,12 +2592,15 @@ public final class Mining {
 			if (occupied.contains(slot) || !mineWorkStandAvailable(c, mine, slot, section, routeWorkers, nearby)) continue;
 			BlockPos stand = mineWorkStand(mine, section, slot);
 			// The pathfinder cannot plan across a whole village: from far away the long overland approach is walked in legs
-			// later, so only a near resident has to prove the route now.
-			if (c.v().blockPosition().distSqr(stand) > 24.0 * 24.0) return slot;
-			var path = c.v().getNavigation().createPath(stand, 1);
+			// later, so only a near resident has to prove the route now. A resident on the surface proves the way to the portal:
+			// a stand deep in the shaft lies beyond the vanilla navigation range (path length about 16) from anywhere, so asking for
+			// it made every deeper mine look unreachable to residents standing 10 to 24 blocks away ("path=false" in natural runs).
+			BlockPos goal = stand.getY() < mine.entrance.getY() && onMineSurface(mine, c.v()) ? mine.entrance : stand;
+			if (c.v().blockPosition().distSqr(goal) > 24.0 * 24.0) return slot;
+			var path = c.v().getNavigation().createPath(goal, 1);
 			if (path != null && path.canReach()) return slot;
 			// Vanilla navigation often fails on sandy dunes; the long-route search used for the quarry still finds a way.
-			var alternative = de.villagerplus.build.Builder.workPath(c, stand);
+			var alternative = de.villagerplus.build.Builder.workPath(c, goal);
 			if (alternative != null && alternative.canReach()) return slot;
 		}
 		return -1;

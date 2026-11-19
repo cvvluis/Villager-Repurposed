@@ -124,6 +124,9 @@ public final class MiningCycleChecks {
 				&& secondEntrant.position().distanceToSqr(origin.getX() + .5, origin.getY(), origin.getZ() + .5) < 0.01
 				&& waitingMine.index == 4 && !waitingMine.done,
 				"two simultaneous miners serialize portal admission: the second walks to its own retry stand without teleporting or advancing the shared cursor"); checks++;
+			secondEntrant.setPos(origin.getX() + .5 + Mining.ADMISSION_NEAR_BLOCKS + 10.0, origin.getY(), origin.getZ() + .5);
+			check(!Mining.mineEntranceAdmissionBlocked(secondContext, waitingMine),
+				"a newcomer still far from the portal is not held in the single-file admission queue (it keeps walking instead of being parked 50 blocks out)"); checks++;
 			secondEntrant.discard();
 			queueWorkers.remove(secondEntrant);
 			worker.removeAttached(VillagerPlus.MINING_ROUTE);

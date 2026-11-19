@@ -70,6 +70,10 @@ public final class MineKitChecks {
 			var waiting = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now), ref, mine);
 			check(waiting == Mining.SupplyStatus.WAITING && worker.getInventory().isEmpty(),
 				"a support section without any depot stock waits, got " + waiting); checks++;
+			check(Mining.kitDepotEmpty(chest), "an empty depot is recognised: no trip to it is made for a kit that is not there"); checks++;
+			add(chest, Items.STICK, 1);
+			check(!Mining.kitDepotEmpty(chest), "a depot holding sticks is not empty: the kit may still be crafted"); checks++;
+			chest.clearContent();
 			// A night between two work spells is not charged to the kit: a 20000 tick gap adds one capped step only.
 			var afterNight = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now + 20000L), ref, mine);
 			check(afterNight == Mining.SupplyStatus.WAITING,
