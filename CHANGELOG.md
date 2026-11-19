@@ -2,6 +2,10 @@
 
 Alle genannten Versionen gelten für Fabric, Minecraft 26.2 und Java 25. Die JAR heißt `villagers-repurposed-<version>.jar`.
 
+## Unreleased (0.11.1)
+
+- **Fixes a server crash on startup.** `RecipeIndex.rebuild` assembled every crafting recipe with an empty grid to index its result. The vanilla decorated pot recipe throws `ArrayIndexOutOfBoundsException` for an empty grid, so the server (and a single-player world) crashed while starting with 0.11.0. A recipe that cannot assemble an empty grid is now skipped instead. Found by running the dev server on the 0.11.0 state; not yet confirmed in the game client.
+
 ## 0.11.0
 
 Dorftafel: fünfte Zonenart **Sperrzone** (`protected`). Darin dürfen Villager nicht bauen, Bäume fällen, graben, minen oder Hauptdorfwege ausweiten. Auf der Karte rot/markiert; Löschen wie bei den anderen Zonen.

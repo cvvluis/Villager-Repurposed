@@ -41,9 +41,15 @@ public final class RecipeIndex {
 				@SuppressWarnings("unchecked")
 				RecipeHolder<CraftingRecipe> typed = (RecipeHolder<CraftingRecipe>) holder;
 				craft.add(typed);
-				var stack = cr.assemble(CraftingInput.EMPTY);
-				if (!stack.isEmpty()) {
-					results.computeIfAbsent(stack.getItem(), ignored -> new ArrayList<>()).add(holder);
+				// Some recipes (for example the vanilla decorated pot recipe) cannot assemble an empty grid and throw.
+				// One of them must never take down the server start, so such a recipe simply has no indexed result.
+				try {
+					var stack = cr.assemble(CraftingInput.EMPTY);
+					if (!stack.isEmpty()) {
+						results.computeIfAbsent(stack.getItem(), ignored -> new ArrayList<>()).add(holder);
+					}
+				} catch (RuntimeException ignored) {
+					// no result known for this recipe
 				}
 			}
 		}
