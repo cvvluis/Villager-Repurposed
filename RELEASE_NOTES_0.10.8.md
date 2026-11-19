@@ -2,22 +2,22 @@
 
 Fabric · Minecraft 26.2 · Java 25
 
-Diese Ausgabe fasst die Playtests 0.10.1 bis 0.10.8 zusammen. Gegenüber 0.10.0 ist vor allem das Einfrieren beim Betreten eines Dorfs behoben.
+This release summarizes playtests 0.10.1 to 0.10.8. Compared with 0.10.0, the main fix is the freeze when entering a village.
 
-## Einfrieren beim Dorfbetreten
+## Freeze when entering a village
 
-Im großen Modpack blieb das Bild stehen, sobald man ein Dorf betrat. Sound und Menü liefen weiter, der Server meldete „Can't keep up“. Ursache war die Relief-Abtastung der großen Dorftafel: sie hat auf dem Server-Thread fehlende Chunks synchron erzeugt.
+In the large modpack the picture froze as soon as you entered a village. Sound and menu kept running, and the server reported "Can't keep up". The cause was the relief sampling of the large Dorftafel (village board): it synchronously generated missing chunks on the server thread.
 
-0.10.8 liest Karte, Relief und die übrigen Geländeabtastungen nur noch aus Chunks, die schon vollständig geladen sind. Die Karte füllt sich schrittweise. Der Hänger-Wächter erkennt solche Wartezeiten in `getChunkBlocking` und zählt sie nicht mehr als harmlose Pause. Das Relief funktioniert mit Iris; der fehlende Shader `debug_quads` wird nicht mehr benutzt.
+0.10.8 reads the map, relief and the other terrain sampling only from chunks that are already fully loaded. The map fills in gradually. The stall watchdog recognizes such waits in `getChunkBlocking` and no longer counts them as a harmless pause. The relief works with Iris; the missing `debug_quads` shader is no longer used.
 
-## Seit 0.10.0
+## Since 0.10.0
 
-- **Nahrung (0.10.1).** Dorfweite Ernte, Angeln bei Mangel, eine begrenzte Essensbrücke in die Dorfkiste, knappe Portionen zuerst für Hungrige. Untätige Bewohner und freie Maurer liefern Bruchstein, wenn Pläne warten.
-- **Weniger Dauerlast (0.10.2 und 0.10.3).** Höchstens ein Dorf pro Dimension wird festgehalten, nur bereits geladene Chunks, keine neuen `/forceload`-Einträge. Alte Zwangsladungen werden freigegeben. Abschaltbar mit `-Dvillagerplus.keptVillages=0`.
-- **Dorf-Toast (0.10.4).** Fehler schalten nur das Toast ab, die Chatnachricht bleibt. `-Dvillagerplus.toast=false` schaltet es ganz ab.
-- **Vorlagenhäuser (0.10.5).** Dorfhaus, Rathaus und Schmiede als handgebaute Vorlagen. Neue hohe Häuser können das Dorfhaus verwenden. Rathaus und Schmiede liegen bereit, werden aber noch nicht als Meilenstein gebaut.
-- **Hänger-Bericht (0.10.6 und 0.10.7).** Thread-Stapel in `logs/villagerplus-stall-server.txt` und `-client.txt`, höchstens drei Berichte je Start. Der Client meldet nur, solange eine Welt läuft, und seit 0.10.8 einmal pro Frame.
+- **Food (0.10.1).** Village-wide harvest, fishing when short, a limited food bridge to the village chest, scarce portions go to the hungry first. Idle residents and free masons supply cobblestone when plans are waiting.
+- **Less constant load (0.10.2 and 0.10.3).** At most one village per dimension is held, only already loaded chunks, no new `/forceload` entries. Old forced chunks are released. Can be turned off with `-Dvillagerplus.keptVillages=0`.
+- **Village toast (0.10.4).** Errors disable only the toast, the chat message stays. `-Dvillagerplus.toast=false` turns it off entirely.
+- **Template houses (0.10.5).** Village house, town hall and smithy as hand-built templates. New tall houses can use the village house. Town hall and smithy are ready but not yet built as a milestone.
+- **Stall report (0.10.6 and 0.10.7).** Thread stacks in `logs/villagerplus-stall-server.txt` and `-client.txt`, at most three reports per launch. The client reports only while a world is running, and since 0.10.8 once per frame.
 
-## Hinweis
+## Note
 
-`gradle build` läuft auf diesem Stand durch. 0.10.8 ist im großen Modpack noch nicht gespielt worden. Bitte dort prüfen: Dorf betreten ohne Standbild, Relief mit Iris, Tafelkarte füllt sich nach.
+`gradle build` passes at this state. 0.10.8 has not yet been played in the large modpack. Please check there: entering a village without a freeze, relief with Iris, the board map fills in afterwards.

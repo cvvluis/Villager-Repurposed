@@ -2,32 +2,32 @@
 
 Fabric · Minecraft 26.2 · Java 25
 
-## Sperrzonen auf der Dorftafel
+## Sperrzonen on the Dorftafel
 
-Auf der Karte gibt es jetzt fünf Zonenarten: Feld, Wohnen, Arbeit, Weide und **Sperrzone**. In einer Sperrzone arbeitet das Dorf nicht — kein Neubau, kein Fällen, kein Abbau, keine Erweiterung der Hauptwege zwischen Platz und Glocke. Andere Zonen steuern weiterhin, *wo* geplant wird; die Sperrzone schützt ausdrücklich markierte Felder.
+The map now has five zone types: field, residential, work, pasture and **Sperrzone** (restricted zone). The village does not work inside a Sperrzone: no new buildings, no tree felling, no mining, no widening of the main paths between square and bell. The other zones still control *where* planning happens; the Sperrzone protects explicitly marked areas.
 
-## Bauplatz-Diagnose
+## Building-site diagnostics
 
-Findet das Dorf keinen geeigneten Hausplatz, merkt es sich eine Kurzstatistik (Hang, Zone, blockierte Parzelle, …). Diese Zeile erscheint auf der Dorftafel und im Statusbefehl neben den übrigen Dorfdaten.
+If the village finds no suitable house site, it remembers a short statistic (slope, zone, blocked plot, ...). This line appears on the Dorftafel (village board) and in the status command alongside the other village data.
 
-## Dorfplatz und Dorftafel
+## Dorfplatz (village square) and Dorftafel
 
-Neue Dörfer suchen den Platz am **Wohnschwerpunkt** (Glocke, Häuser, Betten), nicht am AABB-Rand. Der Platz ist kleiner, wird sofort mit Palettenpflaster, Brunnen, Bänken, Laternen und Blumen gestaltet; die **offizielle Dorftafel** steht am Platzeingang mit Blick zum Zentrum, daneben ein **Fahnenmast**. Die leere Starter-Kiste verschwindet nach dem Umzug auf den Platz; der Inhalt wandert in die neue Dorfkiste.
+New villages look for the square at the **residential centroid** (bell, houses, beds), not at the AABB edge. The square is smaller and is immediately designed with palette paving, a well, benches, lanterns and flowers; the **official Dorftafel** stands at the square entrance facing the center, with a **flagpole** beside it. The empty starter chest disappears after the move to the square; its contents move into the new village chest.
 
-**Wegweiser:** `/villagerplus tafel` und `status` zeigen klickbare Tafel-Koordinaten (OP: Teleport-Link). Beim Betreten des Dorfgebiets erscheint ein gedrosselter Actionbar-Hinweis (`-Dvillagerplus.boardWayfinding=false` zum Abschalten). **Tafel verlegen:** Schleichen + Rechtsklick an der Dorftafel oder auf der Karte der Dorftafel **„Tafel hierher verlegen“** (pinnt die Position; nur an einem sicheren Standort). Die **Fahnenfarbe** folgt Dorfstil/Biom. Überpflasterte Wege im Platz bleiben im Wegnetz registriert. Bereits gebaute Plätze werden nur nachgerüstet (Tafel/Fahnenmast/Deko), nicht neu gegraben. **`/villagerplus platz neu`** (Gamemaster/OP) legt einen zusätzlichen Platz am neuen Kern an.
+**Wayfinding:** `/villagerplus tafel` and `status` show clickable board coordinates (OP: teleport link). Entering the village area shows a throttled action-bar hint (`-Dvillagerplus.boardWayfinding=false` to turn it off). **Moving the board:** sneak + right-click on the Dorftafel, or **"Tafel hierher verlegen"** (move board here) on the Dorftafel map (pins the position; only at a safe location). The **banner color** follows village style/biome. Paved-over paths in the square stay registered in the path network. Squares that are already built are only retrofitted (board/flagpole/decoration), not dug anew. **`/villagerplus platz neu`** (gamemaster/OP) creates an additional square at the new core.
 
-## Dorfglocke und Datenhaltung
+## Village bell and data storage
 
-Eine Dorfglocke mit Dorfdaten bricht beim normalen Abbau nur nach Bestätigung. Mit Schleichen wird sie mit **allen** persistenten Dorf-Attachments (Netz, Markt, Journal, Baupläne, Straßen, Quoten, Zonen, …) als Item aufgehoben und in derselben Dimension wieder platziert — mit Abstand zu anderen Dörfern. Weltkoordinaten in diesen Daten werden zum neuen Glockenort verschoben; Nachbar-Glocken im Handelsnetz, Dorftafel-Blöcke und der Journal-Verlauf bleiben unverändert (Hinweis im Chat). Kreative Duplikate der Umzugs-Glocke enthalten keine zweite Datensatz-Kopie. Explosionen zerstören verwaltete Glocken nicht. Beim Serverende werden interne Caches zuverlässig geleert.
+A village bell with village data breaks on normal mining only after confirmation. With sneaking it is picked up as an item together with **all** persistent village attachments (network, market, journal, blueprints, roads, quotas, zones, ...) and placed again in the same dimension, at a distance from other villages. World coordinates in this data are shifted to the new bell location; neighboring bells in the trade network, Dorftafel blocks and the journal history stay unchanged (note in chat). Creative duplicates of the relocation bell carry no second copy of the data record. Explosions do not destroy managed bells. On server stop, internal caches are reliably cleared.
 
-## Technik
+## Technical
 
-Rezepte werden beim Serverstart indexiert. Berufs-Tags und E04-Rollen nutzen stabile Tag-Lookups. Die Relief-Karte auf der großen Dorftafel rendert nur neu, wenn sich die zugrunde liegenden Pixel ändern.
+Recipes are indexed at server start. Profession tags and E04 roles use stable tag lookups. The relief map on the large Dorftafel re-renders only when the underlying pixels change.
 
-## Release-JAR
+## Release JAR
 
-Die JAR bleibt deutlich kleiner als der volle Dev-Stand, schließt aber alles aus, was der Produktionscode direkt lädt (`G02SupplyTrace`, `AutoTest`, `G01VillageSpacingChecks`).
+The JAR stays much smaller than the full dev state, but includes everything the production code loads directly (`G02SupplyTrace`, `AutoTest`, `G01VillageSpacingChecks`).
 
-## Hinweis
+## Note
 
-`gradle build` ist auf diesem Stand durchgelaufen. Sperrzone, Bauplatzzeile und Glocken-Umzug im Spiel bitte einmal gegen echte Dorfdaten prüfen.
+`gradle build` passed at this state. Please check the Sperrzone, the building-site line and the bell relocation once in game against real village data.
