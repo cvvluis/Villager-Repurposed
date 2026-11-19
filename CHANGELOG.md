@@ -1,70 +1,70 @@
-# Änderungsprotokoll
+# Changelog
 
-Alle genannten Versionen gelten für Fabric, Minecraft 26.2 und Java 25. Die JAR heißt `villagers-repurposed-<version>.jar`.
+All listed versions target Fabric, Minecraft 26.2 and Java 25. The JAR is named `villagers-repurposed-<version>.jar`.
 
 ## 0.11.0
 
-Dorftafel: fünfte Zonenart **Sperrzone** (`protected`). Darin dürfen Villager nicht bauen, Bäume fällen, graben, minen oder Hauptdorfwege ausweiten. Auf der Karte rot/markiert; Löschen wie bei den anderen Zonen.
+Dorftafel (village board): fifth zone type, **Sperrzone** (restricted zone, `protected`). Villagers may not build, fell trees, dig, mine or widen main village paths inside it. Shown in red/marked on the map; deleted like the other zones.
 
-- **Bauplatzdiagnose:** Letzte Hausplatz-Suche wird an der Glocke gespeichert und auf der Dorftafel unter den Statistikzeilen zusammengefasst.
-- **Weltwechsel:** `WorldCaches` leert Anchor-, Builder-, Job-, Dorf- und Schutz-Zustände beim Serverstopp.
-- **Dorfplatz & Tafel:** Suche am Wohnschwerpunkt (Betten/Gebäude), kompakterer Platz (~17×17), Pflaster/Brunnen/Deko sofort, Tafel am Platrand mit biompassender Fahne; Wegweiser (`/villagerplus tafel`/`status`, Actionbar); Schleich-Rechtsklick und Karte-Tab **„Tafel hierher verlegen“** verlegen die Tafel; `/villagerplus platz neu` für zweiten Platz; überpflasterte Dorfwege bleiben im Wegnetz; Bau-Nudge nur für Entities im Fußabdruck an sichere Randplätze; bestehende Plätze werden nachgerüstet, nicht abgerissen.
-- **Dorfglocke:** Umzug mit Schleich-Abruch und Bestätigung; alle Dorf-Attachments an der Glocke (Netz, Markt, Journal, Pläne, Straßen, Quoten, …) wandern mit; Koordinaten werden verschoben; andere Dimension wird abgelehnt; Kreativ-Kopien tragen keine zweite Datensatz-Kopie; Explosionsschutz per Mixin.
-- **Relief:** Große Dorftafel überspringt Relief-Neuaufbau solange sich das Kartenraster nicht ändert.
-- **Release-JAR:** Größtenteils ohne `*Checks` und `de/villagerplus/dev/**`; Produktionspfad-Klassen (`G02SupplyTrace`, `AutoTest`, `G01VillageSpacingChecks`) bleiben in der JAR.
+- **Building-site diagnostics:** The last house-site search is stored at the bell and summarized on the Dorftafel below the statistics lines.
+- **World change:** `WorldCaches` clears anchor, builder, job, village and protection state on server stop.
+- **Dorfplatz (village square) and board:** The search runs at the residential centroid (beds/buildings), the square is more compact (~17×17), paving/well/decoration are placed immediately, and the board stands at the edge of the square with a biome-matching banner. Wayfinding (`/villagerplus tafel`/`status`, action bar); sneak + right-click and the map tab **"Tafel hierher verlegen"** (move board here) relocate the board; `/villagerplus platz neu` creates a second square; paved-over village paths stay in the path network; the build nudge moves only entities inside the footprint to safe edge spots; existing squares are retrofitted, not demolished.
+- **Village bell:** Relocation with sneak-break and confirmation; all village attachments on the bell (network, market, journal, plans, roads, quotas, ...) move with it; coordinates are shifted; another dimension is rejected; creative copies carry no second copy of the data record; explosion protection via mixin.
+- **Relief:** The large Dorftafel skips rebuilding the relief as long as the map grid does not change.
+- **Release JAR:** Mostly without `*Checks` and `de/villagerplus/dev/**`; production-path classes (`G02SupplyTrace`, `AutoTest`, `G01VillageSpacingChecks`) stay in the JAR.
 
-`gradle build` ist auf diesem Stand durchgelaufen.
+`gradle build` passed at this state.
 
 ## 0.10.9
 
-Leistung: ein Modell pro Rollen-Villager statt doppeltem Geometrie-Pass; Bauplan-Spitzhacken-Checks nicht mehr jeden Tick bei unverändertem Dorflager.
+Performance: one model per role villager instead of a double geometry pass; blueprint pickaxe checks no longer run every tick while the village storage is unchanged.
 
-- **Rollen-Skins:** Basis `villager.png` und Rollen-Overlay werden beim Client-Ressourcen-Reload zu einer dynamischen Textur zusammengelegt. Berufs- und Biom-Layer entfallen für Rollen-Erwachsene; der alte `RoleSkinLayer` entfällt. Rolle wird einmal in `extractRenderState` ermittelt.
-- **Rezepte:** `RecipeCrafting.assign` nutzt einen einmaligen Kisten-Snapshot pro Aufruf. `PlanStoneSupply` cacht negative Spitzhacken-Craft-Checks etwa 4 Sekunden pro Dorf, solange sich das Inventar nicht ändert.
+- **Role skins:** The base `villager.png` and the role overlay are merged into one dynamic texture on client resource reload. Profession and biome layers are dropped for role adults; the old `RoleSkinLayer` is removed. The role is determined once in `extractRenderState`.
+- **Recipes:** `RecipeCrafting.assign` uses a one-time chest snapshot per call. `PlanStoneSupply` caches negative pickaxe-craft checks for about 4 seconds per village as long as the inventory does not change.
 
-`gradle build` ist auf diesem Stand durchgelaufen. Nicht im Modpack geprüft.
+`gradle build` passed at this state. Not tested in the modpack.
 
 ## 0.10.8
 
-Dorfkarte und Relief erzeugen keine Chunks mehr. Das ist der Fix für das Einfrieren beim Betreten eines Dorfs im großen Modpack.
+The village map and relief no longer generate chunks. This fixes the freeze when entering a village in the large modpack.
 
-Beim Betreten eines Dorfs hing der Server-Thread in der Relief-Abtastung der großen Dorftafel. `hasChunkAt` an der Zellmitte reichte nicht: `getHeight` und `getBlockState` haben Nachbarspalten synchron geladen und dabei Gelände erzeugt (`getChunkBlocking`). Das Bild blieb stehen, der Server meldete „Can't keep up“.
+When entering a village, the server thread hung in the relief sampling of the large Dorftafel. `hasChunkAt` at the cell center was not enough: `getHeight` and `getBlockState` loaded neighboring columns synchronously and generated terrain in the process (`getChunkBlocking`). The picture froze and the server reported "Can't keep up".
 
-- Karte, Relief und die Textkarte lesen nur noch Chunks, die bereits vollständig geladen sind. Pro Aufruf werden höchstens 480 Zellen mit je vier Stichproben klassifiziert. Der Rest erscheint in den folgenden Ticks. Ein fertiges Raster bleibt 10 Sekunden gültig, eines mit unbekannten Zellen 5 Sekunden. Eine fehlgeschlagene Abtastung wird nicht mehr alle 20 Ticks wiederholt.
-- Dieselbe nicht blockierende Höhenlesung gilt für die übrigen Geländeabtastungen (Wege, Bauplätze, Berufe, Karawanen).
-- Der Hänger-Wächter zählt `getChunkBlocking` nicht mehr als Pause, auch wenn derselbe Stapel `managedBlock` oder `pollTask` enthält. Der Client zählt Frames mit einer Schwelle von 3 Sekunden, nicht mehr Spielticks.
-- Das Relief nutzt einen RenderType, den Iris unterstützt. `minecraft:pipeline/debug_quads` entfällt.
+- The map, relief and text map now read only chunks that are already fully loaded. At most 480 cells with four samples each are classified per call. The rest appears over the following ticks. A finished grid stays valid for 10 seconds, one with unknown cells for 5 seconds. A failed sampling is no longer repeated every 20 ticks.
+- The same non-blocking height reading applies to the other terrain sampling (paths, building sites, professions, caravans).
+- The stall watchdog no longer counts `getChunkBlocking` as a pause, even if the same stack contains `managedBlock` or `pollTask`. The client counts frames with a 3-second threshold instead of game ticks.
+- The relief uses a RenderType that Iris supports. `minecraft:pipeline/debug_quads` is gone.
 
-`gradle build` ist auf diesem Stand durchgelaufen. Im großen Modpack ist 0.10.8 noch nicht gespielt worden.
+`gradle build` passed at this state. 0.10.8 has not yet been played in the large modpack.
 
 ## 0.10.7
 
-Der Hänger-Bericht des Clients zählt nur noch, solange eine Welt läuft. Das Erzeugen oder Laden einer Welt ist kein Fehlalarm mehr.
+The client's stall report now counts only while a world is running. Creating or loading a world is no longer a false alarm.
 
 ## 0.10.6
 
-Friert das Spiel oder der Server länger als 8 Sekunden ein, schreibt die Mod die Thread-Stapel nach `logs/villagerplus-stall-server.txt` bzw. `logs/villagerplus-stall-client.txt` (höchstens drei Berichte je Start). Ein pausierter Einzelspieler-Server zählt nicht als Hänger. In 0.10.6 war das nur Diagnose; die Ursache ist in 0.10.8 behoben.
+If the game or server freezes for more than 8 seconds, the mod writes the thread stacks to `logs/villagerplus-stall-server.txt` or `logs/villagerplus-stall-client.txt` (at most three reports per launch). A paused single-player server does not count as a stall. In 0.10.6 this was diagnostics only; the cause was fixed in 0.10.8.
 
 ## 0.10.5
 
-Drei handgebaute Vorlagen: Dorfhaus (`haus_dorf`, 14×13), Rathaus mit Veranda (`rathaus_dorf`, 22×23) und Schmiede mit Wohnhaus (`schmiede_dorf`, 19×15). Die Bauer setzen sie Block für Block aus dem Dorfvorrat. Was das Dorf nicht herstellen kann, wird ersetzt; fehlen Treppen oder Dachziegel, weichen die Treppen auf Bruchsteintreppen aus. Lava, Glocken, Leitern, Töpfe, Teppiche, Schilder und Arbeitsblöcke werden nicht mitgebaut. Im Spiel verwendet wird bisher das Dorfhaus für neue hohe, zweigeschossige Entwürfe. Laufende Pläne behalten ihre Form. Rathaus und Schmiede liegen in der Bibliothek.
+Three hand-built templates: village house (`haus_dorf`, 14×13), town hall with porch (`rathaus_dorf`, 22×23) and smithy with residence (`schmiede_dorf`, 19×15). The builders place them block by block from the village supply. Whatever the village cannot produce is substituted; if stairs or roof tiles are missing, the stairs fall back to cobblestone stairs. Lava, bells, ladders, pots, carpets, signs and workstations are not built. So far only the village house is used in game, for new tall two-story designs. Running plans keep their shape. Town hall and smithy are in the library.
 
 ## 0.10.4
 
-Das Dorf-Toast fängt Fehler ab und schaltet sich dann selbst aus. Die Chatnachricht bleibt. `-Dvillagerplus.toast=false` schaltet das Toast ganz ab.
+The village toast catches errors and then disables itself. The chat message stays. `-Dvillagerplus.toast=false` disables the toast entirely.
 
 ## 0.10.3
 
-Keine dauerhaften `/forceload`-Chunks mehr. Das nächste Dorf wird nur mit kurzlebigen Tickets gehalten, nur für bereits geladene Chunks, nicht solange ein Spieler in der Nähe ist und nicht, wenn der Server schon überlastet ist (mittlere Tickzeit über 40 ms). Alte Zwangsladungen aus 0.10.0 bis 0.10.2 werden freigegeben. `-Dvillagerplus.keptVillages=0` schaltet das Festhalten ab.
+No more permanent `/forceload` chunks. The nearest village is held only with short-lived tickets, only for chunks that are already loaded, not while a player is nearby and not when the server is already overloaded (mean tick time above 40 ms). Old forced chunks from 0.10.0 to 0.10.2 are released. `-Dvillagerplus.keptVillages=0` turns off the holding.
 
 ## 0.10.2
 
-Höchstens ein Dorf pro Dimension bleibt geladen, das dem nächsten Spieler am nächsten liegt. Alle anderen Dörfer, auch alte Zwangsladungen, werden freigegeben und arbeiten nur noch, solange ein Spieler in Reichweite ist. Einstellbar mit `-Dvillagerplus.keptVillages=N` (Standard 1).
+At most one village per dimension stays loaded, the one closest to the nearest player. All other villages, including old forced chunks, are released and work only while a player is in range. Configurable with `-Dvillagerplus.keptVillages=N` (default 1).
 
 ## 0.10.1
 
-- Bauern ernten reife Pflanzen im ganzen Dorf und angeln bei Nahrungsmangel. Essen geht vor dem Kornspeicher über eine begrenzte Brücke in die Dorfkiste. Knappe Mittagsportionen gehen an die Hungrigen. Ein nicht startbares Gehege blockiert den Feldplan nicht mehr.
-- Untätige Bewohner und freie Maurer arbeiten an Bruchstein, wenn Baupläne auf Stein warten.
-- Einwohner ticken ohne Spieler in der Nähe (Chunk-Lease mit Radius 2).
+- Farmers harvest ripe crops across the whole village and fish when food is short. Food goes through a limited bridge to the village chest ahead of the granary. Scarce midday portions go to the hungry. A pen that cannot be started no longer blocks the field plan.
+- Idle residents and free masons work on cobblestone when blueprints are waiting for stone.
+- Residents tick without a player nearby (chunk lease with radius 2).
 
-Die Stände 0.10.1 bis 0.10.7 sind auf dem Dev-Server mit Prüfgruppen gelaufen, nicht als vollständiger Modpack-Lauf.
+Versions 0.10.1 to 0.10.7 were run on the dev server with test groups, not as a full modpack run.

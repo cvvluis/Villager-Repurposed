@@ -2,16 +2,16 @@
 
 Fabric · Minecraft 26.2 · Java 25
 
-Ausgabe mit Fokus auf Leistung: weniger Villager-Geometrie beim Rendern und weniger Serverarbeit beim Bauplan-Spitzhacken-Check.
+A performance-focused release: less villager geometry when rendering and less server work in the blueprint pickaxe check.
 
-## Rollen-Outfit: ein Modell, eine Textur
+## Role outfit: one model, one texture
 
-Rollen-Dorfbewohner wurden bisher zweimal gezeichnet (Basismodell plus Rollen-Layer). Mit Shadern wie Iris verdoppelte das auch den Schattenpass. Jetzt wird die Rolle in **eine** dynamische Gesamt-Textur gelegt (Vanille-Basis plus Rollen-Overlay, beim Ressourcen-Reload). Biome-Kleidung entfällt bei Rollen absichtlich — das Outfit sieht überall gleich aus.
+Role villagers used to be drawn twice (base model plus role layer). With shaders such as Iris this also doubled the shadow pass. Now the role is baked into **one** dynamic combined texture (vanilla base plus role overlay, at resource reload). Biome clothing is intentionally dropped for roles, so the outfit looks the same everywhere.
 
-## Bauplan: Spitzhacken-Prüfung gedrosselt
+## Blueprint: pickaxe check throttled
 
-Wenn ein Plan Bruchstein braucht, aber noch keine Spitzhacke da ist, hat der Server jede Tick alle Kisten und Rezepte durchsucht — auch ohne Änderung am Inventar. Die Ergebnisprüfung wird für ein paar Sekunden gecacht und pro Aufruf nur noch einmal über die Lager gescannt.
+When a plan needs cobblestone but no pickaxe exists yet, the server searched all chests and recipes every tick, even with no change to the inventory. The result of the check is now cached for a few seconds, and each call scans the storage only once.
 
-## Hinweis
+## Note
 
-`gradle build` ist auf diesem Stand durchgelaufen. Im Spiel nicht getestet: Rolle sichtbar wie zuvor (ohne Biom-Textur), Spitzhacke noch fristgerecht bei gelieferten Materialien.
+`gradle build` passed at this state. Not tested in game: role looks as before (without biome texture), pickaxe still arrives on time when materials are delivered.
