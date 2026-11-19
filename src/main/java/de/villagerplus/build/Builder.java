@@ -2678,8 +2678,8 @@ public final class Builder {
 	/** Returns the packed inner radius only when a legacy extension cursor already entered its demolition phase. */
 	private static int legacyWallRestoreRadius(VillageData data) {
 		if (!Blueprints.WALL.equals(data.planType)) return 0;
-		int outerRadius = data.planVariant & 0xFF;
-		int innerRadius = (data.planVariant >>> 8) & 0xFF;
+		int outerRadius = Development.wallPlanRadius(data.planVariant);
+		int innerRadius = Development.wallPlanLegacyInner(data.planVariant);
 		if (outerRadius <= 0 || outerRadius > Development.MAX_WALL_RADIUS
 			|| innerRadius < Config.WALL_MIN_VILLAGE_RADIUS || innerRadius > Development.MAX_WALL_RADIUS
 			|| innerRadius == outerRadius || data.planStep <= 8 * outerRadius) return 0;
@@ -7033,7 +7033,7 @@ public final class Builder {
 		d.planOrigin = Optional.of(ref.bell());
 		d.planStep = 0;
 		// Erweiterungen bauen einen neuen Außenring; der fertige Innenring bleibt unverändert stehen.
-		d.planVariant = radius;
+		d.planVariant = Development.encodeWallPlan(radius);
 		d.planProgress = c.now();
 		d.claimPlanBuilder(c.v().getUUID());
 		ref.dirty();
@@ -7046,7 +7046,7 @@ public final class Builder {
 	private static boolean continueWall(Ctx c, VillageRef ref, Container box) {
 		ServerLevel level = c.level();
 		VillageData d = ref.data();
-		int r = d.planVariant & 0xFF;
+		int r = Development.wallPlanRadius(d.planVariant);
 		if (r <= 0 || r > Development.MAX_WALL_RADIUS) { abort(d, ref, c.now()); return false; }
 		de.villagerplus.village.Anchor.keepWallWorkLoaded(level, ref, c.v().blockPosition());
 		VillageStyle wallStyle = WALL_STYLES.computeIfAbsent(ref.bell().asLong(), k -> wallStyle(level, ref.bell(), c.v()));
@@ -7059,7 +7059,7 @@ public final class Builder {
 			// A saved pre-extension plan may already have begun dismantling its inner ring.
 			// Rebuild only that damaged ring, paying normally, instead of deleting more of it.
 			d.planStep = 0;
-			d.planVariant = restoreRadius;
+			d.planVariant = Development.encodeWallPlan(restoreRadius);
 			d.planProgress = c.now();
 			ref.dirty();
 			return true;

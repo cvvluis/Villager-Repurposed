@@ -254,6 +254,7 @@ public final class WallConstructionChecks {
 				&&expandedRadius>oldRadius+4&&expandedRadius<=Development.MAX_WALL_RADIUS&&expandedRadius-expandedEdge>=14&&ringOutside,
 				"a newly recognized exterior HOME POI refreshes the saved bounds and moves the full perimeter outside them");passed++;
 			passed+=checkDiagonalHomeDiscovery(level,ref);
+			passed+=checkLargeVillageWall(level,ref);
 			passed+=checkNeighborHomeAttribution(level,ref);
 
 			var tooSmall=Builder.class.getDeclaredMethod("wallTooSmall",ServerLevel.class,VillageRef.class);tooSmall.setAccessible(true);
@@ -399,9 +400,9 @@ public final class WallConstructionChecks {
 	private static int checkDiagonalHomeDiscovery(ServerLevel level,VillageRef ref) {
 		var bell=ref.bell();
 		var manager=level.getPoiManager();
-		BoundingBox before=Development.bounds(level,ref);
+		BoundingBox before=Development.wallBounds(level,ref);
 		int beforeEdge=edge(before,bell);
-		int diagonalOffset=Math.max(140,beforeEdge+1);
+		int diagonalOffset=Math.max(Development.MAX_WALL_RADIUS*3/4,beforeEdge+1);
 		if(diagonalOffset+14>Development.MAX_WALL_RADIUS)
 			throw new IllegalStateException("WALL CHECK FAILED: fixture bounds leave no safe diagonal HOME-POI case");
 		var meetings=manager.getInRange(h->h.is(PoiTypes.MEETING),bell,Development.MEETING_POI_DISCOVERY_RADIUS,
@@ -420,7 +421,7 @@ public final class WallConstructionChecks {
 		try {
 			level.getChunkAt(poi);
 			manager.add(poi,BuiltInRegistries.POINT_OF_INTEREST_TYPE.getOrThrow(PoiTypes.HOME));added=true;
-			BoundingBox after=Development.bounds(level,ref);
+			BoundingBox after=Development.wallBounds(level,ref);
 			double distanceSquared=poi.distSqr(bell);
 			check(distanceSquared>(long)Development.MAX_WALL_RADIUS*Development.MAX_WALL_RADIUS
 				&&distanceSquared<=(long)Development.HOME_POI_DISCOVERY_RADIUS*Development.HOME_POI_DISCOVERY_RADIUS
@@ -429,6 +430,58 @@ public final class WallConstructionChecks {
 				"diagonal HOME POIs beyond the old circular wall radius are found inside the supported square footprint");
 			return 1;
 		} finally {
+			if(added)manager.remove(poi);
+			if(previousExtent==null)ref.bellEntity().removeAttached(VillagerPlus.VILLAGE_EXTENT);
+			else ref.bellEntity().setAttached(VillagerPlus.VILLAGE_EXTENT,previousExtent);
+			ref.dirty();
+		}
+	}
+
+	private static int checkLargeVillageWall(ServerLevel level,VillageRef ref) {
+		var bell=ref.bell();var manager=level.getPoiManager();var data=ref.data();
+		BoundingBox before=Development.wallBounds(level,ref);
+		int offset=Math.max(300,edge(before,bell)+1);
+		if(offset+14>Development.MAX_WALL_RADIUS)throw new IllegalStateException("WALL CHECK FAILED: fixture leaves no room for a large-village case");
+		var meetings=manager.getInRange(h->h.is(PoiTypes.MEETING),bell,Development.MEETING_POI_DISCOVERY_RADIUS,
+			PoiManager.Occupancy.ANY).map(p->p.getPos().immutable()).toList();
+		BlockPos poi=null;
+		for(BlockPos candidate:List.of(bell.east(offset),bell.west(offset),bell.south(offset),bell.north(offset))){
+			if(manager.getType(candidate).isPresent()||inside(before,candidate))continue;
+			double nearestOther=meetings.stream().filter(point->!point.equals(bell)).mapToDouble(point->point.distSqr(candidate)).min().orElse(Double.MAX_VALUE);
+			if(candidate.distSqr(bell)<nearestOther){poi=candidate;break;}
+		}
+		if(poi==null)throw new IllegalStateException("WALL CHECK FAILED: no large-village HOME POI spot belongs to this bell");
+		var previousExtent=ref.bellEntity().getAttached(VillagerPlus.VILLAGE_EXTENT);
+		String oldType=data.planType;int oldVariant=data.planVariant,oldStep=data.planStep;var oldOrigin=data.planOrigin;
+		boolean added=false;
+		try {
+			level.getChunkAt(poi);
+			manager.add(poi,BuiltInRegistries.POINT_OF_INTEREST_TYPE.getOrThrow(PoiTypes.HOME));added=true;
+			int needed=Development.neededWallRadius(level,ref);
+			BoundingBox after=Development.wallBounds(level,ref);
+			boolean ringOutside=true;
+			for(int t=0;t<8*needed&&ringOutside;t+=7){
+				int[] o=Wall.ringOffset(needed,t);int x=bell.getX()+o[0],z=bell.getZ()+o[1];
+				if(x>=after.minX()&&x<=after.maxX()&&z>=after.minZ()&&z<=after.maxZ())ringOutside=false;
+			}
+			check(needed>255&&needed>=offset+14&&needed<=Development.MAX_WALL_RADIUS&&inside(after,poi)&&ringOutside,
+				"a village spread beyond 255 blocks gets a wall radius above the old limit that encloses every known building",
+				"needed="+needed+", offset="+offset);
+			check(Development.wallPlanRadius(Development.encodeWallPlan(needed))==needed&&Development.wallPlanLegacyInner(Development.encodeWallPlan(needed))==0
+				&&Development.encodeWallPlan(192)==192&&Development.wallPlanRadius(192|(60<<8))==192&&Development.wallPlanLegacyInner(192|(60<<8))==60,
+				"wide wall plan encoding round-trips while saved legacy plans keep their radius and packed inner ring");
+			data.planType=Blueprints.WALL;data.planOrigin=Optional.of(bell);data.planVariant=Development.encodeWallPlan(needed);data.planStep=8*needed-3;
+			var saved=ref.bellEntity().saveWithFullMetadata(level.registryAccess());
+			BlockEntity restored=BlockEntity.loadStatic(bell,level.getBlockState(bell),saved,level.registryAccess());
+			VillageData rd=restored==null?null:restored.getAttached(VillagerPlus.VILLAGE);
+			var route=Anchor.wallWorkChunks(bell,bell,needed,data.planStep);
+			int[] last=Wall.ringOffset(needed,data.planStep);
+			check(rd!=null&&Blueprints.WALL.equals(rd.planType)&&Development.wallPlanRadius(rd.planVariant)==needed&&rd.planStep==8*needed-3
+				&&route.contains(new ChunkPos((bell.getX()+last[0])>>4,(bell.getZ()+last[1])>>4))&&route.size()<=60,
+				"a large wall plan survives save/load at its cursor and keeps a bounded loading corridor");
+			return 3;
+		} finally {
+			data.planType=oldType;data.planVariant=oldVariant;data.planStep=oldStep;data.planOrigin=oldOrigin;
 			if(added)manager.remove(poi);
 			if(previousExtent==null)ref.bellEntity().removeAttached(VillagerPlus.VILLAGE_EXTENT);
 			else ref.bellEntity().setAttached(VillagerPlus.VILLAGE_EXTENT,previousExtent);

@@ -29,12 +29,34 @@ public final class Development {
 		}
 	}
 
-	/** Large enough for spread-out generated villages while keeping wall work bounded. */
-	public static final int MAX_WALL_RADIUS = 192;
+	/**
+	 * Largest supported wall radius. Walls are built column by column, only in loaded columns, and are resumable, so a large
+	 * ring costs the same per tick as a small one. Radii above 255 use the wide plan encoding below.
+	 */
+	public static final int MAX_WALL_RADIUS = 384;
+	/** Saved plan_variant marker for radii that do not fit the legacy 8-bit field; legacy plans (radius <= 255) are unchanged. */
+	public static final int WALL_PLAN_WIDE = 1 << 30;
+
+	/** Plan variant for a new wall of the given outer radius; radii up to 255 keep the original saved format. */
+	public static int encodeWallPlan(int radius) {
+		return radius > 0xFF ? WALL_PLAN_WIDE | radius : radius;
+	}
+
+	/** Outer radius stored in a wall plan variant (legacy or wide), 0 if invalid. */
+	public static int wallPlanRadius(int variant) {
+		return (variant & WALL_PLAN_WIDE) != 0 ? variant & 0xFFFF : variant & 0xFF;
+	}
+
+	/** Packed pre-extension inner radius; wide plans never carry one. */
+	public static int wallPlanLegacyInner(int variant) {
+		return (variant & WALL_PLAN_WIDE) != 0 ? 0 : (variant >>> 8) & 0xFF;
+	}
 	/** Loaded chunks searched for original village starts when deriving the outer wall. */
 	public static final int WALL_STRUCTURE_DISCOVERY_RADIUS = Math.max(Config.VILLAGE_RADIUS, MAX_WALL_RADIUS) + 16;
 	/** POI queries are circular; this radius covers the corners of the supported square wall footprint. */
 	public static final int HOME_POI_DISCOVERY_RADIUS = (int) Math.ceil(MAX_WALL_RADIUS * Math.sqrt(2.0));
+	/** Routine (non-wall) bounds queries keep the original, cheaper POI scan; only wall sizing scans the full supported footprint. */
+	private static final int ROUTINE_HOME_POI_RADIUS = (int) Math.ceil(192 * Math.sqrt(2.0));
 	/** Include a neighboring village's meeting point whenever its home could be in our home scan area. */
 	public static final int MEETING_POI_DISCOVERY_RADIUS = HOME_POI_DISCOVERY_RADIUS * 2;
 	private static final int WALL_CLEARANCE = 14;
@@ -235,6 +257,11 @@ public final class Development {
 		return radius;
 	}
 
+	/** Bounds as used for wall sizing: scans loaded structure starts and HOME POIs over the full supported wall footprint. */
+	public static BoundingBox wallBounds(ServerLevel level, VillageRef ref) {
+		return bounds(level, ref, WALL_STRUCTURE_DISCOVERY_RADIUS);
+	}
+
 	/** Combined horizontal footprint of the bell, original generated village, and tracked mod buildings. */
 	public static BoundingBox bounds(ServerLevel level, VillageRef ref) {
 		return bounds(level, ref, Config.VILLAGE_RADIUS + 16);
@@ -267,10 +294,12 @@ public final class Development {
 				}
 			}
 		}
+		boolean wallScan = structureDiscoveryRadius > Config.VILLAGE_RADIUS + 16;
+		int homeScan = wallScan ? HOME_POI_DISCOVERY_RADIUS : Math.min(HOME_POI_DISCOVERY_RADIUS, ROUTINE_HOME_POI_RADIUS);
 		var meetings = de.villagerplus.world.LoadedPoi.positionsInRange(level, h -> h.is(PoiTypes.MEETING), bell,
-			MEETING_POI_DISCOVERY_RADIUS, PoiManager.Occupancy.ANY);
+			homeScan * 2, PoiManager.Occupancy.ANY);
 		var homes = de.villagerplus.world.LoadedPoi.positionsInRange(level, h -> h.is(PoiTypes.HOME), bell,
-			HOME_POI_DISCOVERY_RADIUS, PoiManager.Occupancy.ANY);
+			homeScan, PoiManager.Occupancy.ANY);
 		for (BlockPos pos : homes) {
 			if (!belongsToBell(pos, bell, meetings)) continue;
 			observed = union(observed, new BoundingBox(pos.getX(), pos.getY(), pos.getZ(), pos.getX(), pos.getY(), pos.getZ()));
