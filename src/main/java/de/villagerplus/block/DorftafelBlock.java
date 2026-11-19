@@ -247,7 +247,7 @@ public class DorftafelBlock extends BaseEntityBlock {
 	public static void open(ServerLevel level, ServerPlayer player, BlockPos pos) {
 		VillageRef ref = Villages.villageNear(level, pos, 96);
 		if (ref == null) {
-			VillageMessages.system(player, Component.literal("Zu dieser Dorftafel gehört (noch) kein Dorf – es fehlt eine Dorfglocke in der Nähe."));
+			VillageMessages.system(player, Component.translatable("message.villagerplus.board_no_village"));
 			return;
 		}
 		ServerPlayNetworking.send(player, BoardData.build(level, ref, pos));

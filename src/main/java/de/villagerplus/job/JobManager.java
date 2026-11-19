@@ -1029,10 +1029,10 @@ public final class JobManager {
 		int level = Skills.level(c.mem());
 		JobState st = c.st();
 		if (st.lastSkill >= 0 && level > st.lastSkill) {
-			String name = c.mem().name.isEmpty() ? "Ein Dorfbewohner" : c.mem().name;
 			c.level().sendParticles(net.minecraft.core.particles.ParticleTypes.HAPPY_VILLAGER, c.v().getX(), c.v().getY() + 2.0, c.v().getZ(), 12, 0.4, 0.4, 0.4, 0.0);
 			c.level().playSound(null, c.v().blockPosition(), net.minecraft.sounds.SoundEvents.VILLAGER_YES, net.minecraft.sounds.SoundSource.NEUTRAL, 1.0F, 1.2F);
-			JobUtil.tellNearbyPlayers(c.level(), c.v(), 24, net.minecraft.network.chat.Component.literal(name + " ist jetzt " + Skills.title(level) + " (Stufe " + level + ")!"));
+			JobUtil.tellNearbyPlayers(c.level(), c.v(), 24, net.minecraft.network.chat.Component.translatable("message.villagerplus.skill_level_up",
+				de.villagerplus.village.VillageMessages.nameOr(c.mem().name, "message.villagerplus.name_a_villager"), Skills.title(level), level));
 		}
 		st.lastSkill = level;
 	}

@@ -25,7 +25,7 @@ public final class Interactions {
 		UseEntityCallback.EVENT.register((player, world, hand, entity, hit) -> {
 			if (hand == InteractionHand.MAIN_HAND && !player.isShiftKeyDown() && entity instanceof Villager tired && world instanceof ServerLevel tl
 				&& !tired.isBaby() && Wellbeing.refusesTrade(Wellbeing.of(tl, tired, tired.getAttachedOrCreate(VillagerPlus.MEMORY)))) {
-				VillageMessages.overlay(player, Component.literal("Ich bin gerade zu erschöpft und hungrig zum Handeln …"));
+				VillageMessages.overlay(player, Component.translatable("message.villagerplus.villager_exhausted"));
 				return InteractionResult.FAIL;
 			}
 			if (hand != InteractionHand.MAIN_HAND || !player.isShiftKeyDown() || !(entity instanceof Villager villager)
@@ -65,7 +65,7 @@ public final class Interactions {
 		villager.getGossips().add(player.getUUID(), type, amount);
 		villager.getAttachedOrCreate(VillagerPlus.MEMORY).gifts.merge(player.getUUID(), 1, Integer::sum);
 		level.sendParticles(ParticleTypes.HAPPY_VILLAGER, villager.getX(), villager.getY() + 1.6, villager.getZ(), 8, 0.4, 0.4, 0.4, 0.0);
-		VillageMessages.overlay(player, Component.literal("Danke! Ich werde mich an dich erinnern."));
+		VillageMessages.overlay(player, Component.translatable("message.villagerplus.villager_thanks"));
 		return true;
 	}
 

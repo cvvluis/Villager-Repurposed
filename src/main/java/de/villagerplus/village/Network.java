@@ -585,7 +585,7 @@ public final class Network {
 	/** Gibt dem Spieler eine Dorfkarte seines Dorfes (Dimension, Glocke, Name). */
 	public static void giveCard(ServerLevel level, ServerPlayer player, VillageRef ref) {
 		giveCardWithoutMessage(level, player, ref);
-		VillageMessages.system(player, Component.literal("Du hast die Dorfkarte von " + villageName(ref) + " eingesteckt. Rechtsklick auf die Dorftafel eines anderen Dorfes verbindet beide."));
+		VillageMessages.system(player, Component.translatable("message.villagerplus.map_picked_up", villageName(ref)));
 	}
 
 	private static void giveCardWithoutMessage(ServerLevel level, ServerPlayer player, VillageRef ref) {
@@ -607,30 +607,30 @@ public final class Network {
 		CustomData data = card.get(DataComponents.CUSTOM_DATA);
 		CompoundTag tag = data == null ? new CompoundTag() : data.copyTag();
 		if (!tag.contains("dim")) {
-			VillageMessages.system(player, Component.literal("Diese Dorfkarte ist leer."));
+			VillageMessages.system(player, Component.translatable("message.villagerplus.map_empty"));
 			return;
 		}
 		String cardDim = tag.getStringOr("dim", "");
 		BlockPos srcPos = new BlockPos(tag.getIntOr("x", 0), tag.getIntOr("y", 0), tag.getIntOr("z", 0));
 		VillageRef target = Villages.villageNear(level, board, 96);
 		if (target == null) {
-			VillageMessages.system(player, Component.literal("Zu dieser Tafel gehört (noch) kein Dorf."));
+			VillageMessages.system(player, Component.translatable("message.villagerplus.map_board_no_village"));
 			return;
 		}
 		if (!cardDim.equals(dim(level))) {
-			VillageMessages.system(player, Component.literal("Die Dorfkarte stammt aus einer anderen Dimension – Verbindung nicht möglich."));
+			VillageMessages.system(player, Component.translatable("message.villagerplus.map_other_dimension"));
 			return;
 		}
 		if (srcPos.equals(target.bell())) {
-			VillageMessages.system(player, Component.literal("Das ist dieselbe Dorfglocke – such ein anderes Dorf."));
+			VillageMessages.system(player, Component.translatable("message.villagerplus.map_same_bell"));
 			return;
 		}
 		if (!de.villagerplus.world.LoadedColumns.ready(level, srcPos) || !(level.getBlockEntity(srcPos) instanceof BellBlockEntity srcBell)) {
-			VillageMessages.system(player, Component.literal("Das Heimatdorf der Karte ist gerade nicht geladen oder existiert nicht mehr."));
+			VillageMessages.system(player, Component.translatable("message.villagerplus.map_home_missing"));
 			return;
 		}
 		if (Math.sqrt(srcPos.distSqr(target.bell())) > MAX_DISTANCE) {
-			VillageMessages.system(player, Component.literal("Die Dörfer sind zu weit voneinander entfernt (max. 3000 Blöcke)."));
+			VillageMessages.system(player, Component.translatable("message.villagerplus.map_too_far"));
 			return;
 		}
 		VillageRef source = new VillageRef(srcPos, srcBell.getAttachedOrCreate(VillagerPlus.VILLAGE), srcBell);
@@ -638,11 +638,11 @@ public final class Network {
 		TradeNetwork b = of(target.bellEntity());
 		String dim = dim(level);
 		if (a.linkIndex(dim, target.bell()) >= 0 || b.linkIndex(dim, source.bell()) >= 0) {
-			VillageMessages.system(player, Component.literal("Diese beiden Dörfer sind bereits verbunden – die Karte bleibt dir erhalten."));
+			VillageMessages.system(player, Component.translatable("message.villagerplus.map_already_linked"));
 			return;
 		}
 		if (a.links().size() >= TradeNetwork.MAX_LINKS || b.links().size() >= TradeNetwork.MAX_LINKS) {
-			VillageMessages.system(player, Component.literal("Eines der Dörfer hat schon die maximale Zahl von " + TradeNetwork.MAX_LINKS + " Verbindungen."));
+			VillageMessages.system(player, Component.translatable("message.villagerplus.map_max_links", TradeNetwork.MAX_LINKS));
 			return;
 		}
 		List<TradeNetwork.Link> la = new ArrayList<>(a.links());
@@ -654,7 +654,7 @@ public final class Network {
 		card.shrink(1);
 		Journal.add(level,source,"Handel",villageName(target),"Dorfverbindung eröffnet",0);
 		Journal.add(level,target,"Handel",villageName(source),"Dorfverbindung eröffnet",0);
-		VillageMessages.system(player, Component.literal("Die Dörfer " + villageName(source) + " und " + villageName(target) + " sind jetzt verbunden! Öffne die Dorftafel → Reiter „Nachbarn“."));
+		VillageMessages.system(player, Component.translatable("message.villagerplus.map_linked", villageName(source), villageName(target)));
 	}
 
 	// --- Aktionen ---------------------------------------------------------------------------------

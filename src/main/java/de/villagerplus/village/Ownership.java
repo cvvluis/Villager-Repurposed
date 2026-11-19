@@ -72,7 +72,8 @@ public final class Ownership {
 		}
 		LAST_WARNING.put(player.getUUID(), now);
 		villager.getGossips().add(player.getUUID(), breaking ? GossipType.MAJOR_NEGATIVE : GossipType.MINOR_NEGATIVE, breaking ? 10 : 5);
-		String name = villager.hasCustomName() ? villager.getCustomName().getString() : "einem Dorfbewohner";
-		VillageMessages.overlay(player, Component.literal("Das ist die private Kiste von " + name + "!"));
+		String name = villager.hasCustomName() ? villager.getCustomName().getString() : "";
+		VillageMessages.overlay(player, Component.translatable("message.villagerplus.private_chest_of",
+			VillageMessages.nameOr(name, "message.villagerplus.name_a_villager_dative")));
 	}
 }

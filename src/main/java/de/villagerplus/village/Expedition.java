@@ -216,7 +216,7 @@ public final class Expedition {
 		}
 		level.playSound(null, ref.bell(), net.minecraft.sounds.SoundEvents.BELL_BLOCK, net.minecraft.sounds.SoundSource.BLOCKS, 1.2F, 0.8F);
 		ref.dirty();
-		JobUtil.tellNearbyPlayers(level, crew.get(0), 60, Component.literal("Expedition: " + names + " brechen auf nach " + DESTS[dest].name() + "."));
+		JobUtil.tellNearbyPlayers(level, crew.get(0), 60, Component.translatable("message.villagerplus.expedition_departs", names.toString(), DESTS[dest].name()));
 	}
 
 	/** Aufbruch: Der Abenteurer verlaesst das Dorf zu Fuss (Dorfrand) und verschwindet erst dort. */
@@ -308,7 +308,7 @@ public final class Expedition {
 		ex.expActive = java.util.Optional.empty();
 		ref.dirty();
 		if (any != null) {
-			JobUtil.tellNearbyPlayers(level, any, 60, Component.literal("Expedition beendet: " + line));
+			JobUtil.tellNearbyPlayers(level, any, 60, Component.translatable("message.villagerplus.expedition_ended", line));
 		}
 		org.slf4j.LoggerFactory.getLogger("villagerplus").info("Villagers: Repurposed: Expedition beendet – {}", line);
 	}

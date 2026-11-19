@@ -976,7 +976,7 @@ public final class Market {
    if(n==steps.size()) {
     Journal.add(c.level(),c.village(),"Bauen",c.mem().name,KINDS[s.kind()]+" eröffnet",0);
     var be=c.level().getBlockEntity(stockPos(s));if(be!=null) be.setAttached(VillagerPlus.OWNER,c.v().getUUID());
-    JobUtil.tellNearbyPlayers(c.level(),c.v(),32,Component.literal(c.mem().name+" eröffnet einen "+KINDS[s.kind()]+"."));
+    JobUtil.tellNearbyPlayers(c.level(),c.v(),32,Component.translatable("message.villagerplus.market_opened",c.mem().name,KINDS[s.kind()]));
    }
    c.st().cooldownUntil=c.now()+20; return true;
   }
@@ -1084,7 +1084,7 @@ public final class Market {
     offers.add(new net.minecraft.world.item.trading.MerchantOffer(new net.minecraft.world.item.trading.ItemCost(Items.EMERALD,cost),new ItemStack(e.getKey(),q),e.getValue()/q,0,0.0F));
     items.add(e.getKey());quantities.add(q);costs.add(cost);
    }
-   if(offers.isEmpty()) { VillageMessages.system(player, Component.literal((owner.isEmpty()?"Der Ladeninhaber":owner)+": Heute ist leider alles ausverkauft.")); return net.minecraft.world.InteractionResult.SUCCESS; }
+   if(offers.isEmpty()) { VillageMessages.system(player, Component.translatable("message.villagerplus.market_sold_out",VillageMessages.nameOr(owner,"message.villagerplus.name_the_shopkeeper"))); return net.minecraft.world.InteractionResult.SUCCESS; }
    var original=new net.minecraft.world.item.trading.MerchantOffers();original.addAll(seller.getOffers());
    seller.getOffers().clear();seller.getOffers().addAll(offers);
    SESSIONS.put(seller.getUUID(),new Session(level.dimension(),ref.bell(),original,offers,new int[offers.size()],quantities.stream().mapToInt(Integer::intValue).toArray(),

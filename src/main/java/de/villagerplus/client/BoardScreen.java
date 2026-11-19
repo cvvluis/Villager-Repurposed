@@ -59,7 +59,8 @@ public class BoardScreen extends Screen {
 	private static final String ACTION_GREET = "greet";
 	private static final String[] NETWORK_ACTIONS = {"swap", ACTION_ROUTE, "invite", ACTION_GREET};
 	private static final String HISTORICAL_RELATIONSHIP = "history";
-	private static final String[] TABS = {"Karte", "Einw.", "Details", "Reisen", "Nachb.", "Journal", "Arbeit", "Lager", "Talk"};
+	private static final String[] TABS = {"gui.villagerplus.board_tab_map", "gui.villagerplus.board_tab_residents", "gui.villagerplus.board_tab_details", "gui.villagerplus.board_tab_travel",
+		"gui.villagerplus.board_tab_neighbors", "gui.villagerplus.board_tab_journal", "gui.villagerplus.board_tab_work", "gui.villagerplus.board_tab_storage", "gui.villagerplus.board_tab_talk"};
 	private static final int[] TERRAIN = {0xFF5E8A3E, 0xFF2F5E2B, 0xFFC9AC72, 0xFF3A74C8, 0xFFB5C24A, 0xFFB5523A, 0xFFE0CC8A, 0xFF8A8A84, 0xFFE8EEF2, 0xFFB86A44, 0xFFB8B4A8, 0xFF16120C};
 	private static final String[] TERRAIN_NAMES = {"Wiese", "Wald", "Weg", "Wasser", "Feld", "Gebäude", "Sand", "Stein", "Schnee", "Tonland", "Platz", "unbekannt"};
 	private static final String[] MARK_NAMES = {"", "Glocke", "Dorfkiste", "Dorftafel", "Schule", "Lager", "Gehege", "Mine", "alte Mine", "Bewohner", "Kornspeicher", "Werkzeugkammer", "Küche", "Aktive Baustelle", "Laden", "Bahnhof", "Nachbardorf"};
@@ -96,7 +97,7 @@ public class BoardScreen extends Screen {
 	private StockSlider stockSlider;
 	private Button stockFilter, stockSave, stockReset;
 	private static final String[] STOCK_TYPES = {"material", "food", "tools"};
-	private static final String[] STOCK_NAMES = {"Baustoffe", "Lebensmittel", "Werkzeuge"};
+	private static final String[] STOCK_NAMES = {"gui.villagerplus.board_stock_material", "gui.villagerplus.board_stock_food", "gui.villagerplus.board_stock_tools"};
 	private int person = -1;
 	private Button filterCategory, filterPerson, cancelBuild, cancelVillager, renameButton, renameOk, demolishButton, zoneButton, moveButton;
 	/** Auf der Karte angeklicktes Gebaeude (Zeile aus den {@code @b}-Eintraegen), -1 = keins. */
@@ -162,7 +163,7 @@ public class BoardScreen extends Screen {
 		if (demolishButton != null) {
 			demolishButton.visible = tab == 0;
 			demolishButton.active = picked != null && !picked[6].equals("1");
-			demolishButton.setMessage(Component.literal(picked != null && picked[6].equals("1") ? "Abriss läuft" : "Abrissauftrag"));
+			demolishButton.setMessage(Component.translatable(picked != null && picked[6].equals("1") ? "gui.villagerplus.board_demolition_running" : "gui.villagerplus.board_demolition_order"));
 		}
 		if (zoneButton != null) { zoneButton.visible = tab == 0; zoneButton.active = tab == 0 && pendingZoneRequestId == 0; }
 		if (boardRelocateButton != null) {
@@ -172,7 +173,7 @@ public class BoardScreen extends Screen {
 		if (moveButton != null) {
 			moveButton.visible = tab == 0;
 			moveButton.active = picked != null || movePending;
-			moveButton.setMessage(Component.literal(movePending ? "Abbrechen" : "Versetzen"));
+			moveButton.setMessage(Component.translatable(movePending ? "gui.villagerplus.board_cancel" : "gui.villagerplus.board_move"));
 		}
 		if (cancelVillager != null) { cancelVillager.visible = tab == 1; cancelVillager.active = selected >= 0 && selected < data.residents().size(); }
 		if (filterCategory != null) filterCategory.visible = tab == 5;
@@ -198,17 +199,17 @@ public class BoardScreen extends Screen {
 				&& selectedNeighbor != null;
 			String approvalCaption;
 			if (!validLocalLink) {
-				approvalCaption = selectedNeighbor == null ? "Nachbar auswählen" : "Verbindung aktualisieren";
+				approvalCaption = selectedNeighbor == null ? "gui.villagerplus.board_approve_pick_neighbor" : "gui.villagerplus.board_approve_refresh_link";
 			} else if (approvalFailure != null) {
-				approvalCaption = "Andere Dimension";
+				approvalCaption = "gui.villagerplus.board_approve_other_dimension";
 			} else if (ownVote) {
-				approvalCaption = "Eigenes Ja zurückziehen";
+				approvalCaption = "gui.villagerplus.board_approve_withdraw";
 			} else if (!linkedAndLoaded) {
-				approvalCaption = "Lokal zustimmen";
+				approvalCaption = "gui.villagerplus.board_approve_local";
 			} else {
-				approvalCaption = "Großprojekt zustimmen";
+				approvalCaption = "gui.villagerplus.board_approve_project";
 			}
-			approveProjectButton.setMessage(Component.literal(approvalCaption));
+			approveProjectButton.setMessage(Component.translatable(approvalCaption));
 		}
 		if (mapCardButton != null) { mapCardButton.visible = tab == 4; mapCardButton.active = tab == 4 && pendingNetworkAction == null; }
 		if (residentJobSlider != null) {
@@ -399,8 +400,8 @@ public class BoardScreen extends Screen {
 		for (int i = 0; i < TABS.length; i++) {
 			final int idx = i;
 			int[] tabBounds = tabButtonBounds(left, top, i);
-			addRenderableWidget(Button.builder(Component.literal(TABS[i]), b -> {
-				if (idx == 5 && selected >= 0) { person = selected; if (filterPerson != null) filterPerson.setMessage(Component.literal("Bewohner: "+data.residents().get(person).split("\\|")[0])); }
+			addRenderableWidget(Button.builder(Component.translatable(TABS[i]), b -> {
+				if (idx == 5 && selected >= 0) { person = selected; if (filterPerson != null) filterPerson.setMessage(Component.translatable("gui.villagerplus.board_filter_person", data.residents().get(person).split("\\|")[0])); }
 				if (idx == 8 && selected >= 0 && selected < data.residents().size()) {
 					talkResidentId = residentIdentity(data.residents().get(selected));
 				}
@@ -413,24 +414,24 @@ public class BoardScreen extends Screen {
 				networkVisibility();
 			}).bounds(tabBounds[0], tabBounds[1], tabBounds[2], tabBounds[3]).build());
 		}
-		filterCategory = addRenderableWidget(Button.builder(Component.literal("Kategorie: Alle"),b->{category=(category+1)%4;scroll=0;b.setMessage(Component.literal("Kategorie: "+new String[]{"Alle","Handel","Befinden","Bauen"}[category]));}).bounds(left+10,top+50,150,18).build());
-        filterPerson = addRenderableWidget(Button.builder(Component.literal("Bewohner: Alle"),b->{person++;if(person>=data.residents().size())person=-1;scroll=0;b.setMessage(Component.literal("Bewohner: "+(person<0?"Alle":data.residents().get(person).split("\\|")[0])));}).bounds(left+166,top+50,W-176,18).build());
+		filterCategory = addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_filter_category", Component.translatable("gui.villagerplus.board_filter_all")),b->{category=(category+1)%4;scroll=0;b.setMessage(Component.translatable("gui.villagerplus.board_filter_category", Component.translatable(new String[]{"gui.villagerplus.board_filter_all","gui.villagerplus.board_category_trade","gui.villagerplus.board_category_wellbeing","gui.villagerplus.board_category_build"}[category])));}).bounds(left+10,top+50,150,18).build());
+        filterPerson = addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_filter_person", Component.translatable("gui.villagerplus.board_filter_all")),b->{person++;if(person>=data.residents().size())person=-1;scroll=0;b.setMessage(Component.translatable("gui.villagerplus.board_filter_person", person<0?Component.translatable("gui.villagerplus.board_filter_all"):Component.literal(data.residents().get(person).split("\\|")[0])));}).bounds(left+166,top+50,W-176,18).build());
         networkButtons.clear();
-		String[] captions = {"Waren tauschen", "Route an/aus", "Gäste einladen", "Gruß senden"};
+		String[] captions = {"gui.villagerplus.board_action_swap", "gui.villagerplus.board_action_route", "gui.villagerplus.board_action_invite", "gui.villagerplus.board_action_greet"};
 		for (int i = 0; i < NETWORK_ACTIONS.length; i++) {
 			final String action = NETWORK_ACTIONS[i];
 			int[] bounds = neighborActionBounds(left, top, i);
-			Button b = Button.builder(Component.literal(captions[i]), click -> sendNeighborAction(action))
+			Button b = Button.builder(Component.translatable(captions[i]), click -> sendNeighborAction(action))
 				.bounds(bounds[0], bounds[1], bounds[2], bounds[3]).build();
 			networkButtons.add(addRenderableWidget(b));
 		}
 		int[] approveBounds = footerButtonBounds(left, top, 0);
-		approveProjectButton = addRenderableWidget(Button.builder(Component.literal("Großprojekt zustimmen"), click -> sendNeighborAction("approve"))
+		approveProjectButton = addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_approve_project"), click -> sendNeighborAction("approve"))
 			.bounds(approveBounds[0], approveBounds[1], approveBounds[2], approveBounds[3]).build());
 		int[] cardBounds = footerButtonBounds(left, top, 1);
-		mapCardButton = addRenderableWidget(Button.builder(Component.literal("Dorfkarte mitnehmen"), click -> sendNeighborAction("card"))
+		mapCardButton = addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_take_map"), click -> sendNeighborAction("card"))
 			.bounds(cardBounds[0], cardBounds[1], cardBounds[2], cardBounds[3]).build());
-		renameBox = new net.minecraft.client.gui.components.EditBox(font, left + 6, top + 2, 230, 16, Component.literal("Dorfname"));
+		renameBox = new net.minecraft.client.gui.components.EditBox(font, left + 6, top + 2, 230, 16, Component.translatable("gui.villagerplus.board_village_name"));
 		renameBox.setMaxLength(24);
 		renameBox.visible = false;
 		addRenderableWidget(renameBox);
@@ -441,7 +442,7 @@ public class BoardScreen extends Screen {
 			renameButton.visible = true;
 		}).bounds(left + 240, top + 1, 40, 18).build());
 		renameOk.visible = false;
-		renameButton = addRenderableWidget(Button.builder(Component.literal("Umbenennen ✎"), b -> {
+		renameButton = addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_rename"), b -> {
 			renameBox.setValue(data.village());
 			renameBox.visible = true;
 			renameOk.visible = true;
@@ -458,17 +459,17 @@ public class BoardScreen extends Screen {
 			zoneNotice = "Anfrage gesendet · Tafel wird verlegt …";
 			networkVisibility();
 		}).bounds(left + 8, top + MAP_ACTION_ROW_Y - 22, 168, 18).build());
-		demolishButton = addRenderableWidget(Button.builder(Component.literal("Abriss"), b -> {
+		demolishButton = addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_demolish"), b -> {
 			String[] r = selectedBuildingRow();
 			if (r != null && !r[6].equals("1")) {
 				ClientPlayNetworking.send(new de.villagerplus.net.BuildingAction(data.board(), new net.minecraft.core.BlockPos(Integer.parseInt(r[3]), Integer.parseInt(r[4]), Integer.parseInt(r[5])), "demolish"));
 			}
 		}).bounds(left + 12, top + MAP_ACTION_ROW_Y, 86, 18).build());
-		zoneButton = addRenderableWidget(Button.builder(Component.literal("Zone zeichnen"), b -> {
+		zoneButton = addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_draw_zone"), b -> {
 			if (!zoneTool) { zoneTool = true; b.setMessage(Component.literal(zoneButtonText(zoneKind))); }
 			else { zoneKind = (zoneKind + 1) % (ZONE_DELETE_KIND + 1); b.setMessage(Component.literal(zoneButtonText(zoneKind))); }
 		}).bounds(left + 100, top + MAP_ACTION_ROW_Y, 94, 18).build());
-		moveButton = addRenderableWidget(Button.builder(Component.literal("Versetzen"), b -> {
+		moveButton = addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_move"), b -> {
 			if (movePending) {
 				movePending = false;
 			} else if (selectedBuildingRow() != null) {
@@ -476,26 +477,26 @@ public class BoardScreen extends Screen {
 			}
 			networkVisibility();
 		}).bounds(left + 200, top + MAP_ACTION_ROW_Y, 100, 18).build());
-		cancelBuild = addRenderableWidget(Button.builder(Component.literal("Bau abbrechen"), b -> ClientPlayNetworking.send(new de.villagerplus.net.CancelTask(data.board(), "build", new UUID(0L, 0L))))
+		cancelBuild = addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_cancel_build"), b -> ClientPlayNetworking.send(new de.villagerplus.net.CancelTask(data.board(), "build", new UUID(0L, 0L))))
 			.bounds(left + 84, top + H - 24, 110, 18).build());
-		cancelVillager = addRenderableWidget(Button.builder(Component.literal("Aufgabe abbrechen"), b -> {
+		cancelVillager = addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_cancel_task"), b -> {
 			if (selected >= 0 && selected < data.residents().size()) {
 				String[] p = data.residents().get(selected).split("\\|");
 				if (p.length > 5) ClientPlayNetworking.send(new de.villagerplus.net.CancelTask(data.board(), "villager", UUID.fromString(p[5])));
 			}
 		}).bounds(left + 84, top + H - 24, 120, 18).build());
 		residentJobSlider = addRenderableWidget(new ResidentJobSlider(left + 12, top + H - 30 - 52 + 25, 288));
-		applyResidentJob = addRenderableWidget(Button.builder(Component.literal("Zuteilen"), b -> assignSelectedResidentJob())
+		applyResidentJob = addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_assign"), b -> assignSelectedResidentJob())
 			.bounds(left + 308, top + H - 30 - 52 + 25, 138, 20).build());
-		stockFilter = addRenderableWidget(Button.builder(Component.literal("Lager: " + STOCK_NAMES[stockCategory]), b -> {
+		stockFilter = addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_stock_filter", Component.translatable(STOCK_NAMES[stockCategory])), b -> {
 			stockCategory = (stockCategory + 1) % STOCK_TYPES.length; stockItem = ""; scroll = 0;
-			b.setMessage(Component.literal("Lager: " + STOCK_NAMES[stockCategory])); networkVisibility(); requestStock();
+			b.setMessage(Component.translatable("gui.villagerplus.board_stock_filter", Component.translatable(STOCK_NAMES[stockCategory]))); networkVisibility(); requestStock();
 		}).bounds(left + 12, top + 50, 150, 18).build());
-		stockReset = addRenderableWidget(Button.builder(Component.literal("Unbegrenzt"), b -> {
+		stockReset = addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_unlimited"), b -> {
 			if (!stockItem.isEmpty()) ClientPlayNetworking.send(new de.villagerplus.net.SetStockPolicy(data.board(), stockItem, stockType, 0, true));
 		}).bounds(left + W - 132, top + 50, 120, 18).build());
 		stockSlider = addRenderableWidget(new StockSlider(left + 12, top + 225, W - 162));
-		stockSave = addRenderableWidget(Button.builder(Component.literal("Soll übernehmen"), b -> {
+		stockSave = addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_apply_target"), b -> {
 			if (!stockItem.isEmpty()) ClientPlayNetworking.send(new de.villagerplus.net.SetStockPolicy(data.board(), stockItem, stockType, stockSlider.target(), false));
 		}).bounds(left + W - 142, top + 225, 130, 20).build());
 		requestStock();
@@ -509,7 +510,7 @@ public class BoardScreen extends Screen {
 		})
 			.bounds(liveBounds[0], liveBounds[1], liveBounds[2], liveBounds[3]).build());
 		int[] closeBounds = footerButtonBounds(left, top, 2);
-		addRenderableWidget(Button.builder(Component.literal("Schließen"), b -> onClose())
+		addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_close"), b -> onClose())
 			.bounds(closeBounds[0], closeBounds[1], closeBounds[2], closeBounds[3]).build());
 	}
 
@@ -882,7 +883,7 @@ public class BoardScreen extends Screen {
 	private void cancelZoneDrawing() {
 		drawingZone = false;
 		zoneTool = false;
-		if (zoneButton != null) zoneButton.setMessage(Component.literal("Zone zeichnen"));
+		if (zoneButton != null) zoneButton.setMessage(Component.translatable("gui.villagerplus.board_draw_zone"));
 	}
 
 	private void clampMap() {
@@ -1241,10 +1242,10 @@ public class BoardScreen extends Screen {
 	}
 
 	private final class StockSlider extends net.minecraft.client.gui.components.AbstractSliderButton {
-		StockSlider(int x, int y, int width) { super(x, y, width, 20, Component.literal("Soll: 0"), 0); }
+		StockSlider(int x, int y, int width) { super(x, y, width, 20, Component.translatable("gui.villagerplus.board_target", 0), 0); }
 		int target() { return (int)Math.round(value * 4096); }
 		void target(int count) { value = Math.max(0, Math.min(4096, count)) / 4096.0; updateMessage(); }
-		@Override protected void updateMessage() { setMessage(Component.literal("Soll: " + target())); }
+		@Override protected void updateMessage() { setMessage(Component.translatable("gui.villagerplus.board_target", target())); }
 		@Override protected void applyValue() { }
 	}
 
@@ -1280,7 +1281,7 @@ public class BoardScreen extends Screen {
 	/** Discrete profession picker used for both adult job assignment and children's apprenticeship plans. */
 	private final class ResidentJobSlider extends net.minecraft.client.gui.components.AbstractSliderButton {
 		ResidentJobSlider(int x, int y, int width) {
-			super(x, y, width, 20, Component.literal("Beruf"), (JOBS.length - 1) / (double)(JOBS.length - 1));
+			super(x, y, width, 20, Component.translatable("gui.villagerplus.board_profession"), (JOBS.length - 1) / (double)(JOBS.length - 1));
 			updateMessage();
 		}
 		int selectedJob() { return Math.max(0, Math.min(JOBS.length - 1, (int)Math.round(value * (JOBS.length - 1)))); }
@@ -1290,8 +1291,7 @@ public class BoardScreen extends Screen {
 		}
 		@Override protected void updateMessage() { setMessage(Component.literal(JOBS[selectedJob()][1])); }
 		@Override protected net.minecraft.network.chat.MutableComponent createNarrationMessage() {
-			String role = selectedResidentIsChild() ? "Lehrlingsziel" : "Beruf";
-			return Component.translatable("gui.narrate.slider", Component.literal(role + ": " + JOBS[selectedJob()][1]));
+			return Component.translatable("gui.narrate.slider", Component.translatable(selectedResidentIsChild() ? "gui.villagerplus.board_narrate_apprentice_goal" : "gui.villagerplus.board_narrate_profession", JOBS[selectedJob()][1]));
 		}
 		@Override protected void applyValue() { updateMessage(); }
 		@Override public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {
@@ -1827,7 +1827,7 @@ public class BoardScreen extends Screen {
 						}
 					}
 					if (!found) zoneNotice = "An dieser Kartenstelle liegt keine Zone zum Löschen.";
-					zoneTool = false; zoneKind = 0; if (zoneButton != null) zoneButton.setMessage(Component.literal("Zone zeichnen")); return true;
+					zoneTool = false; zoneKind = 0; if (zoneButton != null) zoneButton.setMessage(Component.translatable("gui.villagerplus.board_draw_zone")); return true;
 				}
 				int[] p = mapGridCell(event.x(), event.y());
 				if (p == null) { zoneNotice = "Leeres Kartenfeld: Wähle ein sichtbares Dorf-Kartenfeld."; return true; }
@@ -1843,7 +1843,7 @@ public class BoardScreen extends Screen {
 				zoneClipped = start.clipped();
 				drawingZoneKind = zoneKind;
 				drawingZone = true; zoneTool = false;
-				if (zoneButton != null) zoneButton.setMessage(Component.literal("Zone zeichnen")); return true;
+				if (zoneButton != null) zoneButton.setMessage(Component.translatable("gui.villagerplus.board_draw_zone")); return true;
 			}
 			if (insideMap(event.x(), event.y()) && (event.button() == 1 || event.button() == 2)) {
 				draggingMap = true; dragCarryX = dragCarryY = 0; return true;
