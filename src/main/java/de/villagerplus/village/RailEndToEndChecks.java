@@ -3,6 +3,8 @@ package de.villagerplus.village;
 import de.villagerplus.VillagerPlus;
 import de.villagerplus.build.Blueprints;
 import de.villagerplus.dev.Checks090;
+import de.villagerplus.job.Ctx;
+import de.villagerplus.job.JobState;
 import de.villagerplus.job.JobUtil;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -147,7 +149,7 @@ public final class RailEndToEndChecks {
 			List<RailStockSnapshot> savedPoweredRails = clearRailItem(level, ref, Items.POWERED_RAIL);
 			List<RailStockSnapshot> savedRedstoneBlocks = clearRailItem(level, ref, Items.REDSTONE_BLOCK);
 			try {
-				advanceRailTicks(level, ref, attemptsToPowerPoint, 0);
+				advanceRailTicks(level, ref, attemptsToPowerPoint, 0, 40);
 			} finally {
 				restoreRailItems(savedPoweredRails);
 				restoreRailItems(savedRedstoneBlocks);
@@ -159,21 +161,24 @@ public final class RailEndToEndChecks {
 				"without powered rail and redstone stock, the cursor waits and preserves the ordinary track"); checks++;
 			int poweredRailBeforeUpgrade = countRailItem(level, ref, Items.POWERED_RAIL);
 			int redstoneBlockBeforeUpgrade = countRailItem(level, ref, Items.REDSTONE_BLOCK);
-			advanceRailTicks(level, ref, 1, 1);
+			advanceRailTicks(level, ref, 1, 1, 3);
 			check(level.getBlockState(poweredCell).is(Blocks.POWERED_RAIL)
 				&& level.getBlockState(poweredCell.below()).is(Blocks.REDSTONE_BLOCK)
 				&& countRailItem(level, ref, Items.POWERED_RAIL) == poweredRailBeforeUpgrade - 1
 				&& countRailItem(level, ref, Items.REDSTONE_BLOCK) == redstoneBlockBeforeUpgrade - 1,
 				"with depot stock, the existing ordinary rail upgrades to powered track and consumes one rail plus redstone block"); checks++;
+			checks += workerConstructionChecks(level, ref, roads, routeKey, peer.bell(), length);
 			for (int attempt = 0; attempt < 128; attempt++) {
 				roads = new HashMap<>(ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS, Map.of()));
 				roads.put("next", 0L);
 				ref.bellEntity().setAttached(VillagerPlus.ROADS, roads);
 				Roads.tick(level, ref, level.getGameTime() + 100L + attempt);
+				drainRailWork(level, ref, 40);
 				peerRoads = new HashMap<>(peer.bellEntity().getAttachedOrElse(VillagerPlus.ROADS, Map.of()));
 				peerRoads.put("next", 0L);
 				peer.bellEntity().setAttached(VillagerPlus.ROADS, peerRoads);
 				Roads.tick(level, peer, level.getGameTime() + 100L + attempt);
+				drainRailWork(level, peer, 40);
 			}
 			roads = ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS, Map.of());
 			long cursor = roads.getOrDefault(railKey, 0L);
@@ -211,6 +216,8 @@ public final class RailEndToEndChecks {
 			return checks;
 		} finally {
 			carts.forEach(MinecartChest::discard);
+			WORKERS.values().forEach(Villager::discard);
+			WORKERS.clear();
 			fixtures.forEach(v -> {
 				v.discard();
 				Villages.forget(v.getUUID());
@@ -435,13 +442,116 @@ public final class RailEndToEndChecks {
 		}
 	}
 
-	private static void advanceRailTicks(ServerLevel level, VillageRef ref, int attempts, long offset) {
+	private static void advanceRailTicks(ServerLevel level, VillageRef ref, int attempts, long offset, int rounds) {
 		for (int attempt = 0; attempt < attempts; attempt++) {
 			Map<String, Long> roads = new HashMap<>(ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS, Map.of()));
 			roads.put("next", 0L);
 			ref.bellEntity().setAttached(VillagerPlus.ROADS, Map.copyOf(roads));
 			Roads.tick(level, ref, level.getGameTime() + 1000L + offset + attempt);
+			drainRailWork(level, ref, rounds);
 		}
+	}
+
+	/** D07: the village tick only schedules; a villager fetches stock, walks and places the next rail piece. */
+	private static int workerConstructionChecks(ServerLevel level, VillageRef ref, Map<String, Long> savedRoads,
+		String routeKey, BlockPos peerBell, int length) {
+		int checks = 0;
+		String railKey = "rail" + peerBell.asLong();
+		Map<String, Long> roads = new HashMap<>(ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS, Map.of()));
+		roads.put("next", 0L);
+		ref.bellEntity().setAttached(VillagerPlus.ROADS, Map.copyOf(roads));
+		int railsBefore = countRailsOnRoute(level, roads, routeKey, ref.bell(), peerBell, length);
+		long cursorBefore = roads.getOrDefault(railKey, 0L);
+		Roads.tick(level, ref, level.getGameTime() + 4000L);
+		roads = ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS, Map.of());
+		Roads.RailWork work = Roads.pendingRailWork(level, ref);
+		check(work != null && work.peer().equals(peerBell),
+			"village tick records a pending physical rail job for the next affordable piece"); checks++;
+		check(countRailsOnRoute(level, roads, routeKey, ref.bell(), peerBell, length) == railsBefore
+			&& roads.getOrDefault(railKey, 0L) == cursorBefore,
+			"village tick itself places no track and does not advance the cursor"); checks++;
+		Item item = work.powered() ? Items.POWERED_RAIL : Items.RAIL;
+		Villager worker = railWorker(level, ref);
+		JobState state = new JobState();
+		var memory = worker.getAttachedOrCreate(VillagerPlus.MEMORY);
+		int stockBefore = countRailItem(level, ref, item);
+		int carriedBefore = JobUtil.count(worker.getInventory(), st -> st.is(item));
+		BlockPos far = work.site().offset(40, 0, 40);
+		worker.setPos(far.getX() + .5, far.getY() + 1, far.getZ() + .5);
+		RailMaintenance.construct(new Ctx(level, worker, state, memory, ref, level.getGameTime() + 5000L));
+		check(countRailsOnRoute(level, ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS, Map.of()),
+				routeKey, ref.bell(), peerBell, length) == railsBefore,
+			"a builder standing far away does not place track from a distance"); checks++;
+		BlockPos source = RailResources.sourceFor(level, ref, item);
+		worker.setPos(source.getX() + .5, source.getY() + 1, source.getZ() + .5);
+		if (carriedBefore < 1) {
+			RailMaintenance.construct(new Ctx(level, worker, state, memory, ref, level.getGameTime() + 5001L));
+			check(countRailItem(level, ref, item) == stockBefore - 1
+				&& JobUtil.count(worker.getInventory(), st -> st.is(item)) == 1,
+				"builder physically collects the rail piece from the village stock"); checks++;
+		}
+		if (work.support()) {
+			BlockPos supportSource = RailResources.sourceFor(level, ref, Items.REDSTONE_BLOCK);
+			worker.setPos(supportSource.getX() + .5, supportSource.getY() + 1, supportSource.getZ() + .5);
+			RailMaintenance.construct(new Ctx(level, worker, state, memory, ref, level.getGameTime() + 5002L));
+		}
+		int stockCarried = countRailItem(level, ref, item);
+		worker.setPos(work.site().getX() + .5, work.site().getY() + 1, work.site().getZ() + .5);
+		for (int i = 0; i < 3 && !(level.getBlockState(work.site()).getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock); i++)
+			RailMaintenance.construct(new Ctx(level, worker, state, memory, ref, level.getGameTime() + 5003L + i));
+		roads = ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS, Map.of());
+		check(level.getBlockState(work.site()).getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock
+			&& roads.getOrDefault(railKey, 0L) > cursorBefore,
+			"builder places the rail at the site and the saved cursor advances"); checks++;
+		check(countRailItem(level, ref, item) == stockCarried
+			&& JobUtil.count(worker.getInventory(), st -> st.is(item)) == 0,
+			"placement consumes the carried item, not additional village stock"); checks++;
+		return checks;
+	}
+
+	private static final Map<BlockPos, Villager> WORKERS = new HashMap<>();
+	private static long workerClock = 0;
+
+	private static Villager railWorker(ServerLevel level, VillageRef ref) {
+		Villager worker = WORKERS.get(ref.bell());
+		if (worker != null && worker.isAlive()) return worker;
+		BlockPos chest = ref.data().chest.orElseThrow();
+		level.getChunkAt(chest);
+		worker = EntityTypes.VILLAGER.spawn(level, chest.south(2), EntitySpawnReason.COMMAND);
+		worker.setNoAi(true);
+		worker.setInvulnerable(true);
+		worker.addTag("vp090_fixture");
+		WORKERS.put(ref.bell().immutable(), worker);
+		return worker;
+	}
+
+	/** Lets the village's road builder execute the pending physical rail jobs (fetch, walk, place). */
+	private static int drainRailWork(ServerLevel level, VillageRef ref, int rounds) {
+		Villager worker = railWorker(level, ref);
+		JobState state = new JobState();
+		var memory = worker.getAttachedOrCreate(VillagerPlus.MEMORY);
+		int placed = 0;
+		for (int i = 0; i < rounds; i++) {
+			Roads.RailWork work = Roads.pendingRailWork(level, ref);
+			if (work == null) break;
+			Item item = work.powered() ? Items.POWERED_RAIL : Items.RAIL;
+			boolean platformOnly = !work.powered() && !work.support() && placedCount(level, work.site()) > 0;
+			Item lacking = platformOnly ? null
+				: JobUtil.count(worker.getInventory(), st -> st.is(item)) < 1 ? item
+				: work.support() && JobUtil.count(worker.getInventory(), st -> st.is(Items.REDSTONE_BLOCK)) < 1
+					? Items.REDSTONE_BLOCK : null;
+			BlockPos source = lacking == null ? null : RailResources.sourceFor(level, ref, lacking);
+			BlockPos at = source != null ? source : work.site();
+			worker.setPos(at.getX() + .5, at.getY() + 1, at.getZ() + .5);
+			int before = placedCount(level, work.site());
+			RailMaintenance.construct(new Ctx(level, worker, state, memory, ref, level.getGameTime() + (++workerClock)));
+			if (placedCount(level, work.site()) > before) placed++;
+		}
+		return placed;
+	}
+
+	private static int placedCount(ServerLevel level, BlockPos site) {
+		return level.getBlockState(site).getBlock() instanceof net.minecraft.world.level.block.BaseRailBlock ? 1 : 0;
 	}
 
 	private static void linkMetropolis(ServerLevel level, VillageRef ref, VillageRef peer) {

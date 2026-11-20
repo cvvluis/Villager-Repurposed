@@ -51,7 +51,7 @@ public final class RailMaintenance {
 			cache(worker, scan);
 		}
 		Repair repair = scan.repair();
-		if (repair == null) return false;
+		if (repair == null) return construct(c);
 		if (!repairable(c.level(), repair)) {
 			cache(worker, new Scan(c.now() + 1, null));
 			return false;
@@ -98,6 +98,56 @@ public final class RailMaintenance {
 		c.level().playSound(null, repair.rail(), repair.railState().getSoundType().getPlaceSound(), SoundSource.BLOCKS, 1, 1);
 		SCANS.remove(worker);
 		return true;
+	}
+
+	/**
+	 * New rail construction: the village tick only records the next affordable piece; a road builder fetches the
+	 * rail (and redstone support) from the public stock, walks to the site and places it from his inventory.
+	 */
+	static boolean construct(Ctx c) {
+		Roads.RailWork work = Roads.pendingRailWork(c.level(), c.village());
+		if (work == null) return false;
+		Item[] needs = work.powered() ? new Item[] {Items.POWERED_RAIL, Items.REDSTONE_BLOCK} : new Item[] {Items.RAIL, Items.REDSTONE_BLOCK};
+		Item missing = null;
+		if (JobUtil.count(c.v().getInventory(), stack -> stack.is(needs[0])) < 1 && !platformOnly(c, work)) missing = needs[0];
+		else if (work.support() && JobUtil.count(c.v().getInventory(), stack -> stack.is(Items.REDSTONE_BLOCK)) < 1) missing = Items.REDSTONE_BLOCK;
+		if (missing != null) {
+			Item wanted = missing;
+			BlockPos source = RailResources.sourceFor(c.level(), c.village(), wanted);
+			if (source == null) {
+				c.setActivity("wartet auf Schienenmaterial");
+				return false;
+			}
+			c.setActivity("holt Schienenmaterial");
+			if (!JobUtil.approachLong(c, source, 3)) return c.st().cooldownUntil <= c.now();
+			Container box = HopperBlockEntity.getContainerAt(c.level(), source);
+			if (box == null || JobUtil.count(box, stack -> stack.is(wanted)) < 1
+				|| !c.v().getInventory().canAddItem(new ItemStack(wanted, 1))) return true;
+			for (int slot = 0; slot < box.getContainerSize(); slot++) {
+				ItemStack stack = box.getItem(slot);
+				if (!stack.is(wanted)) continue;
+				stack.shrink(1);
+				if (stack.isEmpty()) box.setItem(slot, ItemStack.EMPTY);
+				box.setChanged();
+				c.v().getInventory().addItem(new ItemStack(wanted, 1));
+				return true;
+			}
+			return true;
+		}
+		c.setActivity("baut die Bahnstrecke");
+		if (!JobUtil.approachLong(c, work.site(), 3)) return c.st().cooldownUntil <= c.now();
+		boolean built = Roads.performRailWork(c.level(), c.village(), work.peer(), c.v().getInventory());
+		if (!built) return false;
+		JobUtil.swing(c.v());
+		c.level().playSound(null, work.site(), net.minecraft.sounds.SoundEvents.STONE_PLACE, SoundSource.BLOCKS, 1, 1);
+		c.mem().jobsDone++;
+		return true;
+	}
+
+	/** A station platform job (no rail item needed) is recorded with an empty kind and an already present track. */
+	private static boolean platformOnly(Ctx c, Roads.RailWork work) {
+		return !work.powered() && !work.support()
+			&& c.level().getBlockState(work.site()).getBlock() instanceof BaseRailBlock;
 	}
 
 	/** Finds the first absent rail whose cursor is behind the saved rail-builder cursor. */

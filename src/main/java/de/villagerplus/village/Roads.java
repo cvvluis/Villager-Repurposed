@@ -1193,7 +1193,7 @@ public final class Roads {
    VillageRef other=Network.resolve(level,link);
 	  if(other==null||!railProjectReady(level,ref,other))continue;
    advanceRail(level,ref.bell(),link.bell(),"rail"+link.bell().asLong(),next,4,ref,
-    other.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of()));
+    other.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of()),true,null);
   }
   ref.bellEntity().setAttached(VillagerPlus.ROADS,Map.copyOf(next));ref.dirty();
  }
@@ -1204,7 +1204,7 @@ public final class Roads {
   for(var link:Network.of(ref.bellEntity()).links()) {
    if(link.relation()<METROPOLIS||!link.dimension().equals(Network.dim(level))||!link.bell().equals(peer.bell()))continue;
    advanceRail(level,ref.bell(),link.bell(),"rail"+link.bell().asLong(),state,budget,ref,
-    peer.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of()));
+    peer.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of()),false,null);
    return true;
   }
   return false;
@@ -1420,9 +1420,74 @@ public final class Roads {
 	  return school!=null&&de.villagerplus.world.LoadedColumns.ready(level, school);
 	 }
 
- /** Baut eine verbundene Schienenhälfte ab dem straßennahen Bahnhofszugang bis zur gemeinsamen Streckenmitte. */
+ /** A rail piece (or the station platform) the village tick found affordable and that a road builder must now place. */
+ public record RailWork(BlockPos peer,BlockPos site,boolean powered,boolean support) { }
+
+ private static boolean hasCarried(net.minecraft.world.Container carried,net.minecraft.world.item.Item item) {
+  for(int i=0;i<carried.getContainerSize();i++){var st=carried.getItem(i);if(st.is(item)&&st.getCount()>0)return true;}
+  return false;
+ }
+ private static void takeCarried(net.minecraft.world.Container carried,net.minecraft.world.item.Item item) {
+  for(int i=0;i<carried.getContainerSize();i++){var st=carried.getItem(i);if(st.is(item)&&st.getCount()>0){st.shrink(1);carried.setChanged();return;}}
+ }
+ private static boolean canPayRail(ServerLevel level,VillageRef ref,boolean power,boolean support,net.minecraft.world.Container carried) {
+  if(carried==null)return RailResources.canPay(level,ref,power,support);
+  return hasCarried(carried,power?net.minecraft.world.item.Items.POWERED_RAIL:net.minecraft.world.item.Items.RAIL)&&(!support||hasCarried(carried,net.minecraft.world.item.Items.REDSTONE_BLOCK));
+ }
+ private static boolean payRail(ServerLevel level,VillageRef ref,boolean power,boolean support,net.minecraft.world.Container carried) {
+  if(carried==null)return RailResources.pay(level,ref,power,support);
+  if(!canPayRail(level,ref,power,support,carried))return false;
+  takeCarried(carried,power?net.minecraft.world.item.Items.POWERED_RAIL:net.minecraft.world.item.Items.RAIL);
+  if(support)takeCarried(carried,net.minecraft.world.item.Items.REDSTONE_BLOCK);
+  return true;
+ }
+
+ /** Pending physical rail job saved by the village tick (key "rail&lt;peer&gt;:work"), or null. Never loads chunks. */
+ public static RailWork pendingRailWork(ServerLevel level,VillageRef ref) {
+  if(ref==null||ref.bellEntity()==null)return null;
+  Map<String,Long> state=ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of());
+  for(var link:Network.of(ref.bellEntity()).links()) {
+   if(link.relation()<METROPOLIS||!link.dimension().equals(Network.dim(level)))continue;
+   String key="rail"+link.bell().asLong();
+   Long site=state.get(key+":work");
+   if(site==null)continue;
+   BlockPos pos=BlockPos.of(site);
+   if(!de.villagerplus.world.LoadedColumns.ready(level,pos))continue;
+   long kind=state.getOrDefault(key+":workKind",0L);
+   return new RailWork(link.bell(),pos,(kind&1L)!=0,(kind&2L)!=0);
+  }
+  return null;
+ }
+
+ /** One physical construction step at the pending site; pays from {@code carried} (the worker's inventory). */
+ public static boolean performRailWork(ServerLevel level,VillageRef ref,BlockPos peerBell,net.minecraft.world.Container carried) {
+  if(ref==null||ref.bellEntity()==null)return false;
+  for(var link:Network.of(ref.bellEntity()).links()) {
+   if(link.relation()<METROPOLIS||!link.dimension().equals(Network.dim(level))||!link.bell().equals(peerBell))continue;
+   VillageRef other=Network.resolve(level,link);
+   if(other==null||!railProjectReady(level,ref,other))return false;
+   String key="rail"+link.bell().asLong();
+   Map<String,Long> state=new HashMap<>(ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of()));
+   long before=state.getOrDefault(key,0L);
+   state.remove(key+":work");state.remove(key+":workKind");
+   advanceRail(level,ref.bell(),link.bell(),key,state,1,ref,
+    other.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of()),false,carried);
+   boolean advanced=state.getOrDefault(key,0L)>before;
+   // Record the next affordable piece right away so the builder keeps working without waiting for the village tick.
+   if(advanced)advanceRail(level,ref.bell(),link.bell(),key,state,4,ref,
+    other.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of()),true,null);
+   ref.bellEntity().setAttached(VillagerPlus.ROADS,Map.copyOf(state));ref.dirty();
+   return advanced;
+  }
+  return false;
+ }
+
+ /** Baut eine verbundene Schienenhälfte ab dem straßennahen Bahnhofszugang bis zur gemeinsamen Streckenmitte.
+  *  {@code workerOnly}: the village tick only advances over finished track and records the next affordable piece
+  *  for a physical road builder instead of placing it. */
  private static void advanceRail(ServerLevel level,BlockPos a,BlockPos b,String key,Map<String,Long> state,int budget,VillageRef ref,
-                                 Map<String,Long> otherState){
+                                 Map<String,Long> otherState,boolean workerOnly,net.minecraft.world.Container carried){
+  if(workerOnly){state.remove(key+":work");state.remove(key+":workKind");}
   String routeKey=Network.dim(level)+b.asLong();
   String otherKey=Network.dim(level)+a.asLong();
   if(!RoadRoute.ensureWithRetry(level,a,b,state,routeKey,otherState,otherKey,level.getGameTime(),state.getOrDefault(key,0L)>0))return;
@@ -1454,10 +1519,17 @@ public final class Roads {
    boolean poweredTrack=alreadyTrack&&existing.is(Blocks.POWERED_RAIL)&&site.supported();
    boolean needsTrack=!alreadyTrack||power&&!poweredTrack;
    boolean trackPlaced=!needsTrack;
+   if(workerOnly&&(needsTrack||cursor==stationStart)) {
+    boolean sup=needsTrack&&power&&!site.supported();
+    if(needsTrack&&!RailResources.canPay(level,ref,power,sup))break;
+    state.put(key+":work",site.rail().asLong());
+    state.put(key+":workKind",needsTrack?(power?1L:0L)|(sup?2L:0L):0L);
+    break;
+   }
    if(needsTrack) {
     boolean needsSupport=power&&!site.supported();
     // Check the complete payment before clearing vegetation or replacing an incompatible rail.
-    if(!RailResources.canPay(level,ref,power,needsSupport))break;
+    if(!canPayRail(level,ref,power,needsSupport,carried))break;
     BlockState oldSupport=level.getBlockState(site.support());
     if(!existing.isAir()&&(!alreadyTrack&&!existing.canBeReplaced()
      ||!level.setBlock(site.rail(),Blocks.AIR.defaultBlockState(),3)))break;
@@ -1472,7 +1544,7 @@ public final class Roads {
     if(level.setBlock(site.rail(),desired,3)) {
      boolean joinsPrevious=RailTransport.safeRail(level,site.rail())
       &&(cursor==stationStart||(previousRail&&RailTransport.connected(level,previous.rail(),site.rail())));
-     if(joinsPrevious&&RailResources.pay(level,ref,power,needsSupport))trackPlaced=true;
+     if(joinsPrevious&&payRail(level,ref,power,needsSupport,carried))trackPlaced=true;
      else {
       level.setBlock(site.rail(),existing,3);
       if(needsSupport)level.setBlock(site.support(),oldSupport,3);
