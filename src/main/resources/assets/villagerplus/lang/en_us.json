@@ -48,6 +48,7 @@
  "message.villagerplus.mine_closed_unsafe": "The mine was closed because of an unsafe or protected tunnel section.",
  "message.villagerplus.mine_exhausted": "The mine is exhausted.",
  "message.villagerplus.board_no_village": "This village board does not (yet) belong to a village — a village bell nearby is missing.",
+ "message.villagerplus.demolition_detected": "Villagers noticed a ruined building and begin to demolish it: %s.",
  "message.villagerplus.demolition_done": "Demolition finished: %s — the material is in the village chest.",
  "message.villagerplus.private_chest_of": "This is the private chest of %s!",
  "message.villagerplus.name_the_shopkeeper": "The shopkeeper",

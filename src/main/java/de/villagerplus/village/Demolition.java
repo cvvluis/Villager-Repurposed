@@ -197,12 +197,92 @@ public final class Demolition {
 		return "Abriss angeordnet: " + label(target.type()) + ". Ein Maurer trägt es Block für Block ab.";
 	}
 
+	/** A building counts as ruined when fewer than this share of its solid blueprint blocks is still standing. */
+	static final double RUIN_STANDING_SHARE = 0.30;
+	/** A ruin must be seen again after this many ticks before the demolition is queued (no reaction to a transient state). */
+	static final long RUIN_CONFIRM_TICKS = 400L;
+	private static final long DETECT_INTERVAL_TICKS = 200L;
+	private static final int MIN_SOLID_STEPS = 20;
+	private static final Map<Long, Long> RUIN_SEEN = new HashMap<>();
+	private static final Map<Long, Long> DETECT_AT = new HashMap<>();
+
+	/** Test hook: forget detection bookkeeping. */
+	static void resetDetectionForTest() {
+		RUIN_SEEN.clear();
+		DETECT_AT.clear();
+	}
+
+	/**
+	 * Autonomous detection (G11): finds village-registered buildings that are ruined (most of their solid blueprint blocks are gone)
+	 * and returns those confirmed by a second sighting at least {@link #RUIN_CONFIRM_TICKS} later. Only buildings in the village's own
+	 * registry are ever considered, so player builds are never touched. A building is skipped while its footprint is not fully
+	 * loaded (nothing is loaded here), inside a Sperrzone, with private storage inside, or when a construction project reserves
+	 * it. Throttled per village; callers queue a normal {@link Job} for each returned building.
+	 */
+	static List<Built> detectRuined(ServerLevel level, VillageRef ref, long now) {
+		long key = ref.bell().asLong();
+		Long last = DETECT_AT.get(key);
+		if (last != null && now >= last && now - last < DETECT_INTERVAL_TICKS) return List.of();
+		DETECT_AT.put(key, now);
+		List<Built> out = new ArrayList<>();
+		Set<Long> alive = new HashSet<>();
+		for (Built b : Builder.builtOf(ref)) {
+			if (!allowed(b.type())) continue;
+			long id = b.origin().asLong();
+			if (!footprintLoaded(level, ref, b)) continue;
+			List<Step> steps = Builder.stepsOfBuilt(level, ref, b, null);
+			int solid = 0, standing = 0;
+			for (Step st : steps) {
+				if (st.free() || st.optional()) continue;
+				solid++;
+				if (!level.getBlockState(st.pos()).isAir()) standing++;
+			}
+			if (solid < MIN_SOLID_STEPS || standing >= solid * RUIN_STANDING_SHARE) continue;
+			if (inSperrzone(ref, steps) || hasPrivateStorage(level, ref, b)
+				|| overlapsConstructionReservation(ref, buildingBounds(level, ref, b))) continue;
+			alive.add(id);
+			Long first = RUIN_SEEN.get(id);
+			if (first == null || now < first) {
+				RUIN_SEEN.put(id, now);
+			} else if (now - first >= RUIN_CONFIRM_TICKS && jobs(ref).stream().noneMatch(j -> j.origin().equals(b.origin()))) {
+				out.add(b);
+				RUIN_SEEN.remove(id);
+			}
+		}
+		for (Built b : Builder.builtOf(ref)) {
+			long id = b.origin().asLong();
+			if (!alive.contains(id) && out.stream().noneMatch(o -> o.origin().equals(b.origin()))) RUIN_SEEN.remove(id);
+		}
+		return out;
+	}
+
+	private static boolean inSperrzone(VillageRef ref, List<Step> steps) {
+		if (steps.isEmpty()) return false;
+		var box = Furnisher.boxOf(steps);
+		for (int x = box.minX(); x <= box.maxX(); x++) {
+			for (int z = box.minZ(); z <= box.maxZ(); z++) {
+				if (ZonePolicy.protectedCell(ref, x, z)) return true;
+			}
+		}
+		return false;
+	}
+
 	/** Arbeit des Maurers am Abriss (true = beschaeftigt). */
 	public static boolean work(Ctx c, VillageRef ref) {
 		List<Job> list = new ArrayList<>(jobs(ref));
 		// With no demolition job, this subsystem must not cancel another activity's
 		// breaker (for example the active-plan wood supplier called by Builder.tick).
-		if (list.isEmpty()) return false;
+		if (list.isEmpty()) {
+			// G11: villagers notice a ruined village building themselves and start the normal demolition for it.
+			List<Built> found = detectRuined(c.level(), ref, c.now());
+			if (found.isEmpty()) return false;
+			for (Built ruin : found) {
+				list.add(new Job(ruin.origin(), 0));
+				JobUtil.tellNearbyPlayers(c.level(), c.v(), 40,
+					net.minecraft.network.chat.Component.translatable("message.villagerplus.demolition_detected", label(ruin.type())));
+			}
+			save(ref, list);
+		}
 		ServerLevel level = c.level();
 		Job job = list.get(0);
 		BlockPos jobOrigin = job.origin();

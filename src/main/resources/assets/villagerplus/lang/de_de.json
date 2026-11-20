@@ -48,6 +48,7 @@
  "message.villagerplus.mine_closed_unsafe": "Die Mine wurde wegen eines unsicheren oder geschützten Stollenabschnitts geschlossen.",
  "message.villagerplus.mine_exhausted": "Die Mine ist ausgebeutet.",
  "message.villagerplus.board_no_village": "Zu dieser Dorftafel gehört (noch) kein Dorf – es fehlt eine Dorfglocke in der Nähe.",
+ "message.villagerplus.demolition_detected": "Dorfbewohner haben ein verfallenes Gebäude entdeckt und beginnen mit dem Abriss: %s.",
  "message.villagerplus.demolition_done": "Abriss fertig: %s – Material liegt in der Dorfkiste.",
  "message.villagerplus.private_chest_of": "Das ist die private Kiste von %s!",
  "message.villagerplus.name_the_shopkeeper": "Der Ladeninhaber",

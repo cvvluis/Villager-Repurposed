@@ -68,10 +68,10 @@ public final class StoneEconomyChecks {
 				new net.minecraft.world.entity.ai.memory.WalkTarget(entrance, 0.5F, 1));
 			BlockPos street = de.villagerplus.build.Builder.villageReturn(level, bell);
 			boolean first = Mining.approachStalled(ctx(level, worker, state, memory, ref, now + Mining.APPROACH_STALL_TICKS + 40L), far);
-			check(first && worker.getBrain().getMemory(MemoryModuleType.WALK_TARGET).isEmpty()
-				&& state.cooldownUntil > now + Mining.APPROACH_STALL_TICKS + 40L
-				&& street != null && worker.blockPosition().distSqr(street) <= 4,
-				"after the stall limit the resident is put on the village street (street " + street + ", now at " + worker.blockPosition() + ")"); checks++;
+			var walkHome = worker.getBrain().getMemory(MemoryModuleType.WALK_TARGET);
+			check(first && walkHome.isPresent() && state.cooldownUntil > now + Mining.APPROACH_STALL_TICKS + 40L
+				&& street != null && worker.blockPosition().equals(start) && worker.blockPosition().distSqr(street) > 4,
+				"G12 after the stall limit the resident WALKS to the village street, no teleport (street " + street + ", now at " + worker.blockPosition() + ")"); checks++;
 
 			// 3. Getting closer renews the allowance: a walk that advances a little at a time is never reset.
 			long t = now + Mining.APPROACH_STALL_TICKS + 100L;
@@ -127,8 +127,8 @@ public final class StoneEconomyChecks {
 				circled = Mining.approachStalled(ctx(level, worker, state, memory, ref, v7 + dt), circle, mine);
 				if (circled && dt < Mining.APPROACH_NEAR_BAND_TICKS) earlyCircle = true;
 			}
-			check(circled && !earlyCircle && worker.blockPosition().distSqr(start) > 4,
-				"circling on the last stretch for longer than the band limit sets the resident down elsewhere (circled " + circled + ", early " + earlyCircle + ")"); checks++;
+			check(circled && !earlyCircle && worker.blockPosition().distSqr(start) <= 4,
+				"G12 circling on the last stretch for longer than the band limit re-targets the walk without teleporting (circled " + circled + ", early " + earlyCircle + ")"); checks++;
 
 			// 6. Free, safe lanes but no path to them (a resident on a terrace above the mine): after the allowance the resident is put
 			// on the village street instead of asking again and again for hours.
@@ -151,8 +151,9 @@ public final class StoneEconomyChecks {
 				|| Mining.noLanePathWatchdog(ctx(level, worker, state, memory, ref, v + Mining.NO_LANE_PATH_TICKS - 100L), ref.data().mine.get());
 			check(!movedEarly && worker.blockPosition().distSqr(perch) <= 4, "a resident without a path to free lanes is left alone within the allowance"); checks++;
 			boolean moved = Mining.noLanePathWatchdog(ctx(level, worker, state, memory, ref, v + Mining.NO_LANE_PATH_TICKS + 50L), ref.data().mine.get());
-			check(moved && worker.blockPosition().distSqr(perch) > 100 && state.mineCheckAt > v,
-				"after the allowance the resident is put on the village street (moved " + moved + ", now at " + worker.blockPosition() + ")"); checks++;
+			check(moved && worker.blockPosition().distSqr(perch) <= 4 && state.mineCheckAt > v + 600L
+				&& worker.getBrain().getMemory(MemoryModuleType.WALK_TARGET).isPresent(),
+				"G12 after the allowance the resident gives up the mine trip and walks to the village street, no teleport (moved " + moved + ", now at " + worker.blockPosition() + ")"); checks++;
 
 			// 7. Residents set back on the street do not pile up on one block: a second one finds a free stand beside the first.
 			BlockPos streetSpot = de.villagerplus.build.Builder.villageReturn(level, bell);
@@ -200,9 +201,9 @@ public final class StoneEconomyChecks {
 			boolean firstArrival = Mining.approachMineStep(ctx(level, worker, walkState, memory, ref, x0), entrance) == Mining.MineWalk.ARRIVED;
 			boolean stillShort = worker.position().distanceToSqr(Vec3.atBottomCenterOf(entrance)) > 0.5 * 0.5;
 			boolean secondArrival = Mining.approachMineStep(ctx(level, worker, walkState, memory, ref, x0 + Mining.ARRIVAL_SNAP_TICKS), entrance) == Mining.MineWalk.ARRIVED;
-			check(firstArrival && stillShort && secondArrival
-				&& worker.position().distanceToSqr(Vec3.atBottomCenterOf(entrance)) < 0.05 * 0.05,
-				"an arrival that stays 0.6 blocks short is set onto the waypoint centre (first " + firstArrival + ", short " + stillShort
+			check(firstArrival && stillShort && secondArrival && worker.getMoveControl().hasWanted()
+				&& worker.getMoveControl().getWantedX() == entrance.getX() + 0.5 && worker.getMoveControl().getWantedZ() == entrance.getZ() + 0.5,
+				"G12 an arrival that stays 0.6 blocks short is walked onto the waypoint centre by the move control (first " + firstArrival + ", short " + stillShort
 					+ ", second " + secondArrival + ", at " + worker.position() + ")"); checks++;
 			return checks;
 		} finally {

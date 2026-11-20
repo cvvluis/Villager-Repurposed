@@ -396,21 +396,9 @@ public final class Mining {
 				c.st().mineCheckAt = c.now() + 40;
 				waitAtMineStand(c, m, queueSlot);
 			} else {
-				// Waiting far from the shaft (e.g. after a distant timber trip) is pointless and the walk home may be beyond
-				// pathfinding range: bring the resident back to the village once, like the stranded rescue does.
+				// Waiting far from the shaft (e.g. after a distant timber trip) is pointless: never teleport him back, release him
+				// below (the village routine walks him home) and look again later.
 				double farSq = c.v().position().distanceToSqr(Vec3.atBottomCenterOf(m.entrance));
-				if (farSq > 48.0 * 48.0 && !inMineArea(m, c.v()) && c.village() != null) {
-					var arrival = de.villagerplus.build.Builder.villageReturn(c.level(), c.village().bell());
-					if (arrival != null) {
-						c.v().getNavigation().stop();
-						c.v().teleportTo(arrival.getX() + 0.5, arrival.getY(), arrival.getZ() + 0.5);
-						c.v().resetFallDistance();
-						c.st().cooldownUntil = c.now() + 40;
-						org.slf4j.LoggerFactory.getLogger("villagerplus").info("Mine: {} wartete {} Bloecke vom Eingang entfernt und wurde ins Dorf zurueckgeholt",
-							c.mem().name, (int) Math.sqrt(farSq));
-						return true;
-					}
-				}
 				if (farSq > 14.0 * 14.0 && !inMineArea(m, c.v())) {
 					// No stand free and still far from the shaft: standing around here helps nobody. Release the resident for other
 					// work and look again later, instead of reporting "busy" for hours.
@@ -3229,11 +3217,11 @@ public final class Mining {
 		c.v().getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
 		c.st().clearTarget();
 		arrival = spreadArrival(c, arrival);
-		c.v().teleportTo(arrival.getX() + 0.5, arrival.getY(), arrival.getZ() + 0.5);
-		c.v().resetFallDistance();
+		walkTowards(c, arrival);
+		clearMineRoute(c.v());
 		c.st().cooldownUntil = now + 20;
-		c.st().mineCheckAt = now + 20;
-		LOGGER.info("Mine: {} fand {} Ticks lang freie Arbeitsplaetze, aber keinen Weg dorthin (bei {}) und wurde auf die Dorfstrasse gesetzt",
+		c.st().mineCheckAt = now + 1200;
+		LOGGER.info("Mine: {} fand {} Ticks lang freie Arbeitsplaetze, aber keinen Weg dorthin (bei {}); der Gang wird aufgegeben und er geht zur Dorfstrasse",
 			c.mem().name, NO_LANE_PATH_TICKS, c.v().blockPosition().toShortString());
 		return true;
 	}
@@ -3315,14 +3303,13 @@ public final class Mining {
 			: c.village() == null ? null : de.villagerplus.build.Builder.villageReturn(c.level(), c.village().bell());
 		if (arrival != null) {
 			if (portal == null) arrival = spreadArrival(c, arrival);
-			c.v().teleportTo(arrival.getX() + 0.5, arrival.getY(), arrival.getZ() + 0.5);
-			c.v().resetFallDistance();
+			walkTowards(c, arrival);
 		}
 		c.st().cooldownUntil = now + 20;
 		// The position is the one the resident stood on when the walk stalled, not the spot he is set onto.
-		LOGGER.info("Mine: {} kam auf dem Weg zur Mine {} Ticks nicht naeher (Abstand {}, bei {}, {} Dorfbewohner dicht daneben, unter {}) und wurde {} gesetzt",
+		LOGGER.info("Mine: {} kam auf dem Weg zur Mine {} Ticks nicht naeher (Abstand {}, bei {}, {} Dorfbewohner dicht daneben, unter {}) und geht nun {} (kein Teleport)",
 			c.mem().name, APPROACH_STALL_TICKS, (int) Math.sqrt(farSq), stuckAt.toShortString(), crowd,
-			c.level().getBlockState(stuckAt.below()).getBlock().getDescriptionId(), portal != null ? "an das Minenportal" : "auf die Dorfstrasse");
+			c.level().getBlockState(stuckAt.below()).getBlock().getDescriptionId(), portal != null ? "zum Minenportal" : "zur Dorfstrasse");
 		return true;
 	}
 
@@ -3438,10 +3425,15 @@ public final class Mining {
 		for (Villager other : c.level().getEntitiesOfClass(Villager.class, spot, o -> o != c.v() && o.isAlive())) {
 			if (other.position().distanceToSqr(Vec3.atBottomCenterOf(cell)) < 0.6 * 0.6) return false;
 		}
-		c.v().teleportTo(cell.getX() + 0.5, cell.getY(), cell.getZ() + 0.5);
-		c.v().resetFallDistance();
-		c.v().setDeltaMovement(Vec3.ZERO);
+		// Less than a block: walk the last bit with the move control (no teleport).
+		c.v().getMoveControl().setWantedPosition(cell.getX() + 0.5, cell.getY(), cell.getZ() + 0.5, 0.4);
 		return true;
+	}
+
+	/** Recovery by walking: sets a walk target to {@code goal} (a village street / portal pad); never moves the resident directly. */
+	static void walkTowards(Ctx c, BlockPos goal) {
+		c.v().getNavigation().stop();
+		c.v().getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(Vec3.atBottomCenterOf(goal), 0.55F, 1));
 	}
 
 	/** Walking speed of a resident inside the gallery (the guard keeps him on the paved lanes; the surface keeps the calmer 0.55). */
@@ -3473,14 +3465,13 @@ public final class Mining {
 			// The last few blocks before a safe mine waypoint: vanilla navigation sometimes never delivers the walker (dunes, bushes,
 			// a one-block step). Set him onto the waypoint instead of letting the whole mine starve.
 			double gap = c.v().position().distanceToSqr(Vec3.atBottomCenterOf(cell));
-			if (gap <= 8.0 * 8.0 && safeCell(c, cell)) {
+			if (gap <= 2.0 * 2.0 && safeCell(c, cell)) {
+				// Within two blocks: finish with the move control (no teleport); farther away the STUCK recovery below re-plans.
 				c.v().getNavigation().stop();
-				c.v().teleportTo(cell.getX() + 0.5, cell.getY(), cell.getZ() + 0.5);
-				c.v().resetFallDistance();
+				c.v().getMoveControl().setWantedPosition(cell.getX() + 0.5, cell.getY(), cell.getZ() + 0.5, 0.4);
 				c.st().stuckCount = 0;
 				c.st().bestDist = 0.0;
 				c.st().cooldownUntil = c.now() + 10;
-				LOGGER.info("Mine: {} kam {} Bloecke vor dem Wegpunkt {} nicht weiter und wurde darauf gesetzt", c.mem().name, (int) Math.sqrt(gap), cell.toShortString());
 				return MineWalk.MOVING;
 			}
 			c.v().getNavigation().stop();
