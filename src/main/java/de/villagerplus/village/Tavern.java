@@ -168,7 +168,7 @@ public final class Tavern {
 		return best == null ? markerWithoutRoute : best;
 	}
 
-	private static BlockPos markerInLoadedPart(net.minecraft.server.level.ServerLevel level, BoundingBox bounds, BlockPos center, Block markerBlock) {
+	static BlockPos markerInLoadedPart(net.minecraft.server.level.ServerLevel level, BoundingBox bounds, BlockPos center, Block markerBlock) {
 		int minX = Math.max(bounds.minX(), center.getX() - 64), maxX = Math.min(bounds.maxX(), center.getX() + 64);
 		int minZ = Math.max(bounds.minZ(), center.getZ() - 64), maxZ = Math.min(bounds.maxZ(), center.getZ() + 64);
 		if (minX > maxX || minZ > maxZ) return null;
@@ -194,7 +194,7 @@ public final class Tavern {
 		return de.villagerplus.world.LoadedColumns.ready(level, marker) && isTavernMarker(level.getBlockState(marker));
 	}
 
-	private static BlockPos reachableStand(net.minecraft.server.level.ServerLevel level, Villager villager, BlockPos marker) {
+	static BlockPos reachableStand(net.minecraft.server.level.ServerLevel level, Villager villager, BlockPos marker) {
 		for (int radius = 1; radius <= 4; radius++) {
 			for (int dy = -1; dy <= 1; dy++) for (int dx = -radius; dx <= radius; dx++) for (int dz = -radius; dz <= radius; dz++) {
 				if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) continue;
