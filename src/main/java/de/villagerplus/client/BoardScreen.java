@@ -140,15 +140,15 @@ public class BoardScreen extends Screen {
 		ClientPlayNetworking.registerGlobalReceiver(de.villagerplus.net.SetZone.Result.TYPE, (payload, context) -> context.client().execute(() -> {
 			if (context.client().gui.screen() instanceof BoardScreen open && open.acceptZoneResult(payload)) return;
 			if (context.client().player != null) {
-				context.client().player.sendSystemMessage(de.villagerplus.village.VillageMessages.format(Component.literal(
-					zoneResultNotice(payload.success(), payload.message()))));
+				context.client().player.sendSystemMessage(de.villagerplus.village.VillageMessages.format(
+					noticeComponent(payload.success(), payload.message(), "gui.villagerplus.board_zone_no_reason")));
 			}
 		}));
 		ClientPlayNetworking.registerGlobalReceiver(de.villagerplus.net.RelocateBoard.Result.TYPE, (payload, context) -> context.client().execute(() -> {
 			if (context.client().gui.screen() instanceof BoardScreen open && open.acceptBoardRelocateResult(payload)) return;
 			if (context.client().player != null) {
-				context.client().player.sendSystemMessage(de.villagerplus.village.VillageMessages.format(Component.literal(
-					payload.success() ? "✓ " + payload.message() : "✕ " + payload.message())));
+				context.client().player.sendSystemMessage(de.villagerplus.village.VillageMessages.format(
+					Component.literal((payload.success() ? "✓ " : "✕ ") + payload.message())));
 			}
 		}));
 	}
@@ -466,8 +466,8 @@ public class BoardScreen extends Screen {
 			}
 		}).bounds(left + 12, top + MAP_ACTION_ROW_Y, 86, 18).build());
 		zoneButton = addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_draw_zone"), b -> {
-			if (!zoneTool) { zoneTool = true; b.setMessage(Component.literal(zoneButtonText(zoneKind))); }
-			else { zoneKind = (zoneKind + 1) % (ZONE_DELETE_KIND + 1); b.setMessage(Component.literal(zoneButtonText(zoneKind))); }
+			if (!zoneTool) { zoneTool = true; b.setMessage(zoneButtonComponent(zoneKind)); }
+			else { zoneKind = (zoneKind + 1) % (ZONE_DELETE_KIND + 1); b.setMessage(zoneButtonComponent(zoneKind)); }
 		}).bounds(left + 100, top + MAP_ACTION_ROW_Y, 94, 18).build());
 		moveButton = addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_move"), b -> {
 			if (movePending) {
@@ -504,7 +504,7 @@ public class BoardScreen extends Screen {
 
 		networkVisibility();
 		int[] liveBounds = footerButtonBounds(left, top, 3);
-		addRenderableWidget(Button.builder(Component.literal("● Live"), b -> {
+		addRenderableWidget(Button.builder(Component.translatable("gui.villagerplus.board_live"), b -> {
 			if (tab == 8) requestTalk();
 			else ClientPlayNetworking.send(new BoardRequest(data.board()));
 		})
@@ -806,6 +806,28 @@ public class BoardScreen extends Screen {
 	static String zoneKindId(int kind) {
 		if (kind < 0 || kind >= ZONE_KIND_IDS.length) throw new IllegalArgumentException("Invalid zone kind: " + kind);
 		return ZONE_KIND_IDS[kind];
+	}
+
+	private static final String[] ZONE_BUTTON_KEYS = {"gui.villagerplus.board_zone_farm", "gui.villagerplus.board_zone_housing",
+		"gui.villagerplus.board_zone_work", "gui.villagerplus.board_zone_pasture", "gui.villagerplus.board_zone_protected"};
+
+	/** Translatable zone tool label; {@link #zoneButtonText} is the plain German form used by the dev checks. */
+	static Component zoneButtonComponent(int kind) {
+		if (kind == ZONE_DELETE_KIND) return Component.translatable("gui.villagerplus.board_zone_delete");
+		if (kind < 0 || kind >= ZONE_BUTTON_KEYS.length) throw new IllegalArgumentException("Invalid zone kind: " + kind);
+		return Component.translatable(ZONE_BUTTON_KEYS[kind]);
+	}
+
+	/** Translatable profession name of a {@link #JOBS} entry. */
+	static Component jobComponent(int index) {
+		String id = JOBS[index][0];
+		String path = id.substring(id.indexOf(':') + 1);
+		return "none".equals(path) ? Component.translatable("gui.villagerplus.job_none") : de.villagerplus.village.Names.professionComponent(path);
+	}
+
+	/** Chat/overlay notice with a check or cross mark; a blank server message falls back to a translated default. */
+	static Component noticeComponent(boolean success, String message, String fallbackKey) {
+		return Component.literal(success ? "✓ " : "✕ ").append(message == null || message.isBlank() ? Component.translatable(fallbackKey) : Component.literal(message));
 	}
 
 	static String zoneButtonText(int kind) {
@@ -1289,9 +1311,9 @@ public class BoardScreen extends Screen {
 			value = Math.max(0, Math.min(JOBS.length - 1, job)) / (double)(JOBS.length - 1);
 			updateMessage();
 		}
-		@Override protected void updateMessage() { setMessage(Component.literal(JOBS[selectedJob()][1])); }
+		@Override protected void updateMessage() { setMessage(jobComponent(selectedJob())); }
 		@Override protected net.minecraft.network.chat.MutableComponent createNarrationMessage() {
-			return Component.translatable("gui.narrate.slider", Component.translatable(selectedResidentIsChild() ? "gui.villagerplus.board_narrate_apprentice_goal" : "gui.villagerplus.board_narrate_profession", JOBS[selectedJob()][1]));
+			return Component.translatable("gui.narrate.slider", Component.translatable(selectedResidentIsChild() ? "gui.villagerplus.board_narrate_apprentice_goal" : "gui.villagerplus.board_narrate_profession", jobComponent(selectedJob())));
 		}
 		@Override protected void applyValue() { updateMessage(); }
 		@Override public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {

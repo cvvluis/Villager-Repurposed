@@ -25,7 +25,7 @@ public abstract class VillagerNameplateMixin {
  private void vp$plate(Entity entity,EntityRenderState state,float partial,CallbackInfo ci) {
   if(!(entity instanceof Villager v) || !v.hasCustomName() || v.isInvisible() || state.distanceToCameraSq>576)return;
   state.nameTag=Component.literal("  "+v.getCustomName().getString()+"  ").withColor(0xFFE8AF);
-  state.scoreText=Component.literal((v.isBaby()?"Lehrling":Names.profession(v.getVillagerData().profession()))+" · "+"★".repeat(Math.max(1,Math.min(5,v.getVillagerData().level()))))
+  state.scoreText=Component.translatable("gui.villagerplus.nameplate_level",v.isBaby()?Component.translatable("gui.villagerplus.nameplate_apprentice"):Names.professionComponent(v.getVillagerData().profession()),"★".repeat(Math.max(1,Math.min(5,v.getVillagerData().level()))))
    .withColor(v.getHealth()<v.getMaxHealth()/2?0xF1A58A:0xBBD4B0);
   if(state.nameTagAttachment==null)state.nameTagAttachment=new net.minecraft.world.phys.Vec3(0,v.getBbHeight()+.5,0);
  }

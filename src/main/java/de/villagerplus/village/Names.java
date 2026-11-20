@@ -54,6 +54,32 @@ public final class Names {
 		return VILLAGE_PREFIX[group][r.nextInt(VILLAGE_PREFIX[group].length)] + VILLAGE_SUFFIX[group][r.nextInt(VILLAGE_SUFFIX[group].length)];
 	}
 
+	/** Translatable profession name for player-facing components (resolved on the client). */
+	public static net.minecraft.network.chat.Component professionComponent(Holder<VillagerProfession> prof) {
+		return professionComponent(prof.unwrapKey().map(k -> k.identifier().getPath()).orElse("none"));
+	}
+
+	public static net.minecraft.network.chat.Component professionComponent(String path) {
+		return switch (path) {
+			case "armorer" -> net.minecraft.network.chat.Component.translatable("gui.villagerplus.profession_armorer");
+			case "butcher" -> net.minecraft.network.chat.Component.translatable("gui.villagerplus.profession_butcher");
+			case "cartographer" -> net.minecraft.network.chat.Component.translatable("gui.villagerplus.profession_cartographer");
+			case "cleric" -> net.minecraft.network.chat.Component.translatable("gui.villagerplus.profession_cleric");
+			case "farmer" -> net.minecraft.network.chat.Component.translatable("gui.villagerplus.profession_farmer");
+			case "fisherman" -> net.minecraft.network.chat.Component.translatable("gui.villagerplus.profession_fisherman");
+			case "fletcher" -> net.minecraft.network.chat.Component.translatable("gui.villagerplus.profession_fletcher");
+			case "leatherworker" -> net.minecraft.network.chat.Component.translatable("gui.villagerplus.profession_leatherworker");
+			case "librarian" -> net.minecraft.network.chat.Component.translatable("gui.villagerplus.profession_librarian");
+			case "mason" -> net.minecraft.network.chat.Component.translatable("gui.villagerplus.profession_mason");
+			case "nitwit" -> net.minecraft.network.chat.Component.translatable("gui.villagerplus.profession_nitwit");
+			case "shepherd" -> net.minecraft.network.chat.Component.translatable("gui.villagerplus.profession_shepherd");
+			case "toolsmith" -> net.minecraft.network.chat.Component.translatable("gui.villagerplus.profession_toolsmith");
+			case "weaponsmith" -> net.minecraft.network.chat.Component.translatable("gui.villagerplus.profession_weaponsmith");
+			case "none" -> net.minecraft.network.chat.Component.translatable("gui.villagerplus.profession_none");
+			default -> net.minecraft.network.chat.Component.literal(path.isEmpty() ? path : Character.toUpperCase(path.charAt(0)) + path.substring(1).replace('_', ' '));
+		};
+	}
+
 	/** Deutscher Berufsname. */
 	public static String profession(Holder<VillagerProfession> prof) {
 		String key = prof.unwrapKey().map(k -> k.identifier().getPath()).orElse("none");

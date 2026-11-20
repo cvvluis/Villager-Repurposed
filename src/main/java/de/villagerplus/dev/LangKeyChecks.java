@@ -32,6 +32,13 @@ public final class LangKeyChecks {
 	private static final String LANG_DIR = "/assets/villagerplus/lang/";
 	private static final Pattern KEY = Pattern.compile("(?:message|gui|board|block|item|entity)\\.villagerplus\\.[a-z0-9_.]+");
 	private static final Pattern PLACEHOLDER = Pattern.compile("%(?:(\\d+)\\$)?([sd%])");
+	private static final Pattern LITERAL_TEXT = Pattern.compile("Component\\.literal\\(\"([^\"]*)\"");
+	/**
+	 * Files whose remaining {@code Component.literal} words are deliberate: dev/test commands, and names or sign text that
+	 * game logic compares as German strings (changing them would break existing worlds).
+	 */
+	private static final Set<String> LITERAL_ALLOWED = Set.of("StatusCommand.java", "Mining.java", "Caravan.java", "CaravanCampSecurity.java",
+		"Guests.java", "RailTransport.java", "Network.java", "VillageMessages.java", "ClientChecks.java");
 	private static int checks;
 
 	private LangKeyChecks() { }
@@ -96,6 +103,21 @@ public final class LangKeyChecks {
 			}
 		}
 		require(calls > 100, "argument counts of translatable calls were compared (" + calls + ")");
+		checkNoNewLiterals(root);
+	}
+
+	/** A player-facing text with real words must be a translation key; only allowlisted files may keep literal words. */
+	private static void checkNoNewLiterals(Path root) throws IOException {
+		Pattern word = Pattern.compile("[A-Za-zÄÖÜäöüß]{3,}");
+		try (var files = Files.walk(root)) {
+			for (Path file : (Iterable<Path>) files.filter(p -> p.toString().endsWith(".java"))::iterator) {
+				String name = file.getFileName().toString();
+				if (name.contains("Checks") || LITERAL_ALLOWED.contains(name) || file.toString().contains("/dev/")) continue;
+				Matcher m = LITERAL_TEXT.matcher(Files.readString(file, StandardCharsets.UTF_8));
+				while (m.find()) require(!word.matcher(m.group(1)).find(), name + " has a hard-coded player text, use Component.translatable: \"" + m.group(1) + "\"");
+			}
+		}
+		checks++;
 	}
 
 	/** Splits the argument list that starts right after an opening parenthesis; null if it cannot be parsed. */

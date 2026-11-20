@@ -123,8 +123,8 @@ public class VillagerPlusClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(de.villagerplus.net.NetworkActionResult.TYPE, (payload, context) -> context.client().execute(() -> {
 			if (context.client().gui.screen() instanceof BoardScreen open && open.acceptNetworkActionResult(payload)) return;
 			if (context.client().player != null) {
-				String notice = BoardScreen.networkActionNotice(payload.success(), payload.message());
-				context.client().player.sendSystemMessage(de.villagerplus.village.VillageMessages.format(Component.literal(notice)));
+				context.client().player.sendSystemMessage(de.villagerplus.village.VillageMessages.format(
+					BoardScreen.noticeComponent(payload.success(), payload.message(), "gui.villagerplus.board_no_village_reply")));
 			}
 		}));
 		ClientPlayNetworking.registerGlobalReceiver(de.villagerplus.net.QuotaData.TYPE, (payload, context) -> context.client().execute(() -> BoardScreen.quota = payload.rows()));

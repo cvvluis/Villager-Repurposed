@@ -248,8 +248,8 @@ final class ClientChecks {
 			field("zoneStartX").setInt(screen, zoneStartX); field("zoneStartZ").setInt(screen, zoneStartZ);
 			field("zoneEndX").setInt(screen, zoneEndX); field("zoneEndZ").setInt(screen, zoneEndZ);
 			field("zoneClipped").setBoolean(screen, zoneClipped); field("zoneNotice").set(screen, zoneNotice);
-			((Button)field("zoneButton").get(screen)).setMessage(Component.literal(zoneTool
-				? BoardScreen.zoneButtonText(zoneKind) : "Zone zeichnen"));
+			((Button)field("zoneButton").get(screen)).setMessage((zoneTool
+				? BoardScreen.zoneButtonComponent(zoneKind) : Component.translatable("gui.villagerplus.board_draw_zone")));
 			var visibility = BoardScreen.class.getDeclaredMethod("networkVisibility"); visibility.setAccessible(true); visibility.invoke(screen);
 		}
 	}
@@ -1508,8 +1508,8 @@ final class ClientChecks {
 			field("uiScale").setFloat(screen, originalScale);
 			field("drawingZone").setBoolean(screen, drawingZone);
 			field("draggingMap").setBoolean(screen, draggingMap);
-			((Button)field("zoneButton").get(screen)).setMessage(Component.literal(zoneTool
-				? BoardScreen.zoneButtonText(zoneKind) : "Zone zeichnen"));
+			((Button)field("zoneButton").get(screen)).setMessage((zoneTool
+				? BoardScreen.zoneButtonComponent(zoneKind) : Component.translatable("gui.villagerplus.board_draw_zone")));
 			((Button)field("zoneButton").get(screen)).active = zoneButtonActive;
 		}
 	}
