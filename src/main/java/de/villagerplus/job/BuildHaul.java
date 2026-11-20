@@ -117,7 +117,13 @@ public final class BuildHaul {
 		}
 		if (deliveryStand == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), deliveryStand)) return false;
 		Pickup pickup = cachedPickup(c, projectOrigin, projectDemand);
-		if (pickup == null) pickup = selectPickup(c, projectDemand);
+		if (pickup != null) {
+			Item cachedItem = pickup.item();
+			int held = leadReservation(c, projectOrigin).getOrDefault(cachedItem, 0);
+			Container cached = held > 0 ? Lager.publicContainerAt(c.level(), pickup.source()) : null;
+			if (cached != null && JobUtil.count(cached, stack -> stack.is(cachedItem)) <= held) pickup = null;
+		}
+		if (pickup == null) pickup = selectPickup(c, projectDemand, projectOrigin);
 		if (pickup == null) {
 			clearHaulCache(c.st());
 			return false;
@@ -417,6 +423,20 @@ public final class BuildHaul {
 		return pickup != null && pickup.source().equals(source) && pickup.item() == item;
 	}
 
+	static boolean selectsSourceForCheck(Ctx c, List<String> demand, BlockPos projectOrigin, BlockPos source, Item item) {
+		Pickup pickup = selectPickup(c, demand, projectOrigin);
+		return pickup != null && pickup.source().equals(source) && pickup.item() == item;
+	}
+
+	static int pickupCountForCheck(Ctx c, List<String> demand, BlockPos projectOrigin) {
+		Pickup pickup = selectPickup(c, demand, projectOrigin);
+		return pickup == null ? 0 : pickup.count();
+	}
+
+	static Map<Item, Integer> leadReservationForCheck(Ctx c, BlockPos projectOrigin) {
+		return leadReservation(c, projectOrigin);
+	}
+
 	private static boolean deliverInventoryCargo(Ctx c, BlockPos origin, BlockPos stand, Container siteStock, ItemStack cargoStack) {
 		if (stand == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), stand)) {
 			c.setActivity("wartet auf den geladenen Baustellenstand");
@@ -654,18 +674,63 @@ public final class BuildHaul {
 	}
 
 	private static Pickup selectPickup(Ctx c, List<String> projectDemand) {
+		return selectPickup(c, projectDemand, null);
+	}
+
+	/** A project that was started this long ago without any stock movement no longer holds the lead (its reservation lapses). */
+	static final long LEAD_STALE_TICKS = 9000L;
+
+	/**
+	 * Several civic projects used to share the public stock first come, first served, so none of them ever got a complete
+	 * shortage: with stone and timber for one plan per working day, two plans both stood at half. The project with the least
+	 * left to pay (the one that can actually finish) is the lead; what its open wish list asks for stays in the stock for it, and
+	 * the other projects take only what is above that. Houses and the like never lead; a lead that has not moved for
+	 * {@link #LEAD_STALE_TICKS} ticks (owner away, other material missing) gives the lead up so nobody waits on it.
+	 */
+	static Map<Item, Integer> leadReservation(Ctx c, BlockPos origin) {
+		if (origin == null || c.village() == null) return Map.of();
+		VillageData data = c.village().data();
+		long now = c.now();
+		VillageData.BuildProject lead = null;
+		long leadCost = Long.MAX_VALUE;
+		int civic = 0;
+		for (VillageData.BuildProject project : data.buildProjects) {
+			if (!project.active() || project.repair() || !civicType(project.type())) continue;
+			civic++;
+			if (now - project.progress() > LEAD_STALE_TICKS && !project.origin().equals(origin)) continue;
+			long cost = de.villagerplus.build.Builder.remainingCost(project.origin(), project.step());
+			if (lead == null || cost < leadCost) {
+				lead = project;
+				leadCost = cost;
+			}
+		}
+		if (civic < 2 || lead == null || lead.origin().equals(origin) || lead.wanted().isEmpty()) return Map.of();
+		if (now - lead.progress() > LEAD_STALE_TICKS) return Map.of();
+		Map<Item, Integer> reserved = new java.util.HashMap<>();
+		for (Demand demand : parseDemand(lead.wanted())) reserved.merge(demand.item(), demand.count(), Integer::sum);
+		return reserved;
+	}
+
+	private static boolean civicType(String type) {
+		return de.villagerplus.build.Blueprints.special(type) || type.equals(de.villagerplus.build.Blueprints.STORAGE)
+			|| type.equals(de.villagerplus.build.Blueprints.SCHOOL) || type.equals(de.villagerplus.build.Blueprints.TOWNHALL);
+	}
+
+	private static Pickup selectPickup(Ctx c, List<String> projectDemand, BlockPos origin) {
 		List<Demand> demands = parseDemand(projectDemand);
 		if (demands.isEmpty()) return null;
+		Map<Item, Integer> reserved = leadReservation(c, origin);
 		List<BlockPos> candidates = publicSourceCandidates(c);
 		for (Demand demand : demands) {
+			int held = reserved.getOrDefault(demand.item(), 0);
 			for (BlockPos source : stockedSources(candidates, candidate -> {
 				Container candidateStorage = Lager.publicContainerAt(c.level(), candidate);
 				return candidateStorage != null
-					&& JobUtil.count(candidateStorage, stack -> stack.is(demand.item())) > 0;
+					&& JobUtil.count(candidateStorage, stack -> stack.is(demand.item())) > held;
 			})) {
 				Container storage = Lager.publicContainerAt(c.level(), source);
-				if (storage == null || JobUtil.count(storage, stack -> stack.is(demand.item())) <= 0) continue;
-				int available = JobUtil.count(storage, stack -> stack.is(demand.item()));
+				if (storage == null || JobUtil.count(storage, stack -> stack.is(demand.item())) <= held) continue;
+				int available = JobUtil.count(storage, stack -> stack.is(demand.item())) - held;
 				return new Pickup(source, demand.item(), Math.min(demand.count(), available));
 			}
 		}

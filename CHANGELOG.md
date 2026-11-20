@@ -15,6 +15,7 @@ Alle genannten Versionen gelten für Fabric, Minecraft 26.2 und Java 25. Die JAR
 - **Placement and break effects.** Villager-placed blocks play the block's own placement sound with particles; dismantling ends each block with a break sound and particles.
 - **Larger walls.** The village wall radius cap is raised from 192 to 384 blocks. Saved plans stay backward compatible.
 - **Villager behaviour fixes.** Fence wood and starter seeds are gathered before the first field; guards keep watch from towers; long-route and mine-kit stalls are reported more clearly on the board; recipe, road and rail fixtures stabilised.
+- **Faster supply for the first civic plans.** Idle residents now also fell trees for a plan that lacks logs (up to four at a time, wood twin of the stone hands); logs a mason or helper cleared from a building site and kept in his pockets are handed in at the next routine delivery or before building; a plan that has not moved for 2400 ticks gets every mine lane staffed; with several civic projects the one with the least left to pay keeps what its wish list asks for in the public stock (a stalled lead gives it up after 9000 ticks); granary, storage and tool shed use wooden fences for their windows when no glass is in stock, and a hay bale becomes optional; a plan that also lacks cobblestone no longer swaps its planks for even more cobblestone after a wood stall.
 
 ## 0.11.0
 

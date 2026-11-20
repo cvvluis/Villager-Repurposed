@@ -1269,7 +1269,8 @@ public final class Builder {
 									d.planProgress = c.now();
 									ref.dirty();
 									supplierBusy = true;
-								} else if (trySwitchToRusticStone(c.level(), ref) || trySwitchToLocalWood(c.level(), ref) || trySwitchToStoneForWood(c.level(), ref)) {
+								} else if (trySwitchToRusticStone(c.level(), ref) || trySwitchToLocalWood(c.level(), ref) || trySwitchToFenceWindows(c.level(), ref)
+									|| trySwitchToStoneForWood(c.level(), ref)) {
 									PLAN_STALLS.remove(stallKey);
 									d.planProgress = c.now();
 									ref.dirty();
@@ -3651,6 +3652,9 @@ public final class Builder {
 			LOGGER.info("Villagers: Repurposed: Bauplan {} startet mit beschaffbarer Palette (Dorfpalette hat unbeschaffbar: {}; Palette jetzt: {})",
 				type, earlyPalette, constructionPaletteIds);
 		}
+		if (steps != null && source == null && utilityPlan(type) && (box == null || JobUtil.count(box, stack -> stack.is(Items.GLASS_PANE)) == 0)) {
+			steps = fenceWindows(steps, 0);
+		}
 		if (!type.equals(Blueprints.FARM)) {
 			// Der Auftrag wird sofort festgelegt (ein Haus, ein Platz); fehlendes Material wird waehrenddessen beschafft.
 			updateWanted(c, ref, type, steps, box, siteStock, cargoManifest, site, 0, true);
@@ -4608,6 +4612,83 @@ public final class Builder {
 		return List.copyOf(result);
 	}
 
+	/**
+	 * Blocks still to be paid from {@code fromStep} on (a sum of step costs), or {@link Long#MAX_VALUE} while the project's steps are
+	 * not cached. Used to decide which of several civic projects the public stock serves first.
+	 */
+	public static long remainingCost(BlockPos origin, int fromStep) {
+		List<Step> steps = STEPS.get(origin.asLong());
+		if (steps == null) return Long.MAX_VALUE;
+		long sum = 0;
+		for (int i = Math.max(0, fromStep); i < steps.size(); i++) {
+			Step st = steps.get(i);
+			if (st.free() || st.optional() || st.linkedTo() != null || st.cost() <= 0 || st.item() == null) continue;
+			sum += st.cost();
+		}
+		return sum;
+	}
+
+	/**
+	 * Glass panes become wooden fences from {@code fromStep} on (or optional openings when the plan holds no fence block): the village
+	 * has no sand, furnace or glass maker, so a window waited for glass that only a caravan could bring, and a finished shell stood
+	 * unbuilt for days for its last four panes. A decorative hay bale (nine wheat) becomes an optional step for the same reason.
+	 */
+	static List<Step> fenceWindows(List<Step> steps, int fromStep) {
+		Item fence = null;
+		for (Step step : steps) {
+			if (step.item() != null && !step.free() && Block.byItem(step.item()).defaultBlockState().is(net.minecraft.tags.BlockTags.WOODEN_FENCES)) {
+				fence = step.item();
+				break;
+			}
+		}
+		Item fenceItem = fence;
+		Block fenceBlock = fence == null ? null : Block.byItem(fence);
+		List<Step> result = new ArrayList<>(steps.size());
+		for (int i = 0; i < steps.size(); i++) {
+			Step step = steps.get(i);
+			if (i < fromStep || step.free() || step.optional() || step.linkedTo() != null || step.cost() <= 0 || step.tag() != null
+				|| (step.item() != Items.GLASS_PANE && step.item() != Items.HAY_BLOCK)) {
+				result.add(step);
+				continue;
+			}
+			if (step.item() == Items.HAY_BLOCK || fenceBlock == null) {
+				result.add(new Step(step.pos(), step.item(), null, step.cost(), true, step.linkedTo(), step.make()));
+				continue;
+			}
+			result.add(new Step(step.pos(), fenceItem, null, step.cost(), step.optional(), step.linkedTo(), ignored -> fenceBlock.defaultBlockState()));
+		}
+		return List.copyOf(result);
+	}
+
+	private static boolean utilityPlan(String type) {
+		return type.equals(Blueprints.GRANARY) || type.equals(Blueprints.STORAGE) || type.equals(Blueprints.TOOLSHED);
+	}
+
+	/** After a long stall on glass panes (nobody in the village can make glass) the remaining windows are built from wood instead. */
+	private static boolean trySwitchToFenceWindows(ServerLevel level, VillageRef ref) {
+		VillageData d = ref.data();
+		if (!d.hasPlan() || d.planOrigin.isEmpty() || (!generated(d.planType) && d.planSource.isEmpty())) return false;
+		var missing = PlanSupplyOrder.shortages(d.wanted);
+		if (!missing.containsKey(Items.GLASS_PANE) && !missing.containsKey(Items.HAY_BLOCK)) return false;
+		long key = d.planOrigin.get().asLong();
+		List<Step> current = STEPS.get(key);
+		if (current == null || current.isEmpty()) return false;
+		List<Step> converted = fenceWindows(current, d.planStep);
+		if (converted.equals(current)) return false;
+		STEPS.put(key, converted);
+		d.wanted.clear();
+		LOGGER.info("Villagers: Repurposed: Bauplan {} baut die Fenster ab jetzt aus Holz (kein Glas im Dorf herstellbar)", d.planType);
+		return true;
+	}
+
+	/** True when the open wish list still asks for cobblestone or a cobblestone shape (stairs, slabs, walls). */
+	static boolean stoneShort(VillageData d) {
+		for (Item item : PlanSupplyOrder.shortages(d.wanted).keySet()) {
+			if (BuiltInRegistries.ITEM.getKey(item).getPath().startsWith("cobblestone")) return true;
+		}
+		return false;
+	}
+
 	/** Last resort after a long stall on wood: build the remaining full blocks from cobblestone instead. */
 	private static boolean trySwitchToStoneForWood(ServerLevel level, VillageRef ref) {
 		VillageData d = ref.data();
@@ -4619,6 +4700,10 @@ public final class Builder {
 			if (probe.is(net.minecraft.tags.ItemTags.PLANKS) || probe.is(net.minecraft.tags.ItemTags.LOGS) || stoneForWoodShape(item) != null) needsWood = true;
 		}
 		if (!needsWood) return false;
+		// Stone is the scarcer trade (three mine lanes, a kit per section) while the idle residents can fell trees in parallel:
+		// while the plan also lacks cobblestone, turning its planks and logs into more cobblestone would only deepen the real shortage
+		// and, because the stem is village-wide, put every later plan on stone as well.
+		if (stoneShort(d)) return false;
 		BlockPos origin = d.planOrigin.get();
 		long key = origin.asLong();
 		List<Step> current = STEPS.get(key);
@@ -4969,6 +5054,12 @@ public final class Builder {
 		}
 		if (steps != null && de.villagerplus.village.VillageAdmin.rusticStone(ref)) steps = rusticStone(steps, 0);
 		if (steps != null && WOODLESS_STEM.equals(de.villagerplus.village.VillageAdmin.woodStem(ref))) steps = woodlessStone(steps, 0);
+		// Storage and granary do not need glazing, and nobody in a young village can make glass: their windows are wooden from the start
+		// unless the public chest already holds panes.
+		if (steps != null && utilityPlan(d.planType)
+			&& (ref.chest(level) == null || JobUtil.count(ref.chest(level), stack -> stack.is(Items.GLASS_PANE)) == 0)) {
+			steps = fenceWindows(steps, 0);
+		}
 		STEPS.put(origin.asLong(), steps);
 		return steps;
 	}
@@ -5151,6 +5242,13 @@ public final class Builder {
 					d.planProgress = c.now();
 					ref.dirty();
 					return false;
+				}
+				// The cleared trees ended up in the owner's pockets: hand the logs the plan asks for in before building on.
+				var strayLogs = de.villagerplus.job.WoodHands.strayPlanLogs(c);
+				if (strayLogs != null && JobUtil.depositSurplus(c, strayLogs, 1, 0)) {
+					c.setActivity("bringt Bauholz zur Dorfkiste");
+					d.planProgress = c.now();
+					return true;
 				}
 			}
 		}

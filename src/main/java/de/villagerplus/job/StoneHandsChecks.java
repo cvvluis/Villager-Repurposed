@@ -60,6 +60,11 @@ public final class StoneHandsChecks {
 			// 1. Pure rules.
 			check(StoneHands.handsFor(0) == 1 && StoneHands.handsFor(16) == 1 && StoneHands.handsFor(17) == 2
 				&& StoneHands.handsFor(33) == 3 && StoneHands.handsFor(1000) == StoneHands.MAX_HANDS, "hands wanted: one per 16 missing cobblestones, 1..3"); checks++;
+			check(StoneHands.handsForStall(5, 0L) == 1 && StoneHands.handsForStall(5, StoneHands.STALL_FULL_HANDS - 1) == 1
+				&& StoneHands.handsForStall(5, StoneHands.STALL_FULL_HANDS) == StoneHands.MAX_HANDS
+				&& StoneHands.handsForStall(0, 99999L) == 1, "a stalled plan with a stone shortage staffs every mine lane"); checks++;
+			check(WoodHands.handsFor(0) == 1 && WoodHands.handsFor(8) == 1 && WoodHands.handsFor(9) == 2
+				&& WoodHands.handsFor(1000) == WoodHands.MAX_HANDS, "wood hands wanted: one per 8 missing logs, 1..4"); checks++;
 			check(de.villagerplus.build.Builder.shouldHoldForSpecial(true, true, true, true)
 				&& de.villagerplus.build.Builder.shouldHoldForSpecial(true, true, false, false)
 				&& !de.villagerplus.build.Builder.shouldHoldForSpecial(true, true, false, true)
@@ -160,6 +165,7 @@ public final class StoneHandsChecks {
 			// demand: 26 cobblestone missing -> two hands
 			chest.clearContent();
 			check(PlanStoneSupply.villageCobbleShortage(data, chest) == 26 && StoneHands.handsFor(26) == 2, "fixture shortage asks for two hands"); checks++;
+			data.planProgress = now; // the plan has just moved: the size of the shortage alone decides
 
 			check(!StoneHands.work(ctx(level, w1, s1, ref, now)), "a resident who was never idle does not become a hand"); checks++;
 			s1.idleSince = now - 100L;
@@ -173,6 +179,15 @@ public final class StoneHandsChecks {
 			s3.idleSince = now - 1000L;
 			check(!StoneHands.work(ctx(level, w3, s3, ref, now + 2)) && !StoneHands.claimed(w3.getUUID(), now + 2)
 				&& level.getBlockState(p3).is(Blocks.STONE), "a third resident is not taken on: the shortage asks for two hands"); checks++;
+
+			// A plan that has not moved for a while is served by the whole mine crew whatever the size of its shortage.
+			data.planProgress = now - StoneHands.STALL_FULL_HANDS;
+			Villager w4 = worker(level, workers, SurfaceStone.standFor(level, p4));
+			JobState s4 = new JobState();
+			s4.idleSince = now - 1000L;
+			check(StoneHands.work(ctx(level, w4, s4, ref, now + 2)) && StoneHands.claimed(w4.getUUID(), now + 2)
+				&& level.getBlockState(p4).isAir(), "a stalled plan takes on the third hand although its shortage asks for two"); checks++;
+			data.planProgress = now;
 
 			// A carrier whose claim is not (or no longer) there still delivers a useful load: the cap on hands never strands cobblestone.
 			w3.getInventory().setItem(0, new ItemStack(Items.COBBLESTONE, 14));

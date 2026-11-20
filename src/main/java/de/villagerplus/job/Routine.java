@@ -415,6 +415,11 @@ public final class Routine {
 		if (c.village() == null) {
 			return false;
 		}
+		var stray = WoodHands.strayPlanLogs(c);
+		if (stray != null && JobUtil.depositSurplus(c, stray, 1, 0)) {
+			c.setActivity("bringt Bauholz zur Dorfkiste");
+			return true;
+		}
 		var produce = job.produce();
 		int keep = job.keep();
 		int carried = JobUtil.count(c.v().getInventory(), produce);

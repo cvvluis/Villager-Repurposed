@@ -31,6 +31,7 @@ public final class PaletteFallbackChecks {
 	public static int run(ServerLevel level, BlockPos bed) {
 		int checks = lookAlikeChecks();
 		checks += planChecks();
+		checks += fenceWindowChecks();
 		checks += fixtureChecks(level, bed);
 		return checks;
 	}
@@ -58,6 +59,34 @@ public final class PaletteFallbackChecks {
 		return new Palette(Blocks.DEEPSLATE_BRICKS, Blocks.COBBLESTONE, Blocks.SPRUCE_LOG, Blocks.DEEPSLATE_BRICKS,
 			Blocks.SPRUCE_PLANKS, Blocks.DEEPSLATE_BRICK_STAIRS, Blocks.DEEPSLATE_BRICK_SLAB, Blocks.GLASS_PANE,
 			Blocks.SPRUCE_PLANKS, Blocks.SPRUCE_DOOR, Blocks.SPRUCE_FENCE);
+	}
+
+	/** Windows of a utility plan that nobody can glaze become wooden fences (or optional openings); everything else is untouched. */
+	private static int fenceWindowChecks() {
+		int checks = 0;
+		BlockPos o = new BlockPos(0, 64, 0);
+		Step cobble = Step.block(o, Blocks.COBBLESTONE);
+		Step glass = Step.block(o.east(), Blocks.GLASS_PANE);
+		Step fence = Step.block(o.east(2), Blocks.SPRUCE_FENCE);
+		Step hay = Step.block(o.east(3), Blocks.HAY_BLOCK);
+		Step doneGlass = Step.block(o.east(4), Blocks.GLASS_PANE);
+		List<Step> plan = List.of(doneGlass, cobble, glass, fence, hay);
+		List<Step> out = Builder.fenceWindows(plan, 1);
+		require(out.size() == plan.size() && out.get(0) == doneGlass && out.get(1) == cobble && out.get(3) == fence,
+			"steps before the cursor and other blocks stay as they are"); checks++;
+		require(out.get(2).item() == Blocks.SPRUCE_FENCE.asItem() && !out.get(2).optional() && out.get(2).cost() == 1
+			&& out.get(2).make().apply(Blocks.SPRUCE_FENCE).is(Blocks.SPRUCE_FENCE), "an unpaid glass pane becomes the plan's wooden fence"); checks++;
+		require(out.get(4).item() == Blocks.HAY_BLOCK.asItem() && out.get(4).optional(), "a hay bale becomes an optional step"); checks++;
+		List<Step> noFence = Builder.fenceWindows(List.of(glass), 0);
+		require(noFence.get(0).item() == Blocks.GLASS_PANE.asItem() && noFence.get(0).optional(),
+			"without a fence block in the plan the window is an optional opening"); checks++;
+		require(Builder.fenceWindows(List.of(cobble, fence), 0).equals(List.of(cobble, fence)), "a plan without windows is unchanged"); checks++;
+		de.villagerplus.village.VillageData wishes = new de.villagerplus.village.VillageData();
+		wishes.wanted.add("minecraft:spruce_log#3");
+		require(!Builder.stoneShort(wishes), "a timber wish list is no stone shortage"); checks++;
+		wishes.wanted.add("minecraft:cobblestone_stairs#4");
+		require(Builder.stoneShort(wishes), "cobblestone shapes count as a stone shortage (no woodless switch then)"); checks++;
+		return checks;
 	}
 
 	private static int planChecks() {

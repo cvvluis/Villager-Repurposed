@@ -74,6 +74,14 @@ public final class StoneHands {
 		return Math.max(1, Math.min(MAX_HANDS, (Math.max(0, shortage) + 15) / 16));
 	}
 
+	/** A plan without progress for this long gets every lane of the mine staffed, whatever the size of the shortage. */
+	static final long STALL_FULL_HANDS = 2400L;
+
+	/** {@link #handsFor} for a plan that has not moved for {@code stalledFor} ticks: the whole mine crew, not one hand per 16 stones. */
+	static int handsForStall(int shortage, long stalledFor) {
+		return shortage > 0 && stalledFor >= STALL_FULL_HANDS ? MAX_HANDS : handsFor(shortage);
+	}
+
 	/** Residents who may help: adults who are neither the village's guard nor a shopkeeper, a nitwit or busy as a carrier. */
 	static boolean eligible(Ctx c) {
 		Villager v = c.v();
@@ -113,7 +121,7 @@ public final class StoneHands {
 		if (!claimed) {
 			if (c.st().idleSince == 0L || now - c.st().idleSince < IDLE_BEFORE_CLAIM) return false;
 			int shortage = PlanStoneSupply.villageCobbleShortage(ref.data(), box);
-			if (activeClaims(now) >= handsFor(shortage)) return false;
+			if (activeClaims(now) >= handsForStall(shortage, ref.data().planProgress > 0L ? now - ref.data().planProgress : 0L)) return false;
 		}
 		boolean busy = false;
 		// Only as many mine route holders as the mine has stands: a hand never takes a lane from a miner.

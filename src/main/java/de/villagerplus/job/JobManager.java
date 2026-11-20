@@ -566,6 +566,7 @@ public final class JobManager {
 			if (!busy) busy = first ? job.secondary(ctx) : job.primary(ctx);
 			// Last offer: a resident whose own job found nothing to do lends a hand at the stone supply of waiting plans.
 			if (!busy && job != MASON && job != GUARD && !badWeather) busy = StoneHands.work(ctx);
+			if (!busy && job != MASON && job != GUARD && !badWeather) busy = WoodHands.work(ctx);
 		}
 		if (badWeather && isWorkPeriod(phase) && job.indoorsDuringStorm() && hasExposedWeatherTarget(level, v)) {
 			// Mixed indoor roles may fetch or assist outside. Let them work only while covered and

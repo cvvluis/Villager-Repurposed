@@ -92,6 +92,38 @@ public final class BuildHaulChecks {
 					"the same production tick delivers the real item into project stock and clears its carrier reservation"); checks++;
 			}
 
+			if (barrel != null) {
+				// Two civic projects share the public stock: the one with the open wish list that leads keeps what it asks for.
+				List<VillageData.BuildProject> savedProjects = List.copyOf(villageData.buildProjects);
+				try {
+					BlockPos leadOrigin = origin.offset(60, 0, 0).immutable(), otherOrigin = origin.offset(-60, 0, 0).immutable();
+					long now = level.getGameTime();
+					villageData.buildProjects.clear();
+					villageData.buildProjects.add(new VillageData.BuildProject("granary", leadOrigin, 0, 0, 0, Optional.empty(), now,
+						Optional.empty(), 0L, List.of("minecraft:cobblestone#6"), VillageData.ProjectHaul.empty(), Optional.empty(),
+						Optional.empty(), Optional.empty(), false, false));
+					villageData.buildProjects.add(new VillageData.BuildProject("storage", otherOrigin, 0, 0, 0, Optional.empty(), now,
+						Optional.empty(), 0L, List.of("minecraft:cobblestone#10"), VillageData.ProjectHaul.empty(), Optional.empty(),
+						Optional.empty(), Optional.empty(), false, false));
+					barrel.clearContent();
+					barrel.setItem(0, new ItemStack(Items.COBBLESTONE, 8));
+					check(BuildHaul.leadReservationForCheck(context, leadOrigin).isEmpty()
+						&& BuildHaul.leadReservationForCheck(context, otherOrigin).getOrDefault(Items.COBBLESTONE, 0) == 6,
+						"the leading civic project reserves its open wish list against the other project"); checks++;
+					check(BuildHaul.pickupCountForCheck(context, List.of("minecraft:cobblestone#10"), otherOrigin) == 2
+						&& BuildHaul.pickupCountForCheck(context, List.of("minecraft:cobblestone#10"), leadOrigin) == 8,
+						"the other project takes only what is above the reservation, the lead takes the stock"); checks++;
+					villageData.buildProjects.set(0, new VillageData.BuildProject("granary", leadOrigin, 0, 0, 0, Optional.empty(),
+						now - BuildHaul.LEAD_STALE_TICKS - 1L, Optional.empty(), 0L, List.of("minecraft:cobblestone#6"),
+						VillageData.ProjectHaul.empty(), Optional.empty(), Optional.empty(), Optional.empty(), false, false));
+					check(BuildHaul.leadReservationForCheck(context, otherOrigin).isEmpty(), "a lead that has not moved for a long time gives the reservation up"); checks++;
+					barrel.clearContent();
+				} finally {
+					villageData.buildProjects.clear();
+					villageData.buildProjects.addAll(savedProjects);
+				}
+			}
+
 			ItemStack original = new ItemStack(Items.OAK_PLANKS, 5);
 			CompoundTag unrelated = new CompoundTag();
 			unrelated.putString("keep_me", "payload");
