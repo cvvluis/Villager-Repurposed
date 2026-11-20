@@ -4137,6 +4137,11 @@ public final class Builder {
 		return List.copyOf(merged);
 	}
 
+	/** The window conversion a real utility plan gets while the public chest holds no glass pane, for fixtures that seed the plan cache by hand. */
+	public static List<Step> fenceWindowsForCheck(List<Step> steps) {
+		return fenceWindows(steps, 0);
+	}
+
 	/** Run the real caravan callback against a supplied in-flight plan, restoring the transient cache afterward. */
 	public static List<Step> caravanVisitedForCheck(ServerLevel level, VillageRef ref, Container box, List<Step> steps) {
 		long key = ref.data().planOrigin.orElseThrow().asLong();

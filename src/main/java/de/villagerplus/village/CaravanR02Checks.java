@@ -405,7 +405,9 @@ public final class CaravanR02Checks {
 				}
 			}
 			if (lateUnavailableIndex < 48) throw new IllegalStateException("R02 caravan fixture plan has no paid step beyond the 48-step window");
-			List<Step> withLateObsidian = new ArrayList<>(detectedPlan);
+			// Since 2d6179a a generated granary built from an empty public chest already has wooden-fence windows and an optional hay
+			// bale; the cached plan the callback compares against must look the same, or the palette switch is rolled back.
+			List<Step> withLateObsidian = new ArrayList<>(Builder.fenceWindowsForCheck(detectedPlan));
 			Step lateDemand = withLateObsidian.get(lateUnavailableIndex);
 			withLateObsidian.set(lateUnavailableIndex, new Step(lateDemand.pos(), Blocks.OBSIDIAN.asItem(), null,
 				lateDemand.cost(), lateDemand.optional(), lateDemand.linkedTo(), ignored -> Blocks.OBSIDIAN.defaultBlockState()));
