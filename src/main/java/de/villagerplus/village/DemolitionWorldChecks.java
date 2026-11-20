@@ -292,6 +292,7 @@ public final class DemolitionWorldChecks {
 			}
 			addedBarrel.setItem(0, new ItemStack(Items.EMERALD, 6));
 			addedBarrel.setChanged();
+			passed += proveDetection(level, ref, origin, built, steps);
 			String accepted = Demolition.request(level, ref, origin);
 			List<Demolition.Job> queuedJobs = Demolition.jobs(ref);
 			check(accepted.startsWith("Abriss angeordnet") && queuedJobs.size() == 1
@@ -334,6 +335,75 @@ public final class DemolitionWorldChecks {
 			ref.data().buildProjects.clear(); ref.data().buildProjects.addAll(oldProjects);
 			ref.dirty();
 		}
+	}
+
+	/** G11: villagers detect a ruined village building themselves; protected/unregistered/standing buildings are left alone. */
+	private static int proveDetection(ServerLevel level, VillageRef ref, BlockPos origin, Built built, List<Step> steps) {
+		int n = 0;
+		List<ZonePolicy.Zone> zonesBefore = ref.bellEntity().getAttached(VillagerPlus.ZONES);
+		List<Built> buildingsBefore = ref.bellEntity().getAttached(VillagerPlus.BUILDINGS);
+		var box = de.villagerplus.build.Furnisher.boxOf(steps);
+		long t = level.getGameTime() + 1_000_000L;
+		Demolition.resetDetectionForTest();
+		try {
+			// 1. A Sperrzone over the ruin: never detected, however long it is watched.
+			ref.bellEntity().setAttached(VillagerPlus.ZONES, List.of(new ZonePolicy.Zone("det-protected", "protected",
+				box.minX(), box.minZ(), box.maxX(), box.maxZ())));
+			boolean zoned = false;
+			for (int i = 0; i < 6; i++) zoned |= !Demolition.detectRuined(level, ref, t + i * 500L).isEmpty();
+			check(!zoned, "G11 a ruin inside a Sperrzone is never queued for demolition"); n++;
+			ref.bellEntity().setAttached(VillagerPlus.ZONES, List.of());
+			// 2. A building the village never registered (a player build) is never considered.
+			Demolition.resetDetectionForTest();
+			ref.bellEntity().setAttached(VillagerPlus.BUILDINGS, List.of());
+			boolean foreign = false;
+			for (int i = 0; i < 6; i++) foreign |= !Demolition.detectRuined(level, ref, t + 10_000L + i * 500L).isEmpty();
+			check(!foreign, "G11 an unregistered (player) building is never queued for demolition"); n++;
+			ref.bellEntity().setAttached(VillagerPlus.BUILDINGS, List.of(built));
+			// 3. A standing building is not a ruin.
+			var stoneSteps = new java.util.ArrayList<BlockPos>();
+			for (Step st : steps) if (!st.free() && !st.optional() && level.getBlockState(st.pos()).isAir()) stoneSteps.add(st.pos());
+			for (BlockPos p : stoneSteps) level.setBlock(p, Blocks.COBBLESTONE.defaultBlockState(), FLAGS);
+			Demolition.resetDetectionForTest();
+			boolean standing = false;
+			for (int i = 0; i < 6; i++) standing |= !Demolition.detectRuined(level, ref, t + 20_000L + i * 500L).isEmpty();
+			check(!standing, "G11 an intact village building is not detected as removable"); n++;
+			for (BlockPos p : stoneSteps) level.setBlock(p, Blocks.AIR.defaultBlockState(), FLAGS);
+			// 4. The ruin needs a second sighting after the confirm time, then is returned exactly once.
+			Demolition.resetDetectionForTest();
+			long u = t + 40_000L;
+			boolean first = !Demolition.detectRuined(level, ref, u).isEmpty();
+			boolean early = !Demolition.detectRuined(level, ref, u + 250L).isEmpty();
+			boolean confirmed = Demolition.detectRuined(level, ref, u + Demolition.RUIN_CONFIRM_TICKS + 250L)
+				.stream().anyMatch(b -> b.origin().equals(origin));
+			check(!first && !early && confirmed, "G11 a ruined village building is queued only after a confirming second sighting"); n++;
+			// 5. End to end: a mason who finds no order detects the ruin and starts the normal demolition (crack stages follow in B03).
+			Demolition.resetDetectionForTest();
+			var type = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getValue(net.minecraft.resources.Identifier.parse("minecraft:villager"));
+			var v = (net.minecraft.world.entity.npc.villager.Villager) type.spawn(level, origin.above(), net.minecraft.world.entity.EntitySpawnReason.COMMAND);
+			if (v == null) throw new IllegalStateException("DEMOLITION WORLD CHECK FAILED: cannot spawn detecting mason");
+			v.addTag("vp090_fixture");
+			v.setNoAi(true);
+			try {
+				var state = new de.villagerplus.job.JobState();
+				var mem = v.getAttachedOrCreate(VillagerPlus.MEMORY);
+				long w = u + 100_000L;
+				Demolition.work(new de.villagerplus.job.Ctx(level, v, state, mem, ref, w), ref);
+				boolean queuedEarly = !Demolition.jobs(ref).isEmpty();
+				Demolition.work(new de.villagerplus.job.Ctx(level, v, state, mem, ref, w + Demolition.RUIN_CONFIRM_TICKS + 250L), ref);
+				boolean queued = Demolition.jobs(ref).size() == 1 && Demolition.jobs(ref).get(0).origin().equals(origin);
+				check(!queuedEarly && queued, "G11 the mason's work loop detects the ruin and starts the demolition job on its own"); n++;
+			} finally {
+				de.villagerplus.job.Anim.cancelBreaking(v);
+				v.discard();
+			}
+		} finally {
+			Demolition.resetDetectionForTest();
+			ref.bellEntity().setAttached(VillagerPlus.DEMOLITION, List.of());
+			if (zonesBefore == null) ref.bellEntity().removeAttached(VillagerPlus.ZONES); else ref.bellEntity().setAttached(VillagerPlus.ZONES, zonesBefore);
+			if (buildingsBefore == null) ref.bellEntity().removeAttached(VillagerPlus.BUILDINGS); else ref.bellEntity().setAttached(VillagerPlus.BUILDINGS, buildingsBefore);
+		}
+		return n;
 	}
 
 	/** B03: drives the real Demolition.work loop and proves tool swing/hit sounds, crack stages 0-9 and break sound+particles are issued. */
