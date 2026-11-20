@@ -538,17 +538,54 @@ public final class Woodcutting {
 		return moving;
 	}
 
-	/** Logs the wish list still lacks in the public chest: wished logs plus a quarter of the wished planks, minus the logs already there. */
+	/**
+	 * Logs the wish list still lacks in the public chest: wished logs plus a quarter of the wished planks, plus the planks behind
+	 * wished wooden shapes (stairs, slabs, doors, fences ...) that the chest does not hold yet, minus the logs already there.
+	 * A granary asks for dozens of spruce stairs and nothing else: counting only logs and planks left the shortage at zero, so
+	 * no resident was called to help with the timber while the plan stood still.
+	 */
 	static int planLogShortfall(List<String> wanted, Container box) {
 		int need = 0;
+		int shapePlanksTimesTwo = 0;
 		for (String request : wanted) {
 			if (request == null || request.isBlank()) continue;
 			String[] fields = request.split("#", 2);
 			int count = positiveCount(fields);
 			if (fields[0].endsWith("_planks")) need += (count + 3) / 4;
 			else if (fields[0].endsWith("_log")) need += count;
+			else {
+				int perItemTimesTwo = woodShapePlanksTimesTwo(fields[0]);
+				if (perItemTimesTwo > 0) {
+					net.minecraft.world.item.Item item = BuiltInRegistries.ITEM.getOptional(net.minecraft.resources.Identifier.tryParse(fields[0])).orElse(null);
+					int held = item == null ? 0 : JobUtil.count(box, stack -> stack.is(item));
+					shapePlanksTimesTwo += Math.max(0, count - held) * perItemTimesTwo;
+				}
+			}
 		}
+		need += (shapePlanksTimesTwo + 7) / 8;
 		return Math.max(0, need - JobUtil.count(box, stack -> stack.is(ItemTags.LOGS)));
+	}
+
+	/** Planks (times two) that one piece of this wooden shape costs: stairs 1.5, slab 0.5, door 2, trapdoor 3, fence 1.5, gate 4 (two planks and four sticks), plate 2, button 1. */
+	static int woodShapePlanksTimesTwo(String itemId) {
+		if (itemId == null || !itemId.startsWith("minecraft:")) return 0;
+		String path = itemId.substring("minecraft:".length());
+		if (path.startsWith("stripped_") || path.endsWith("_planks") || path.endsWith("_log")) return 0;
+		if (path.endsWith("_stairs")) return woodPath(path, "_stairs") ? 3 : 0;
+		if (path.endsWith("_slab")) return woodPath(path, "_slab") ? 1 : 0;
+		if (path.endsWith("_fence_gate")) return woodPath(path, "_fence_gate") ? 8 : 0;
+		if (path.endsWith("_fence")) return woodPath(path, "_fence") ? 3 : 0;
+		if (path.endsWith("_trapdoor")) return woodPath(path, "_trapdoor") ? 6 : 0;
+		if (path.endsWith("_door")) return woodPath(path, "_door") ? 4 : 0;
+		if (path.endsWith("_pressure_plate")) return woodPath(path, "_pressure_plate") ? 4 : 0;
+		if (path.endsWith("_button")) return woodPath(path, "_button") ? 2 : 0;
+		return 0;
+	}
+
+	/** Only shapes of a wood species count (the stem has a matching log), never stone or metal shapes. */
+	private static boolean woodPath(String path, String suffix) {
+		String stem = path.substring(0, path.length() - suffix.length());
+		return BuiltInRegistries.ITEM.containsKey(net.minecraft.resources.Identifier.withDefaultNamespace(stem + "_planks"));
 	}
 
 	/**

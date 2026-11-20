@@ -205,9 +205,10 @@ public final class RecipeCrafting {
 		if (workPos != null && !JobUtil.approachLong(c, workPos, 3.0)) return true;
 		if (!commit(chest, input, output, remainder)) return false;
 		int extra = 0;
-		if (output.is(net.minecraft.tags.ItemTags.PLANKS)) {
+		if (output.is(net.minecraft.tags.ItemTags.PLANKS) || (allowPlanBatch && planDemand(c, output.getItem()) > 0)) {
 			// One stop at the table turns the logs at hand into planks (every batch is a real recipe transaction on the chest stock),
 			// as far as the plan's request or the stock cap allows, instead of one walk and one pause per four planks.
+			// A shape the plan asks for (fifty stairs for a roof) is crafted the same way: one stop per batch of the request, not one per recipe.
 			while (extra < MAX_PLANK_BATCHES - 1) {
 				CraftingInput more = inputFor(recipe, chest, c.level());
 				if (more == null) break;

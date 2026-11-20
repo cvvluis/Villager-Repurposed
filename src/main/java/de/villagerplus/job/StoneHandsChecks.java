@@ -19,6 +19,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
+import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
@@ -65,6 +66,20 @@ public final class StoneHandsChecks {
 				&& StoneHands.handsForStall(0, 99999L) == 1, "a stalled plan with a stone shortage staffs every mine lane"); checks++;
 			check(WoodHands.handsFor(0) == 1 && WoodHands.handsFor(8) == 1 && WoodHands.handsFor(9) == 2
 				&& WoodHands.handsFor(1000) == WoodHands.MAX_HANDS, "wood hands wanted: one per 8 missing logs, 1..4"); checks++;
+			// The log shortage counts the planks behind wished wooden shapes (a granary asks for dozens of stairs and nothing else).
+			SimpleContainer noStock = new SimpleContainer(27);
+			check(Woodcutting.planLogShortfall(List.of("minecraft:spruce_stairs#50"), noStock) == 19
+				&& Woodcutting.planLogShortfall(List.of("minecraft:spruce_slab#50"), noStock) == 7
+				&& Woodcutting.planLogShortfall(List.of("minecraft:cobblestone_stairs#50", "minecraft:stone_slab#9"), noStock) == 0,
+				"fifty spruce stairs lack nineteen logs, fifty slabs seven, stone shapes none");
+			checks++;
+			SimpleContainer stairsStock = new SimpleContainer(27);
+			stairsStock.setItem(0, new ItemStack(Items.SPRUCE_STAIRS, 20));
+			stairsStock.setItem(1, new ItemStack(Items.SPRUCE_LOG, 5));
+			check(Woodcutting.planLogShortfall(List.of("minecraft:spruce_stairs#50"), stairsStock) == 7
+				&& Woodcutting.planLogShortfall(List.of("minecraft:spruce_planks#8", "minecraft:spruce_log#3", "minecraft:spruce_stairs#4"), noStock) == 7,
+				"stairs already in the chest and logs in stock are deducted, planks and logs still count as before");
+			checks++;
 			check(de.villagerplus.build.Builder.shouldHoldForSpecial(true, true, true, true)
 				&& de.villagerplus.build.Builder.shouldHoldForSpecial(true, true, false, false)
 				&& !de.villagerplus.build.Builder.shouldHoldForSpecial(true, true, false, true)
@@ -220,6 +235,24 @@ public final class StoneHandsChecks {
 			w1.getInventory().clearContent();
 			check(!StoneHands.work(ctx(level, w1, s1, ref, now + 20)) && !StoneHands.claimed(w1.getUUID(), now + 20),
 				"without a shortage the hand stops and keeps no claim"); checks++;
+
+			// A resident who carries logs the plan asks for hands them in at once although the cap of hands is reached
+			// (a cap limits new felling, never a load already in the pockets).
+			WoodHands.resetForTest();
+			data.buildProjects.clear();
+			data.putBuildProject(project("granary", granary, List.of("minecraft:spruce_stairs#50"), false));
+			data.syncPrimaryProjectView();
+			chest.clearContent();
+			check(Woodcutting.planNeedsWood(data) && Woodcutting.planLogShortfall(data.wanted, chest) == 19 && WoodHands.handsFor(19) == 3,
+				"a stairs-only wish list asks for timber (19 logs, three hands)"); checks++;
+			Villager logCarrier = worker(level, workers, SurfaceStone.standFor(level, p3));
+			logCarrier.getInventory().setItem(0, new ItemStack(Items.SPRUCE_LOG, 12));
+			WoodHands.markClaimsForTest(WoodHands.MAX_HANDS, now + 40);
+			JobState logState = new JobState();
+			logState.idleSince = now - 1000L;
+			check(WoodHands.work(ctx(level, logCarrier, logState, ref, now + 40)) && logState.activity.length() > 0,
+				"an unclaimed resident with plan logs in his pockets hands them in although every hand is taken (activity '" + logState.activity + "')"); checks++;
+			WoodHands.resetForTest();
 
 			// 5. A mason without a mine breaks exposed stone for the plans (he used to idle on "no mine, no pickaxe").
 			data.putBuildProject(project("storage", storage, List.of("minecraft:cobblestone#20"), false));

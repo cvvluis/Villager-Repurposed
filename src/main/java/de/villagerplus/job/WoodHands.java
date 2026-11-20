@@ -34,6 +34,11 @@ public final class WoodHands {
 		CLAIMS.clear();
 	}
 
+	/** Test fixture: {@code count} other residents hold a claim at {@code now}. */
+	static void markClaimsForTest(int count, long now) {
+		for (int i = 0; i < count; i++) CLAIMS.put(UUID.nameUUIDFromBytes(("claim" + i).getBytes()), now);
+	}
+
 	static int claimCount(long now) {
 		return activeClaims(now);
 	}
@@ -103,6 +108,12 @@ public final class WoodHands {
 			return false;
 		}
 		boolean claimed = claimed(id, now);
+		// Logs the plan asks for that this resident carries (cleared trees, an abandoned claim) are handed in at once, whether or
+		// not the cap on hands leaves room for him: the cap limits new felling, never a load already in the pockets.
+		if (carried > 0 && !claimed && !midTree && JobUtil.depositSurplus(c, requested, 1, 0)) {
+			c.setActivity("bringt Bauholz zur Dorfkiste");
+			return true;
+		}
 		if (!claimed && !midTree) {
 			if (c.st().idleSince == 0L || now - c.st().idleSince < IDLE_BEFORE_CLAIM) return false;
 			if (shortage <= 0 || activeClaims(now) >= handsFor(shortage)) return false;
