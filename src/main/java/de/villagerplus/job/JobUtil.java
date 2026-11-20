@@ -739,6 +739,7 @@ public final class JobUtil {
 			for (var entry : carriedByItem.entrySet()) toMove += Math.min(entry.getValue(), roomByItem.getOrDefault(entry.getKey(), 0));
 			toMove = Math.min(toMove, plannedBeforeArrival);
 		}
+		int toMoveAtStart = toMove;
 		for (int i = 0; i < inv.getContainerSize() && toMove > 0; i++) {
 			ItemStack s = inv.getItem(i);
 			if (s.isEmpty() || !matches.test(s)) {
@@ -756,14 +757,13 @@ public final class JobUtil {
 			s.shrink(moved);
 			toMove -= moved;
 			if (c.village() != null) roomByItem.computeIfPresent(s.getItem(), (item, room) -> Math.max(0, room - moved));
-			if (!rest.isEmpty()) {
-				break;
-			}
+			// A stack the depot refuses (saplings, a full slot run) must not keep the other stacks of the load in the pockets:
+			// the next stack may well fit (a refused sapling hand used to hold twenty cobblestones back for a whole delay).
 		}
 		inv.setChanged();
 		swing(c.v());
 		c.st().cooldownUntil = c.now() + 100;
-		if (toMove > 0) {
+		if (toMove > 0 && toMove >= toMoveAtStart) {
 			// Alles voll (Dorfkiste und ggf. Lager): nichts wird weggeworfen. Spaeter erneut versuchen statt alle Arbeit zu blockieren;
 			// das Dorf baut bei voller Kiste vorrangig einen Lagerschuppen.
 			c.st().depositBlockedUntil = c.now() + 2400;

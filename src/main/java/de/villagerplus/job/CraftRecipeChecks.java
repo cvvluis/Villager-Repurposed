@@ -71,6 +71,41 @@ public final class CraftRecipeChecks {
 				"loaded plank ingredients craft sticks even when the legacy ingredient differs");
 			checks++;
 
+			// A shape the plan asks for is crafted in batches at one stop of the table (fifty roof stairs used to cost thirteen stops).
+			box.clearContent();
+			box.setItem(0, new ItemStack(Items.SPRUCE_PLANKS, 18));
+			var data = ref.data();
+			var savedProjects = List.copyOf(data.buildProjects);
+			try {
+				data.buildProjects.clear();
+				data.putBuildProject(new de.villagerplus.village.VillageData.BuildProject("granary", at, 0, 0, 0, java.util.Optional.empty(), 1L,
+					java.util.Optional.empty(), 0L, List.of("minecraft:spruce_stairs#12"), de.villagerplus.village.VillageData.ProjectHaul.empty(),
+					java.util.Optional.empty(), java.util.Optional.empty(), java.util.Optional.empty(), false, false));
+				data.syncPrimaryProjectView();
+				JobState stairsState = new JobState();
+				Ctx stairsCtx = new Ctx(level, villager, stairsState, villager.getAttachedOrCreate(VillagerPlus.MEMORY), ref, level.getGameTime() + 900);
+				boolean stairsCrafted = RecipeCrafting.craft(stairsCtx, box, null, stack -> stack.is(Items.SPRUCE_STAIRS), 12);
+				check(stairsCrafted && JobUtil.count(box, stack -> stack.is(Items.SPRUCE_STAIRS)) == 12
+					&& JobUtil.count(box, stack -> stack.is(Items.SPRUCE_PLANKS)) == 0
+					&& stairsState.cooldownUntil >= stairsCtx.now() + 100 + RecipeCrafting.PLANK_BATCH_PAUSE * 2,
+					"a requested shape is crafted in one stop up to the plan's request (12 stairs from 18 planks, not 4)");
+				checks++;
+				box.clearContent();
+				box.setItem(0, new ItemStack(Items.SPRUCE_PLANKS, 18));
+				data.buildProjects.clear();
+				data.clearPlanViewForProjectSlot();
+				stairsState = new JobState();
+				stairsCtx = new Ctx(level, villager, stairsState, villager.getAttachedOrCreate(VillagerPlus.MEMORY), ref, level.getGameTime() + 950);
+				RecipeCrafting.craft(stairsCtx, box, null, stack -> stack.is(Items.SPRUCE_STAIRS), 12);
+				check(JobUtil.count(box, stack -> stack.is(Items.SPRUCE_STAIRS)) == 4,
+					"without a plan request a shape is still crafted one recipe at a time");
+				checks++;
+			} finally {
+				data.buildProjects.clear();
+				for (var saved : savedProjects) data.putBuildProject(saved);
+				data.syncPrimaryProjectView();
+			}
+
 			// With only the stale ingredient present, a normal job recipe must not use a manual fallback.
 			box.clearContent();
 			box.setItem(0, new ItemStack(Items.FLINT, 1));
