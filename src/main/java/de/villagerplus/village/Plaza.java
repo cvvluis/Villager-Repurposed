@@ -902,11 +902,13 @@ public final class Plaza {
   return findCentralSite(level,center,bell,seed,0L);
  }
  static BlockPos findCentralSite(ServerLevel level,BlockPos center,BlockPos bell,long seed,long attempt) {
+  return findCentralSite(level,center,bell,seed,attempt,villageAt(level,bell));
+ }
+ static BlockPos findCentralSite(ServerLevel level,BlockPos center,BlockPos bell,long seed,long attempt,VillageRef context) {
   final int samples=192; final double maxRadius=48.0;
   // A retry must sample new terrain; repeating the same 192 positions can never
   // discover a suitable gap between buildings that the first pass missed.
   double phase=(seed&0xffffL)*(Math.PI*2.0/65536.0)+attempt*2.399963229728653;
-  VillageRef context=villageAt(level,bell);
   for(int i=0;i<samples;i++) {
    double fraction=(i+0.5)/samples;
    double radius=2.0+Math.sqrt(fraction)*maxRadius;
@@ -945,6 +947,7 @@ public final class Plaza {
   // saved footprint reserved so a later plaza retry cannot pave over the paid shop site.
   if(Market.reserved(level,context,at,half+clearance)) return null;
   if(protectedZoneIntersects(context,at,half+clearance)) return null;
+  if(Development.civicOverlapsExpansionParcel(Roads.preparedExpansionParcel(context).orElse(null),at,half+clearance)) return null;
   // Keep a real buffer around every registered civic, work, and home point.
   BlockPos site=at;
   BlockPos bell=context==null?null:context.bell();

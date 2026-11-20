@@ -3412,7 +3412,11 @@ public final class Builder {
 				String selectedType = type;
 				int selectedVariant = variant;
 				Architect.Design selectedDesign = design;
+				final int padReach = half + ZoneAwareSites.CLEARANCE;
+				var expansionPad = type.equals(Blueprints.TOWNHALL) ? de.villagerplus.village.Roads.preparedExpansionParcel(ref).orElse(null) : null;
 				java.util.function.Predicate<BlockPos> fits = p -> {
+					// The town hall is central but must leave the prepared house expansion pad free.
+					if (de.villagerplus.village.Development.civicOverlapsExpansionParcel(expansionPad, p, padReach)) return false;
 					return siteCandidateFits(c, ref, selectedType, selectedVariant, selectedDesign, style, p, ref.bell());
 				};
 				if (type.equals(Blueprints.TOWNHALL)) {
