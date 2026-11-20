@@ -359,7 +359,7 @@ public final class CaravanR02Checks {
 			setup.donkey().setPos(at.east(9).getX() + 0.5, at.getY(), at.east(9).getZ() + 0.5);
 			setup.porter().setPos(at.east(7).getX() + 0.5, at.getY(), at.east(7).getZ() + 0.5);
 			jobState.cooldownUntil = 0;
-			for (int tick = 0; tick < 2400 && count(setup.donkey(), Items.STONE_BRICKS) > 0; tick++) {
+			for (int tick = 0; tick < 2400 && (count(setup.donkey(), Items.STONE_BRICKS) > 0 || Caravan.carryingFor(setup.porter())); tick++) {
 				setup.porter().tick();
 				setup.donkey().tick();
 				Caravan.porterDelivery(new Ctx(level, setup.porter(), jobState, memory, ref, now + 3000 + tick));

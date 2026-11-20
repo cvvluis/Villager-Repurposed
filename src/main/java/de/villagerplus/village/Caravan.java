@@ -194,6 +194,11 @@ public final class Caravan {
 		BlockPos donkeyStand;
 		boolean pickedUp;
 		boolean waitingAtDepot;
+		/** Goods the porter carries in his hands (removed from the donkey chest); the only copy while non-empty. */
+		ItemStack held = ItemStack.EMPTY;
+		boolean planDelivery, fetching;
+		long heldSince, fetchSince;
+		BlockPos heldFrom;
 		UUID traderLeash;
 		long followProgressAt;
 		long nextDonkeyRouteAt;
@@ -1573,6 +1578,7 @@ public final class Caravan {
 			c.st().clearTarget(); c.st().bestDist=0.0; c.st().lastMoveAt=0; c.st().stuckCount=0;
 		}
 		if (!carry.dimension.equals(c.level().dimension())) { releasePorter(c.level(),carry.porter); return false; }
+		if (!carry.held.isEmpty()) return porterDepositLeg(c,carry,ref);
 		Entity sourceEntity=c.level().getEntity(carry.donkey);
 		if (!(sourceEntity instanceof net.minecraft.world.entity.animal.equine.Donkey donkey) || !donkey.isAlive()
 			|| !donkey.entityTags().contains(villageTag(ref.bell()))) { releasePorter(c.level(),carry.porter); return false; }
@@ -1618,6 +1624,7 @@ public final class Caravan {
 			c.st().walkStart=0; c.st().bestDist=0; c.st().stuckCount=0; c.st().target=null; c.st().targetEntity=null;
 		}
 
+		if(carry.fetching) return porterFetchLeg(c,carry,ref,donkey,source);
 		DeliveryTarget target=deliveryTarget(c.level(),ref,carry.expected);
 		BlockPos targetPos=target==null?null:target.pos(); Container destination=target==null?null:target.container();
 		BlockPos stand=null;
@@ -1702,45 +1709,122 @@ public final class Caravan {
 			|| donkey.position().distanceToSqr(net.minecraft.world.phys.Vec3.atBottomCenterOf(target.pos()))>25.0) {
 			releasePorter(c.level(),carry.porter); return true;
 		}
+		// K04 hand-carry leg: the porter leaves the stand, takes the real stack out of the donkey chest
+		// into his own hands (the only copy while he carries it) and walks it to the depot.
+		carry.fetching=true; carry.fetchSince=c.now(); c.st().clearTarget();
+		return true;
+	}
+
+	/** First half of the K04 hand-carry: walk to the donkey, move the stack from its chest into the porter's hands. */
+	private static boolean porterFetchLeg(Ctx c,PorterCarry carry,VillageRef ref,net.minecraft.world.entity.animal.equine.Donkey donkey,
+			net.minecraft.world.entity.SlotAccess source) {
+		DeliveryTarget target=deliveryTarget(c.level(),ref,source.get());
+		if(target==null||!target.pos().equals(carry.target)||c.now()-carry.fetchSince>1200L) {
+			releasePorter(c.level(),carry.porter); c.st().cooldownUntil=c.now()+200; return true;
+		}
+		int allowed;
 		if("treasury".equals(target.depot())) {
 			long room=Long.MAX_VALUE-Network.treasuryEmeralds(ref);
-			int allowed=(int)Math.min(Math.min((long)carry.count,source.get().getCount()),room);
-			if(!source.get().is(Items.EMERALD)||allowed<=0) { releasePorter(c.level(),carry.porter); return true; }
-			ItemStack offered=source.get().copyWithCount(allowed), after=source.get().copy(); after.shrink(allowed);
-			if(!source.set(after)) { releasePorter(c.level(),carry.porter); return true; }
-			if(!Network.creditTreasuryEmeralds(ref,allowed)) {
-				restoreCargoSlot(source,offered); releasePorter(c.level(),carry.porter); return true;
+			if(!source.get().is(Items.EMERALD)) { releasePorter(c.level(),carry.porter); return true; }
+			allowed=(int)Math.min(Math.min((long)carry.count,source.get().getCount()),room);
+		} else {
+			allowed=Math.min(carry.count,Math.min(source.get().getCount(),StockPolicy.deliveryRoom(c.level(),ref,source.get().getItem())));
+			int planRoom = planStockRoomInChest(c.level(), ref, source.get().getItem());
+			if (planRoom > 0) allowed = Math.min(allowed, planRoom);
+		}
+		if(allowed<=0) { releasePorter(c.level(),carry.porter); return true; }
+		c.setActivity("holt die Fracht vom Esel");
+		if(c.v().distanceToSqr(donkey)>4.0) {
+			if(!isPorterStand(c.level(),donkey.blockPosition(),c.st().target)) {
+				BlockPos pickupStand=reachablePorterStand(c,donkey.blockPosition());
+				if(pickupStand==null) { releasePorter(c.level(),carry.porter); c.st().cooldownUntil=c.now()+200; return true; }
+				c.st().target=pickupStand; c.st().targetEntity=null; c.st().walkStart=0; c.st().bestDist=0.0; c.st().lastMoveAt=0; c.st().stuckCount=0;
 			}
-			c.mem().jobsDone++;
-			c.level().playSound(null,target.pos(),net.minecraft.sounds.SoundEvents.CHEST_CLOSE,net.minecraft.sounds.SoundSource.NEUTRAL,0.7F,1.1F);
-			c.level().sendParticles(net.minecraft.core.particles.ParticleTypes.HAPPY_VILLAGER,c.v().getX(),c.v().getY()+1.2,c.v().getZ(),4,0.25,0.2,0.25,0.0);
-			JobUtil.swing(c.v()); releasePorter(c.level(),carry.porter); c.st().clearTarget(); c.st().cooldownUntil=c.now()+20;
+			if(!JobUtil.approachLong(c,c.st().target,1.5)) {
+				if(c.st().cooldownUntil>c.now()) releasePorter(c.level(),carry.porter);
+				return true;
+			}
+			if(c.v().distanceToSqr(donkey)>12.25) return true;
+		}
+		boolean planDelivery = !"treasury".equals(target.depot()) && (isPlanFreightSlot(donkey, carry.slot, source.get().getItem())
+			|| planStockNeeded(c.level(), ref, source.get().getItem()));
+		ItemStack taken=source.get().copyWithCount(allowed); ItemStack after=source.get().copy(); after.shrink(allowed);
+		if(!source.set(after)) { releasePorter(c.level(),carry.porter); return true; }
+		carry.held=taken; carry.fetching=false; carry.planDelivery=planDelivery; carry.heldSince=c.now(); carry.heldFrom=donkey.blockPosition();
+		syncCargoVisual(c.level(),donkey); JobUtil.swing(c.v());
+		c.level().playSound(null,donkey.blockPosition(),net.minecraft.sounds.SoundEvents.ITEM_PICKUP,net.minecraft.sounds.SoundSource.NEUTRAL,0.6F,1.0F);
+		c.st().clearTarget(); c.st().walkStart=0; c.st().bestDist=0; c.st().stuckCount=0;
+		return true;
+	}
+
+	/** True while the porter carries real goods in his own hands (they are no longer in the donkey chest). */
+	public static boolean handCarrying(Villager villager) {
+		PorterCarry carry=PORTER_CARRIES.get(villager.getUUID());
+		return carry!=null&&!carry.held.isEmpty();
+	}
+
+	public static int heldCount(Villager villager) {
+		PorterCarry carry=PORTER_CARRIES.get(villager.getUUID());
+		return carry==null?0:carry.held.getCount();
+	}
+
+	/** One visible copy of the stack the porter is really carrying; empty when he carries nothing. */
+	public static ItemStack heldFreight(Villager villager) {
+		PorterCarry carry=PORTER_CARRIES.get(villager.getUUID());
+		return carry==null||carry.held.isEmpty()?ItemStack.EMPTY:carry.held.copyWithCount(1);
+	}
+
+	/** Second half of the K04 hand-carry: walk the held stack to the depot stand and put it in. */
+	private static boolean porterDepositLeg(Ctx c,PorterCarry carry,VillageRef ref) {
+		ItemStack held=carry.held;
+		DeliveryTarget target=deliveryTarget(c.level(),ref,held);
+		if(target==null||!target.pos().equals(carry.target)||c.now()-carry.heldSince>2400L) {
+			releasePorter(c.level(),carry.porter); c.st().cooldownUntil=c.now()+200; return true;
+		}
+		boolean treasury="treasury".equals(target.depot());
+		BlockPos stand=isPorterStand(c.level(),target.pos(),c.st().target)?c.st().target:reachablePorterStand(c,target.pos());
+		if(stand==null) { releasePorter(c.level(),carry.porter); c.st().cooldownUntil=c.now()+200; return true; }
+		if(!stand.equals(c.st().target)) { c.st().target=stand; c.st().targetEntity=null; c.st().walkStart=0; c.st().bestDist=0; c.st().lastMoveAt=0; c.st().stuckCount=0; }
+		c.setActivity("trägt die Fracht "+switch(target.depot()) {
+			case "treasury" -> "zur Dorfkasse";
+			case de.villagerplus.build.Blueprints.GRANARY -> "zum Kornspeicher";
+			case de.villagerplus.build.Blueprints.TOOLSHED -> "zur Werkzeugkammer";
+			default -> target.pos().equals(ref.chestPos(c.level())) ? "zur Dorfkiste" : "ins Lager";
+		});
+		if(!JobUtil.approachLong(c,stand,1.5)) {
+			if(c.st().cooldownUntil>c.now()) releasePorter(c.level(),carry.porter);
 			return true;
 		}
-		int allowed=Math.min(carry.count,Math.min(source.get().getCount(),StockPolicy.deliveryRoom(c.level(),ref,source.get().getItem())));
-		int planRoom = planStockRoomInChest(c.level(), ref, source.get().getItem());
-		if (planRoom > 0) allowed = Math.min(allowed, planRoom);
-		if(allowed<=0) { releasePorter(c.level(),carry.porter); return true; }
-		boolean planDelivery = isPlanFreightSlot(donkey, carry.slot, source.get().getItem())
-			|| planStockNeeded(c.level(), ref, source.get().getItem());
-		ItemStack offered=source.get().copyWithCount(allowed); ItemStack after=source.get().copy(); after.shrink(allowed);
-		if(!source.set(after)) { releasePorter(c.level(),carry.porter); return true; }
-		ItemStack rest;
-		try {
-			rest = planDelivery
-				? net.minecraft.world.level.block.entity.HopperBlockEntity.addItem(null, target.container(), offered.copy(), null)
-				: StockPolicy.insertInto(c.level(),ref,target.depot(),target.container(),offered.copy());
+		if(c.v().position().distanceToSqr(net.minecraft.world.phys.Vec3.atBottomCenterOf(stand))>2.25) return true;
+		int allowed;
+		if(treasury) {
+			long room=Long.MAX_VALUE-Network.treasuryEmeralds(ref);
+			allowed=held.is(Items.EMERALD)?(int)Math.min((long)held.getCount(),room):0;
+		} else {
+			allowed=Math.min(held.getCount(),StockPolicy.deliveryRoom(c.level(),ref,held.getItem()));
+			int planRoom=planStockRoomInChest(c.level(),ref,held.getItem());
+			if(planRoom>0) allowed=Math.min(allowed,planRoom);
 		}
-		catch(RuntimeException ex) { restoreCargoSlot(source,offered); releasePorter(c.level(),carry.porter); throw ex; }
-		int moved=allowed-rest.getCount();
-		if(!rest.isEmpty()&&!restoreCargoSlot(source,rest)) {
-			var drop=new net.minecraft.world.entity.item.ItemEntity(c.level(),target.pos().getX()+0.5,target.pos().getY()+1.0,target.pos().getZ()+0.5,rest.copy());
-			drop.setDefaultPickUpDelay(); c.level().addFreshEntity(drop);
-			org.slf4j.LoggerFactory.getLogger("villagerplus").error("Karawanen-Restfracht konnte nicht in den Esel-Slot zurückgelegt werden: {} bei {}",rest,target.pos());
+		if(allowed<=0) { releasePorter(c.level(),carry.porter); c.st().cooldownUntil=c.now()+200; return true; }
+		int moved;
+		if(treasury) {
+			if(!Network.creditTreasuryEmeralds(ref,allowed)) { releasePorter(c.level(),carry.porter); return true; }
+			moved=allowed;
+		} else {
+			ItemStack offered=held.copyWithCount(allowed), rest;
+			try {
+				rest=carry.planDelivery
+					? net.minecraft.world.level.block.entity.HopperBlockEntity.addItem(null,target.container(),offered.copy(),null)
+					: StockPolicy.insertInto(c.level(),ref,target.depot(),target.container(),offered.copy());
+			} catch(RuntimeException ex) { releasePorter(c.level(),carry.porter); throw ex; }
+			moved=allowed-rest.getCount();
 		}
-		if(moved<=0) { releasePorter(c.level(),carry.porter); return true; }
-		if (planDelivery) {
-			clearPlanFreightTagIfEmpty(donkey, offered.getItem(), carry.slot);
+		if(moved<=0) { releasePorter(c.level(),carry.porter); c.st().cooldownUntil=c.now()+200; return true; }
+		ItemStack remainder=held.copy(); remainder.shrink(moved);
+		carry.held=remainder; // whatever did not fit goes back to the donkey in releasePorter
+		Entity donkeyEntity=c.level().getEntity(carry.donkey);
+		if(carry.planDelivery&&donkeyEntity instanceof net.minecraft.world.entity.animal.equine.Donkey donkey) {
+			clearPlanFreightTagIfEmpty(donkey, held.getItem(), carry.slot);
 			Container materialDepot = ref.chest(c.level());
 			if (materialDepot != null && !hasAnyPlanFreight(c.level(), ref)
 				&& planShortagesSatisfied(c.level(), ref, materialDepot)) {
@@ -1752,6 +1836,33 @@ public final class Caravan {
 		c.level().sendParticles(net.minecraft.core.particles.ParticleTypes.HAPPY_VILLAGER,c.v().getX(),c.v().getY()+1.2,c.v().getZ(),4,0.25,0.2,0.25,0.0);
 		JobUtil.swing(c.v()); releasePorter(c.level(),carry.porter); c.st().clearTarget(); c.st().cooldownUntil=c.now()+20;
 		return true;
+	}
+
+	/** Puts goods the porter still holds back into the donkey chest, or drops them; never loses or duplicates them. */
+	private static void returnHeldFreight(ServerLevel level,PorterCarry carry) {
+		ItemStack rest=carry.held; carry.held=ItemStack.EMPTY;
+		if(rest.isEmpty()) return;
+		Entity donkey=level.getEntity(carry.donkey);
+		if(donkey instanceof net.minecraft.world.entity.animal.equine.Donkey d&&d.isAlive()) {
+			var slot=d.getSlot(500+carry.slot);
+			if(slot!=null&&restoreCargoSlot(slot,rest)) return;
+			for(int i=2;i<17&&!rest.isEmpty();i++) {
+				var access=d.getSlot(500+i); if(access==null) continue;
+				ItemStack current=access.get();
+				if(current.isEmpty()) { if(access.set(rest.copy())) rest=ItemStack.EMPTY; }
+				else if(ItemStack.isSameItemSameComponents(current,rest)&&current.getCount()<current.getMaxStackSize()) {
+					int add=Math.min(rest.getCount(),current.getMaxStackSize()-current.getCount());
+					ItemStack grown=current.copy(); grown.grow(add);
+					if(access.set(grown)) rest.shrink(add);
+				}
+			}
+			if(rest.isEmpty()) return;
+		}
+		Entity porter=level.getEntity(carry.porter);
+		var at=porter!=null?porter.position():donkey!=null?donkey.position():net.minecraft.world.phys.Vec3.atBottomCenterOf(carry.target);
+		var drop=new net.minecraft.world.entity.item.ItemEntity(level,at.x,at.y+0.5,at.z,rest.copy());
+		drop.setDefaultPickUpDelay(); level.addFreshEntity(drop);
+		org.slf4j.LoggerFactory.getLogger("villagerplus").warn("Karawanen-Trageware nicht beim Esel unterzubringen, fallengelassen: {} bei {}",rest,at);
 	}
 
 	private static boolean canAccept(Container box,ItemStack stack) {
@@ -1965,6 +2076,7 @@ public final class Caravan {
 
 	private static void releasePorter(ServerLevel level,UUID porter) {
 		PorterCarry carry=PORTER_CARRIES.remove(porter); if(carry==null) return;
+		returnHeldFreight(level,carry);
 		if(level.getEntity(porter) instanceof Villager v) {
 			if(PORTER_DIAGNOSTICS.size()>=256) PORTER_DIAGNOSTICS.clear();
 			PORTER_DIAGNOSTICS.put(porter,describeDelivery(level,v,carry));
