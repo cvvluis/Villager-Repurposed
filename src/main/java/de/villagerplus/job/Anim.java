@@ -329,8 +329,6 @@ public final class Anim {
 
 	/** Shows one visual copy of the real cargo only while its tagged caravan donkey is leashed to this porter. */
 	private static ItemStack carriedCaravanFreight(Villager porter) {
-		ItemStack inHands = de.villagerplus.village.Caravan.heldFreight(porter);
-		if (!inHands.isEmpty()) return inHands;
 		if (!(porter.level() instanceof ServerLevel level)) return ItemStack.EMPTY;
 		AABB search = porter.getBoundingBox().inflate(12.0);
 		Donkey donkey = level.getEntitiesOfClass(Donkey.class, search, candidate -> candidate.isAlive()
