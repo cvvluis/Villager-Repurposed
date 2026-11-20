@@ -168,6 +168,23 @@ public final class StockPolicyChecks {
 			check(passed, total(communal, Items.OAK_LOG) == 5 && total(inventory, Items.OAK_LOG) == 6,
 				"other communal insert paths also honor remaining target capacity and retain leftovers");
 
+			// Mixed inventory: the first stack (food) must not decide the depot for the stone behind it.
+			ref.bellEntity().setAttached(VillagerPlus.STOCK_POLICIES, Map.of());
+			communal.clearContent();
+			inventory.clearContent();
+			inventory.setItem(0, new ItemStack(Items.BREAD, 10));
+			inventory.setItem(1, new ItemStack(Items.ANDESITE, 20));
+			java.util.function.Predicate<ItemStack> foodOrStone = stack -> stack.is(Items.BREAD) || stack.is(Items.ANDESITE);
+			for (int round = 0; round < 4 && (total(inventory, Items.BREAD) > 0 || total(inventory, Items.ANDESITE) > 0); round++) {
+				ctx.st().depositBlockedUntil = 0L;
+				JobUtil.depositSurplus(ctx, foodOrStone, 1, 0);
+			}
+			check(passed, total(inventory, Items.ANDESITE) == 0 && total(inventory, Items.BREAD) == 0
+					&& total(communal, Items.ANDESITE) + total(communal, Items.BREAD) > 0,
+				"a mixed inventory delivers every kind of goods to its own depot instead of keeping stone behind a food stack");
+			communal.clearContent();
+			inventory.clearContent();
+
 			ref.bellEntity().setAttached(VillagerPlus.STOCK_POLICIES, Map.of(
 				"minecraft:oak_log", StockPolicy.MAX_TARGET + 1,
 				"bad%identifier", 4,

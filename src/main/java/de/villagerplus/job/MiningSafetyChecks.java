@@ -87,6 +87,13 @@ public final class MiningSafetyChecks {
             data.chest=java.util.Optional.of(stockPos);
             de.villagerplus.village.Villages.noteChunk(level.getChunkAt(bellPos));
             VillageData.Mine profileMine=new VillageData.Mine(e,Direction.EAST.get2DDataValue(),0,e.getY()-2,false);
+            check(Mining.galleryStructure(profileMine,new BlockPos(e.getX()+1,e.getY()-2,e.getZ()))
+                    &&Mining.galleryStructure(profileMine,new BlockPos(e.getX()+1,e.getY()-2,e.getZ()+2))
+                    &&Mining.galleryStructure(profileMine,new BlockPos(e.getX()+1,e.getY()+2,e.getZ()-1))
+                    &&!Mining.galleryStructure(profileMine,new BlockPos(e.getX()+1,e.getY()-2,e.getZ()+3))
+                    &&!Mining.galleryStructure(profileMine,new BlockPos(e.getX()+1,e.getY(),e.getZ()+1))
+                    &&!Mining.galleryStructure(profileMine,new BlockPos(e.getX()-1,e.getY()-2,e.getZ())),
+                "ore veins never take the floor or roof course of the gallery, but still take ore beside it");checks++;
             Direction mineSide=Direction.EAST.getClockWise();
             for (int i=0;i<10;i++) {
                 int baseY=-Math.min(i,2);
@@ -514,8 +521,30 @@ public final class MiningSafetyChecks {
             level.setBlock(terraceFloor.below(),Blocks.STONE.defaultBlockState(),2);
             check(Mining.oneBlockTerraceGap(level,terraceFloor),"single dry supported terrace gap is repairable");checks++;
             level.setBlock(terraceFloor.below(),Blocks.AIR.defaultBlockState(),2);
-            check(!Mining.oneBlockTerraceGap(level,terraceFloor),"deeper cavity is rejected rather than bridged as a terrace");checks++;
+            level.setBlock(terraceFloor.below(2),Blocks.STONE.defaultBlockState(),2);
+            check(Mining.floorGapDepth(level,terraceFloor)==2&&Mining.oneBlockTerraceGap(level,terraceFloor),
+                "two-block cave pocket under a lane is a repairable gap");checks++;
+            v.getInventory().setItem(0,new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.COBBLESTONE,5));
+            check(Mining.patchFloor(c,terraceFloor)&&level.getBlockState(terraceFloor).is(Blocks.COBBLESTONE)
+                    &&v.getInventory().getItem(0).getCount()==4&&level.getBlockState(terraceFloor.below()).isAir()
+                    &&!Mining.oneBlockTerraceGap(level,terraceFloor),
+                "cave pocket is bridged with exactly one real cobblestone");checks++;
+            level.setBlock(terraceFloor,Blocks.AIR.defaultBlockState(),2);
+            level.setBlock(terraceFloor.below(2),Blocks.AIR.defaultBlockState(),2);
+            level.setBlock(terraceFloor.below(3),Blocks.STONE.defaultBlockState(),2);
+            check(Mining.floorGapDepth(level,terraceFloor)==3,"three-block pocket is the deepest repairable gap");checks++;
+            level.setBlock(terraceFloor.below(3),Blocks.AIR.defaultBlockState(),2);
+            level.setBlock(terraceFloor.below(4),Blocks.STONE.defaultBlockState(),2);
+            check(!Mining.oneBlockTerraceGap(level,terraceFloor)&&!Mining.patchFloor(c,terraceFloor)&&level.getBlockState(terraceFloor).isAir(),
+                "deeper cavity is rejected rather than bridged as a terrace");checks++;
+            level.setBlock(terraceFloor.below(3),Blocks.STONE.defaultBlockState(),2);
+            level.setBlock(terraceFloor.below(),Blocks.WATER.defaultBlockState(),2);
+            check(!Mining.oneBlockTerraceGap(level,terraceFloor)&&!Mining.patchFloor(c,terraceFloor),
+                "pocket holding water is never bridged");checks++;
             level.setBlock(terraceFloor.below(),Blocks.STONE.defaultBlockState(),2);
+            level.setBlock(terraceFloor.below(2),Blocks.STONE.defaultBlockState(),2);
+            level.setBlock(terraceFloor.below(3),Blocks.STONE.defaultBlockState(),2);
+            level.setBlock(terraceFloor.below(4),Blocks.STONE.defaultBlockState(),2);
             v.getInventory().setItem(0,new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.COBBLESTONE));
             check(Mining.patchFloor(c,terraceFloor)
                     && level.getBlockState(terraceFloor).is(Blocks.COBBLESTONE)

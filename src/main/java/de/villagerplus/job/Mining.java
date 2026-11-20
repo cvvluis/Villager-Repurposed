@@ -658,7 +658,8 @@ public final class Mining {
 			}
 			int y0 = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 			// An entrance high on a hill (or in a hollow) far from the village level is a poor walk for everyone: keep it reachable.
-			if (Math.abs(y0 - ref.bell().getY()) > 10) {
+			// Each failed round tolerates a steeper walk (+3 per round, up to 19): the entrance only has to be reachable, not level.
+			if (Math.abs(y0 - ref.bell().getY()) > 10 + 3 * Math.min(failedRounds, 3)) {
 				why[1]++;
 				continue;
 			}
@@ -672,7 +673,10 @@ public final class Mining {
 				why[3]++;
 				continue;
 			}
-			if (ref.data().extra.oldMines.stream().anyMatch(o -> o.entrance.distSqr(entrance) < 24 * 24)) {
+			// A finished shaft keeps its surroundings to itself, but only 16 blocks once rounds failed: right after a mine closed, 24 blocks
+			// around it can cover the whole usable ring of a village whose bell is only ~17 blocks from the old entrance.
+			int oldMineClearance = failedRounds == 0 ? 24 : 16;
+			if (ref.data().extra.oldMines.stream().anyMatch(o -> o.entrance.distSqr(entrance) < oldMineClearance * oldMineClearance)) {
 				why[3]++;
 				continue;
 			}
@@ -683,14 +687,26 @@ public final class Mining {
 				continue;
 			}
 			int targetY = Math.min(y0 - 3, Math.max(level.getMinY() + 6, y0 - 20));
-			Direction dir = Direction.Plane.HORIZONTAL.getRandomDirection(c.v().getRandom());
-			VillageData.Mine m = new VillageData.Mine(entrance, dir.get2DDataValue(), 0, targetY, false);
-			if (!previewOk(level, m)) {
-				why[5]++;
-				continue;
+			// The shaft needs a sturdy, natural floor along its whole stair: a hillside rules out the downhill directions, so every
+			// direction is tried (in random order) before the site is given up. Nothing here loads a chunk.
+			List<Direction> directions = new ArrayList<>(Direction.Plane.HORIZONTAL.stream().toList());
+			java.util.Collections.shuffle(directions, new java.util.Random(c.v().getRandom().nextLong()));
+			VillageData.Mine m = null;
+			boolean siteBlocked = false;
+			for (Direction dir : directions) {
+				VillageData.Mine trial = new VillageData.Mine(entrance, dir.get2DDataValue(), 0, targetY, false);
+				if (!previewOk(level, trial)) {
+					continue;
+				}
+				if (!mineEntranceSiteClear(level, trial)) {
+					siteBlocked = true;
+					continue;
+				}
+				m = trial;
+				break;
 			}
-			if (!mineEntranceSiteClear(level, m)) {
-				why[6]++;
+			if (m == null) {
+				why[siteBlocked ? 6 : 5]++;
 				continue;
 			}
 			// Collect a few valid sites and take the one nearest the bell (below): the first site found used to win, up to 38 blocks out
@@ -1559,6 +1575,19 @@ public final class Mining {
 	}
 
 	/** Plans every excavation for one visible section before any blocks or drops are changed. */
+	/** Floor blocks under the support posts and the wall-torch spot of the section at {@code base} (empty for a plain section). */
+	private static List<BlockPos> sectionFootings(VillageData.Mine m, BlockPos base) {
+		Direction side = Direction.from2DDataValue(m.dir).getClockWise();
+		List<BlockPos> footings = new ArrayList<>();
+		if (supportSection(m.index)) {
+			for (int sign : new int[]{-1, 1}) footings.add(base.relative(side, sign * SUPPORT_RADIUS).below());
+		}
+		if (lightSection(m.index)) {
+			footings.add(base.relative(side, (Math.floorMod(m.index / LIGHT_SPACING, 2) == 0 ? -1 : 1) * SUPPORT_RADIUS).below());
+		}
+		return footings;
+	}
+
 	static MineSectionPlan planSection(Ctx c, VillageData.Mine mine) {
 		ServerLevel level = c.level();
 		MineFrameMaterials materials = mineFrameMaterials(c, mine);
@@ -1668,6 +1697,17 @@ public final class Mining {
 				return;
 			}
 		}
+		// Post footings and the wall-torch spot of this section get the same bridge over a small cave pocket as the walk lanes.
+		for (BlockPos footing : sectionFootings(m, base)) {
+			if (!terraceFloorLoaded(level, footing)) {
+				c.setActivity("wartet auf geladenen Minenabschnitt");
+				return;
+			}
+			if (!patchFloor(c, footing) && oneBlockTerraceGap(level, footing)) {
+				c.setActivity("wartet auf Bruchstein für eine sichere Minenterrasse");
+				return;
+			}
+		}
 		MineSectionPlan plan = planSection(c, m);
 		if (!plan.loaded()) {
 			c.setActivity("wartet auf geladenen Minenabschnitt");
@@ -1691,7 +1731,7 @@ public final class Mining {
 			for (Direction d : Direction.values()) {
 				BlockPos n = p.relative(d);
 				if (isOre(level.getBlockState(n))) {
-					mineVein(c, n, tool);
+					mineVein(c, m, n, tool);
 				}
 			}
 		}
@@ -1810,7 +1850,21 @@ public final class Mining {
 			|| state.is(net.minecraft.tags.BlockTags.OVERWORLD_NATURAL_LOGS);
 	}
 
-	private static void mineVein(Ctx c, BlockPos start, ItemStack tool) {
+	/** The floor and roof course of the whole planned gallery (walk lanes plus support posts): load-bearing, so never mined as ore. */
+	static boolean galleryStructure(VillageData.Mine m, BlockPos p) {
+		if (m == null) return false;
+		Direction dir = Direction.from2DDataValue(m.dir);
+		int dx = p.getX() - m.entrance.getX();
+		int dz = p.getZ() - m.entrance.getZ();
+		int along = dx * dir.getStepX() + dz * dir.getStepZ();
+		if (along < 0 || along > descent(m) + MAX_HORIZONTAL) return false;
+		int lateral = Math.abs(dir.getAxis() == Direction.Axis.X ? dz : dx);
+		if (lateral > SUPPORT_RADIUS) return false;
+		int baseY = bottom(m, along).getY();
+		return p.getY() == baseY - 1 || p.getY() == baseY + cells(m, along);
+	}
+
+	private static void mineVein(Ctx c, VillageData.Mine m, BlockPos start, ItemStack tool) {
 		ServerLevel level = c.level();
 		Set<Long> seen = new HashSet<>();
 		ArrayDeque<BlockPos> queue = new ArrayDeque<>();
@@ -1823,7 +1877,9 @@ public final class Mining {
 			if (!isOre(level.getBlockState(p)) || hazard(level, p)) {
 				continue;
 			}
-			if (breakBlock(c, p, tool)) {
+			// An ore vein runs through the rock around the gallery: never let it take the floor or roof course of the tunnel
+			// (that left two-block-deep holes under a walk lane that closed finished mines).
+			if (!galleryStructure(m, p) && breakBlock(c, p, tool)) {
 				mined++;
 			}
 			for (Direction d : Direction.values()) {
@@ -2258,8 +2314,8 @@ public final class Mining {
 	}
 
 	/**
-	 * Kleine Luecke im Boden (Trampelpfad, Grasstufe, ein Block Hoehle) mit Bruchstein schliessen statt die Mine aufzugeben.
-	 * Echte Hohlraeume (zwei Bloecke frei) bleiben ein Grund zum Schliessen.
+	 * Kleine Luecke im Boden (Trampelpfad, Grasstufe, Hoehlentasche bis {@link #MAX_FLOOR_GAP} Bloecke tief) mit einem Block Bruchstein
+	 * ueberbruecken statt die Mine aufzugeben. Tiefere Hohlraeume oder Fluessigkeit bleiben ein Grund zum Schliessen.
 	 */
 	static boolean patchFloor(Ctx c, BlockPos floor) {
 		ServerLevel level = c.level();
@@ -2273,9 +2329,7 @@ public final class Mining {
 		if (!s.getFluidState().isEmpty()) {
 			return false;
 		}
-		BlockPos under = floor.below();
-		if (s.isAir()
-			&& level.getBlockState(under).isFaceSturdy(level, under, Direction.UP)) {
+		if (floorGapDepth(level, floor) > 0) {
 			Container inventory = c.v().getInventory();
 			// Cobblestone first; if the miner holds none (it all went to the public chest) any plain rock or soil it dug itself will do.
 			// Nothing is conjured: the block comes out of the miner's real inventory.
@@ -2303,15 +2357,33 @@ public final class Mining {
 		return true;
 	}
 
-	/** A single dry landing gap can be repaired; deeper openings are hazards, never a terrace. */
-	static boolean oneBlockTerraceGap(ServerLevel level, BlockPos floor) {
-		if (!terraceFloorLoaded(level, floor) || level.getBlockEntity(floor) != null) {
-			return false;
+	/** Deepest dry hole under a walk lane the miner closes with one real block: a fall into it stays harmless (no fall damage). */
+	static final int MAX_FLOOR_GAP = 3;
+
+	/**
+	 * Number of dry air blocks from {@code floor} down to the first sturdy block (1..{@link #MAX_FLOOR_GAP}), or 0 when the
+	 * floor is not a repairable gap: unloaded, a container, fluid anywhere in it, an unsupported depth, or a deeper cave.
+	 * Nothing is placed here and no chunk is loaded.
+	 */
+	static int floorGapDepth(ServerLevel level, BlockPos floor) {
+		if (!terraceFloorLoaded(level, floor) || level.getBlockEntity(floor) != null) return 0;
+		for (int depth = 0; depth <= MAX_FLOOR_GAP; depth++) {
+			BlockPos pos = floor.below(depth);
+			if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !de.villagerplus.world.LoadedColumns.ready(level, pos.below())) return 0;
+			BlockState state = level.getBlockState(pos);
+			if (!state.getFluidState().isEmpty()) return 0;
+			if (state.isAir()) {
+				if (depth == MAX_FLOOR_GAP) return 0;
+				continue;
+			}
+			return depth > 0 && state.isFaceSturdy(level, pos, Direction.UP) ? depth : 0;
 		}
-		BlockState state = level.getBlockState(floor);
-		BlockPos below = floor.below();
-		return state.isAir() && state.getFluidState().isEmpty()
-			&& level.getBlockState(below).isFaceSturdy(level, below, Direction.UP);
+		return 0;
+	}
+
+	/** A dry landing gap of up to {@link #MAX_FLOOR_GAP} blocks can be repaired; deeper openings are hazards, never a terrace. */
+	static boolean oneBlockTerraceGap(ServerLevel level, BlockPos floor) {
+		return floorGapDepth(level, floor) > 0;
 	}
 
 	/** Never inspect or mutate a landing in an unloaded chunk; both blocks participate in the step check. */
@@ -2950,9 +3022,14 @@ public final class Mining {
 				c.setActivity("wartet auf Bruchstein für eine sichere Minenterrasse");
 				return MineWalk.WAITING;
 			}
+			LOGGER.info("Mine: Weg gesperrt bei {} (Boden {} ist keine ueberbrueckbare Luecke, Eingang {})", cell.toShortString(),
+				level.getBlockState(cell.below()).getBlock().getDescriptionId(), mine.entrance.toShortString());
 			return MineWalk.BLOCKED;
 		}
-		if (!safeMineLanding(level, cell)) return MineWalk.BLOCKED;
+		if (!safeMineLanding(level, cell)) {
+			LOGGER.info("Mine: Weg gesperrt bei {} (Landung unsicher: Fluessigkeit, Behaelter oder Block ueber dem Boden, Eingang {})", cell.toShortString(), mine.entrance.toShortString());
+			return MineWalk.BLOCKED;
+		}
 		// A collision or an unreachable route may be temporary. Never seal a paid mine just
 		// because navigation cannot reach one assigned lane this tick.
 		if (!safeCell(c, cell)) {

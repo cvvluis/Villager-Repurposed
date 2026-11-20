@@ -611,26 +611,50 @@ public final class JobUtil {
 	 *
 	 * @param keep soviele passende Items behaelt der Dorfbewohner selbst
 	 */
-	public static boolean depositSurplus(Ctx c, Predicate<ItemStack> matches, int threshold, int keep) {
-		int total = count(c.v().getInventory(), matches);
+	public static boolean depositSurplus(Ctx c, Predicate<ItemStack> allMatches, int threshold, int keep) {
+		int total = count(c.v().getInventory(), allMatches);
 		if (total < threshold || total <= keep || c.now() < c.st().depositBlockedUntil) {
 			return false;
 		}
 		Container inv = c.v().getInventory();
 		int toMove = total - keep;
+		Predicate<ItemStack> matches = allMatches;
+		// The depot is chosen per kind of goods (granary for food, tool room for tools, village chest otherwise): a mixed
+		// inventory used to take the depot of its first stack and then fail to hand the other kinds over (20 andesite stayed
+		// in the pockets because the first stack was food). Every call now moves exactly one kind; the next call takes the rest.
+		String depot = null;
+		ItemStack sample = ItemStack.EMPTY;
 		java.util.Map<net.minecraft.world.item.Item, Integer> roomByItem = new java.util.IdentityHashMap<>();
 		java.util.Map<net.minecraft.world.item.Item, Integer> carriedByItem = new java.util.IdentityHashMap<>();
 		if (c.village() != null) {
+			java.util.Map<net.minecraft.world.item.Item, Integer> allCarried = new java.util.IdentityHashMap<>();
+			for (int i = 0; i < inv.getContainerSize(); i++) {
+				ItemStack stack = inv.getItem(i);
+				if (stack.isEmpty() || !allMatches.test(stack)) continue;
+				allCarried.merge(stack.getItem(), stack.getCount(), Integer::sum);
+			}
+			var allRooms = de.villagerplus.village.StockPolicy.deliveryRooms(c.level(), c.village(), allCarried.keySet());
+			for (int i = 0; i < inv.getContainerSize() && sample.isEmpty(); i++) {
+				ItemStack candidate = inv.getItem(i);
+				if (!candidate.isEmpty() && allMatches.test(candidate) && allRooms.getOrDefault(candidate.getItem(), Integer.MAX_VALUE) > 0) {
+					sample = candidate;
+				}
+			}
+			depot = de.villagerplus.village.Specials.depotType(sample);
+			String kind = depot;
+			matches = stack -> allMatches.test(stack)
+				&& java.util.Objects.equals(de.villagerplus.village.Specials.depotType(stack), kind);
+			int kindTotal = 0;
 			for (int i = 0; i < inv.getContainerSize(); i++) {
 				ItemStack stack = inv.getItem(i);
 				if (stack.isEmpty() || !matches.test(stack)) continue;
-				var item = stack.getItem();
-				carriedByItem.merge(item, stack.getCount(), Integer::sum);
+				carriedByItem.merge(stack.getItem(), stack.getCount(), Integer::sum);
+				kindTotal += stack.getCount();
 			}
-			roomByItem.putAll(de.villagerplus.village.StockPolicy.deliveryRooms(c.level(), c.village(), carriedByItem.keySet()));
+			roomByItem.putAll(allRooms);
 			int policyAllowed = 0;
 			for (var entry : carriedByItem.entrySet()) policyAllowed += Math.min(entry.getValue(), roomByItem.getOrDefault(entry.getKey(), 0));
-			toMove = Math.min(toMove, policyAllowed);
+			toMove = Math.min(Math.min(toMove, kindTotal), policyAllowed);
 		}
 		if (toMove <= 0) return false;
 		BlockPos chest = c.village() == null ? chest(c) : communalDeliveryChest(c);
@@ -642,15 +666,6 @@ public final class JobUtil {
 		boolean foodBridge = false;
 		String destinationDepot = c.village() == null ? null : de.villagerplus.build.Blueprints.STORAGE;
 		if (c.village() != null) {
-			ItemStack sample = ItemStack.EMPTY;
-			Container invNow = c.v().getInventory();
-			for (int i = 0; i < invNow.getContainerSize() && sample.isEmpty(); i++) {
-				ItemStack candidate = invNow.getItem(i);
-				if (matches.test(candidate) && roomByItem.getOrDefault(candidate.getItem(), Integer.MAX_VALUE) > 0) {
-					sample = candidate;
-				}
-			}
-			String depot = de.villagerplus.village.Specials.depotType(sample);
 			BlockPos special = depot == null ? null : de.villagerplus.village.Specials.depotWithRoom(c.level(), c.village(), depot, sample);
 			if (special != null) {
 				chest = special;
