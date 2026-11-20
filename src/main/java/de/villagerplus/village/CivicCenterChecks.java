@@ -52,10 +52,11 @@ public final class CivicCenterChecks {
             BlockPos plaza = Plaza.findCentralSite(level, center, ref.bell(), ref.bell().asLong());
             require(plaza != null && plaza.distSqr(center) >= 12 * 12 && plaza.distSqr(center) < 34 * 34,
                 "plaza search moves around existing central construction and stays in the inner village");
+            int expansionChecks = checkExpansionStaysFree(level, ref, center, plaza);
             int layoutChecks = checkBroadPlazaLayout(center);
             int details = decorateWithoutFountain(level, ref, center.offset(40, 0, 0));
             int compactCenter = checkCompactCenterAccessibility(level, ref, center.offset(0, 0, 30));
-            return 2 + layoutChecks + details + compactCenter;
+            return 2 + expansionChecks + layoutChecks + details + compactCenter;
         } finally {
             ref.data().chest = originalChest;
             ref.data().extra.board = originalBoard;
@@ -68,6 +69,34 @@ public final class CivicCenterChecks {
                     if (be != null) level.setBlockEntity(be);
                 }
             });
+        }
+    }
+
+    /** G10: the central plaza/town-hall search leaves the prepared house expansion pad free (no chunk loads, saved state restored). */
+    private static int checkExpansionStaysFree(ServerLevel level, VillageRef ref, BlockPos center, BlockPos firstPlaza) {
+        Map<String, Long> original = ref.bellEntity().getAttached(de.villagerplus.VillagerPlus.ROADS);
+        try {
+            Map<String, Long> state = new java.util.HashMap<>(original == null ? Map.of() : original);
+            state.put(Roads.EXPANSION + "geometry", Roads.EXPANSION_GEOMETRY_VERSION);
+            state.put(Roads.EXPANSION + "ready", 1L);
+            state.put(Roads.EXPANSION + "x", (long) firstPlaza.getX());
+            state.put(Roads.EXPANSION + "z", (long) firstPlaza.getZ());
+            state.put(Roads.EXPANSION + "surface", (long) firstPlaza.getY());
+            ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.ROADS, state);
+            Development.ExpansionParcel pad = Roads.preparedExpansionParcel(ref).orElse(null);
+            int radius = Plaza.PLAZA_RADIUS + 3;
+            require(pad != null && Development.civicOverlapsExpansionParcel(pad, firstPlaza, radius)
+                && Development.civicOverlapsExpansionParcel(pad, firstPlaza.offset(pad.half() + radius, 0, 0), radius)
+                && !Development.civicOverlapsExpansionParcel(pad, firstPlaza.offset(pad.half() + radius + 1, 0, 0), radius)
+                && !Development.civicOverlapsExpansionParcel(null, firstPlaza, radius),
+                "expansion-pad overlap test is exact at the footprint edge and tolerates a missing pad");
+            BlockPos moved = Plaza.findCentralSite(level, center, ref.bell(), ref.bell().asLong(), 0L, ref);
+            require(moved != null && !Development.civicOverlapsExpansionParcel(pad, moved, Plaza.PLAZA_RADIUS + 3) && !moved.equals(firstPlaza),
+                "with a prepared expansion pad the central plaza search skips it and still finds a nearby site");
+            return 2;
+        } finally {
+            if (original == null) ref.bellEntity().removeAttached(de.villagerplus.VillagerPlus.ROADS);
+            else ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.ROADS, original);
         }
     }
 

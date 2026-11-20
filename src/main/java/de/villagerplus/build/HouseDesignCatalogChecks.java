@@ -288,6 +288,7 @@ public final class HouseDesignCatalogChecks {
 		check(compactWallHeights.containsAll(Set.of(3, 4)) && standardWallHeights.equals(Set.of(5))
 			&& multiStoreyWallHeights.contains(6),
 			"compact, standard and multi-storey homes keep distinct 3/4-, 5- and 6-course walls, with a full upper window course on every standard facade"); checks++;
+		checks += checkVillageMix(palette, center);
 		return checks;
 	}
 
@@ -565,6 +566,35 @@ public final class HouseDesignCatalogChecks {
 		int turns = 0;
 		for (Direction current = Direction.SOUTH; current != facing && turns < 4; current = current.getClockWise()) turns++;
 		return turns;
+	}
+
+	/**
+	 * G09: a growing village mixes small, medium and multi-storey houses together with functional buildings. Replays the
+	 * planner's saved rotation (Blueprints.sizeTierForOrdinal) over twelve homes and six civic buildings and builds each plan.
+	 */
+	private static int checkVillageMix(Palette palette, BlockPos origin) {
+		Map<Architect.SizeTier, Integer> homesByTier = new java.util.EnumMap<>(Architect.SizeTier.class);
+		Set<String> homePresets = new java.util.HashSet<>();
+		boolean allBuild = true;
+		for (int completed = 0; completed < 12; completed++) {
+			Architect.SizeTier tier = Blueprints.sizeTierForOrdinal(completed);
+			homesByTier.merge(tier, 1, Integer::sum);
+			long seed = Architect.withSizeTier(1_000L + completed * 7_919L, tier);
+			Architect.Design design = HouseDesignCatalog.design(tier, seed);
+			homePresets.add(HouseDesignCatalog.presetFor(tier, seed & ((1L << 26) - 1L)).id());
+			allBuild &= !Architect.build(design, palette, origin, Direction.SOUTH).isEmpty()
+				&& (tier == Architect.SizeTier.MULTI_STOREY) == Architect.multiStorey(design);
+		}
+		check(homesByTier.size() == 3 && homesByTier.values().stream().allMatch(n -> n == 4) && allBuild,
+			"twelve consecutive homes split evenly into compact, standard and multi-storey houses and every plan builds");
+		check(homePresets.size() >= 5, "the home mix uses at least five distinct curated house forms, not one repeated shape");
+		Set<Architect.Kind> functional = new java.util.HashSet<>();
+		Set<Architect.SizeTier> civicTiers = new java.util.HashSet<>();
+		for (int completed = 0; completed < 6; completed++) civicTiers.add(Blueprints.sizeTierForOrdinal(completed));
+		for (HouseDesignCatalog.JobHutProfile profile : HouseDesignCatalog.JobHutProfile.values()) functional.add(profile.kind());
+		check(civicTiers.size() == 3 && functional.size() == HouseDesignCatalog.JobHutProfile.values().length,
+			"functional buildings follow their own size rotation and each profession profile has its own building form");
+		return 3;
 	}
 
 	private static void check(boolean result, String description) {

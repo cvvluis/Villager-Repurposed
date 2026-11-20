@@ -197,6 +197,13 @@ public final class Development {
 		return List.copyOf(candidates);
 	}
 
+	/** True when a square civic footprint (center +/- radius) touches the prepared house expansion pad; civic sites must leave it free. */
+	public static boolean civicOverlapsExpansionParcel(ExpansionParcel parcel, BlockPos at, int radius) {
+		if (parcel == null || at == null || radius < 0) return false;
+		return Math.abs(at.getX() - parcel.center().getX()) <= parcel.half() + radius
+			&& Math.abs(at.getZ() - parcel.center().getZ()) <= parcel.half() + radius;
+	}
+
 	/** Checks the saved square expansion footprint without changing terrain. */
 	public static boolean inExpansionParcel(BlockPos center, int half, BlockPos pos) {
 		return center != null && pos != null && half >= 1 && half <= 8
