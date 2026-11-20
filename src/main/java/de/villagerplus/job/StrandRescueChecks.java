@@ -212,6 +212,25 @@ public final class StrandRescueChecks {
 			for (int dx = 2; dx <= 8; dx++) for (int dz = -6; dz <= -1; dz++) for (int dy = 0; dy <= 3; dy++) {
 				level.setBlock(origin.offset(dx, dy, dz), air, 3);
 			}
+			// J: a villager pinned by vanilla's "go to potential job site" goal (natural run: plan owner in a doorway for 70k ticks) is
+			// released from that claim, but only when it has not moved since the previous stall check.
+			var brain = worker.getBrain();
+			var site = net.minecraft.core.GlobalPos.of(level.dimension(), origin.offset(3, 0, -5));
+			placeAt(worker, origin.offset(12, 0, 0));
+			brain.setMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.POTENTIAL_JOB_SITE, site);
+			JobUtil.dropPinningJobSite(ctx(level, worker, state, memory, ref, T0 + 70_000L));
+			require(brain.hasMemoryValue(net.minecraft.world.entity.ai.memory.MemoryModuleType.POTENTIAL_JOB_SITE),
+				"the first stall check only records the position and keeps the job-site claim"); checks++;
+			placeAt(worker, origin.offset(12, 0, 4));
+			JobUtil.dropPinningJobSite(ctx(level, worker, state, memory, ref, T0 + 70_240L));
+			require(brain.hasMemoryValue(net.minecraft.world.entity.ai.memory.MemoryModuleType.POTENTIAL_JOB_SITE),
+				"a worker that did move between two stall checks keeps its job-site claim"); checks++;
+			JobUtil.dropPinningJobSite(ctx(level, worker, state, memory, ref, T0 + 70_480L));
+			require(!brain.hasMemoryValue(net.minecraft.world.entity.ai.memory.MemoryModuleType.POTENTIAL_JOB_SITE),
+				"a worker that stayed put between two stall checks loses the unreachable job-site claim"); checks++;
+			require(!de.villagerplus.block.ModBlocks.DORFTAFEL_GROSS.defaultBlockState()
+					.isPathfindable(net.minecraft.world.level.pathfinder.PathComputationType.LAND),
+				"the village board is a thin panel but land paths must go around it (vanilla would route through it)"); checks++;
 			return checks;
 		} finally {
 			JobUtil.clearLongRoutes();

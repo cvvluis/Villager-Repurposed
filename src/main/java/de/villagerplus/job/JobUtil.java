@@ -256,6 +256,24 @@ public final class JobUtil {
 		return true;
 	}
 
+	private static final Map<UUID, Vec3> PIN_CHECK_AT = new HashMap<>();
+
+	/**
+	 * A worker that has not moved since the previous stall check although it keeps being sent somewhere is usually pinned by vanilla's
+	 * own "go to the potential job site" goal, which overwrites the walk target every brain tick (natural runs: a plan owner sat in a
+	 * house doorway for tens of thousands of ticks, 70 blocks from its plan site). Forget that unreachable claim so the task walk wins.
+	 */
+	static void dropPinningJobSite(Ctx c) {
+		Villager v = c.v();
+		if (PIN_CHECK_AT.size() > 512) PIN_CHECK_AT.clear();
+		Vec3 before = PIN_CHECK_AT.put(v.getUUID(), v.position());
+		if (before == null || before.distanceToSqr(v.position()) > 2.25) return;
+		if (!v.getBrain().hasMemoryValue(MemoryModuleType.POTENTIAL_JOB_SITE)) return;
+		v.getBrain().eraseMemory(MemoryModuleType.POTENTIAL_JOB_SITE);
+		org.slf4j.LoggerFactory.getLogger("villagerplus").info("Villagers: Repurposed: {} haengt bei {} fest und wurde vom unerreichbaren Arbeitsplatz-Anspruch geloest",
+			c.mem().name, v.blockPosition().toShortString());
+	}
+
 	/** A cached failed search must not leave vanilla navigation retrying the same long target each AI tick. */
 	private static void clearUnreachableWalkTarget(Villager villager) {
 		villager.getNavigation().stop();
@@ -294,6 +312,7 @@ public final class JobUtil {
 			c.v().getNavigation().stop();
 			c.v().getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
 			stepOffPerch(c);
+			dropPinningJobSite(c);
 			if (st.stuckCount >= 3) {
 				abortApproach(c, APPROACH_TASK_COOLDOWN);
 				return false;

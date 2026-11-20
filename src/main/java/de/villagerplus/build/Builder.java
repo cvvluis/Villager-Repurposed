@@ -2726,6 +2726,7 @@ public final class Builder {
 			STAND_MOVE_ANCHOR.remove(planKey);
 			STAND_BEST_NODES.remove(planKey);
 			STAND_FAILURE_SINCE.remove(planKey);
+			STAND_FAILURE_LAST.remove(planKey);
 			forgetStandWatch(planKey);
 			PALETTES.remove(planKey);
 			Map<Long, Integer> dug = PREP_RECORD.remove(planKey);
@@ -5121,13 +5122,19 @@ public final class Builder {
 				c.st().cooldownUntil = c.now() + 40;
 				// A failed route from a distant worker is not proof that the plot is unreachable.
 				// Re-approach the actual village street and retry from there before rejecting it.
+				// A failure window only counts while the failures are continuous: a stale timestamp from an early, long-forgotten
+				// miss (owner away, chunks not ready) must not abort a half-built plan on the first new miss (natural run: storage
+				// dropped at step 143/266 the second its owner fell into a quarry pit).
+				Long lastMiss = STAND_FAILURE_LAST.put(origin.asLong(), c.now());
+				if (lastMiss == null || c.now() - lastMiss > STAND_ABSENCE_TICKS) STAND_FAILURE_SINCE.put(origin.asLong(), c.now());
 				long standFailureSince = STAND_FAILURE_SINCE.computeIfAbsent(origin.asLong(), ignored -> c.now());
 				BlockPos street = villageReturn(level, ref.bell());
 				if (street != null && c.v().blockPosition().distSqr(street) > 4) {
 					JobUtil.approachLong(c, street, 2.0);
 					c.setActivity("geht zur Dorfstrasse und sucht einen Baustand");
 				}
-				if (c.now() - standFailureSince > STAND_GIVE_UP) {
+				// Built blocks are at stake once the cursor moved: be three times as patient before throwing the footprint away.
+				if (c.now() - standFailureSince > (d.planStep > 0 ? STAND_GIVE_UP * 3 : STAND_GIVE_UP)) {
 					if (handOverStuckOwner(c, ref, d, origin, dir, steps, "kein Weg vom Arbeiter zu einem Stand")) return false;
 					why = "kein Weg zum Bauplatz";
 					LOGGER.info("Villagers: Repurposed: Bau '{}' Schritt {} wird abgebrochen ({}) {}", d.planType, d.planStep, why, lastStandReport(c.v()));
@@ -5137,7 +5144,7 @@ public final class Builder {
 				}
 				return true;
 			}
-			if (!helper) STAND_FAILURE_SINCE.remove(origin.asLong());
+			if (!helper) { STAND_FAILURE_SINCE.remove(origin.asLong()); STAND_FAILURE_LAST.remove(origin.asLong()); }
 			if (!helper && civicSite(d.planType) && d.planStep == 0) {
 				BlockPos previousStand = STAND_LAST.put(origin.asLong(), stand.immutable());
 				long lastDiagAt = STAND_DIAG_AT.getOrDefault(origin.asLong(), Long.MIN_VALUE / 2);
@@ -5914,6 +5921,7 @@ public final class Builder {
 		STAND_MOVE_ANCHOR.remove(key);
 		STAND_BEST_NODES.remove(key);
 		STAND_FAILURE_SINCE.remove(key);
+		STAND_FAILURE_LAST.remove(key);
 		STAND_PROGRESS_AT.put(key, now);
 		return true;
 	}
@@ -5996,6 +6004,7 @@ public final class Builder {
 		STAND_MOVE_ANCHOR.remove(origin.asLong());
 		STAND_BEST_NODES.remove(origin.asLong());
 		STAND_FAILURE_SINCE.remove(origin.asLong());
+		STAND_FAILURE_LAST.remove(origin.asLong());
 		noteStandProgress(origin.asLong(), c.now());
 		c.v().getNavigation().stop();
 		c.v().getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.WALK_TARGET);
@@ -6036,6 +6045,8 @@ public final class Builder {
 	private static final java.util.Map<Long, Long> STAND_DIAG_AT = new java.util.HashMap<>();
 	/** First tick without a reachable stand; reset after recovery or server restart. */
 	private static final java.util.Map<Long, Long> STAND_FAILURE_SINCE = new java.util.HashMap<>();
+	/** Last tick the owner found no stand at all; a gap longer than {@link #STAND_ABSENCE_TICKS} starts a new failure window. */
+	private static final java.util.Map<Long, Long> STAND_FAILURE_LAST = new java.util.HashMap<>();
 	/** Step 0 gives up well before the 20000-tick walk budget when the stand is not getting closer. */
 	private static final long STAND_GIVE_UP = 1200L;
 	/** Last position at which a worker was counted as having covered ground toward a plan's stand (by plan origin). */

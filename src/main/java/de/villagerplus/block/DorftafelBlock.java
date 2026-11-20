@@ -225,6 +225,16 @@ public class DorftafelBlock extends BaseEntityBlock {
 		};
 	}
 
+	/**
+	 * The board is a thin panel: vanilla path finding treats any non-full collision shape as walkable, so villagers planned
+	 * routes straight through it and then jumped against it for thousands of ticks (a plan owner never reached its stand).
+	 * Land paths must go around it, like around a fence.
+	 */
+	@Override
+	protected boolean isPathfindable(BlockState state, net.minecraft.world.level.pathfinder.PathComputationType type) {
+		return false;
+	}
+
 	@Override
 	protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hit) {
 		if (level.isClientSide()) {
