@@ -59,6 +59,31 @@ public final class PlanStoneSupply {
 	/** A miner keeps a few cobblestones for the one-block floor repairs of its own gallery (nobody else can hand them over underground). */
 	public static final int COBBLE_RESERVE = 2;
 
+	/**
+	 * Stone the public chest should hold while a plan is being built. The plan only ever asks for its next batch (about 18 pieces),
+	 * so a mine that stopped as soon as that batch was covered made every batch wait for a whole new trip (preparation, walk in,
+	 * dig, walk out: a working day or more) and the plan crawled at the pace of one trip per batch. With a modest stock in the chest
+	 * the next batches are served at once while the miners refill it.
+	 */
+	public static final int STOCK_FLOOR = 64;
+
+	/** Pieces of cobblestone (or its stand-ins) missing from {@link #STOCK_FLOOR} while a plan or a project that needs cobblestone is under way. */
+	public static int stockGap(VillageData data, Container stock) {
+		if (data == null || stock == null) return 0;
+		boolean wanted = data.hasPlan() && (wanted(data, Items.COBBLESTONE) > 0 || wanted(data, Items.COBBLESTONE_STAIRS) > 0
+			|| wanted(data, Items.COBBLESTONE_SLAB) > 0
+			|| de.villagerplus.build.Builder.cobbleStepsAhead(data.planOrigin.orElse(null), data.planStep) > 0);
+		for (VillageData.BuildProject project : data.buildProjects) {
+			if (wanted) break;
+			if (!project.active() || project.cleanupOnly()) continue;
+			wanted = wantedIn(project.wanted(), "minecraft:cobblestone") > 0 || wantedIn(project.wanted(), "minecraft:cobblestone_stairs") > 0
+				|| wantedIn(project.wanted(), "minecraft:cobblestone_slab") > 0
+				|| de.villagerplus.build.Builder.cobbleStepsAhead(project.origin(), project.step()) > 0;
+		}
+		if (!wanted) return 0;
+		return Math.max(0, STOCK_FLOOR - JobUtil.count(stock, de.villagerplus.build.CobbleLike::stone));
+	}
+
 	/** Cobblestone the plan asks for (directly, or as stairs and slabs to craft) beyond what the public chest holds. */
 	static int cobbleShortage(VillageData data, Container stock) {
 		if (data == null || stock == null || !data.hasPlan()) return 0;
@@ -92,7 +117,7 @@ public final class PlanStoneSupply {
 	public static boolean cobbleDeliveryDue(ServerLevel level, VillageData data, Container stock, int carried) {
 		int spare = carried - COBBLE_RESERVE;
 		if (spare <= 0 || data == null || stock == null || !(data.hasPlan() || data.activeBuildProjectCount() > 0)) return false;
-		int shortage = Math.max(cobbleShortage(data, stock), villageCobbleShortage(data, stock));
+		int shortage = Math.max(Math.max(cobbleShortage(data, stock), villageCobbleShortage(data, stock)), stockGap(data, stock));
 		if (shortage <= 0 && !needsCobble(level, data, stock)) return false;
 		return carried >= DELIVERY_LOAD || (shortage > 0 && spare >= shortage);
 	}
@@ -105,11 +130,37 @@ public final class PlanStoneSupply {
 	 */
 	public static final int DEEP_DELIVERY_LOAD = 36;
 
+	/** The underground load that justifies the walk out never exceeds this, however deep the gallery runs (pockets, not the plan, set the limit). */
+	public static final int DEEP_DELIVERY_MAX = 192;
+	/** A resident carries at least this much before the stone of the whole gallery crew may send him up. */
+	public static final int CREW_SHARE_MIN = 24;
+
+	/** The walk out of a gallery {@code depth} cells deep costs about a minute of working time per 15 cells: the deeper the face, the bigger the load that is worth it. */
+	public static int deepDeliveryLoad(int depth) {
+		return Math.max(DEEP_DELIVERY_LOAD, Math.min(DEEP_DELIVERY_MAX, DEEP_DELIVERY_LOAD + 4 * Math.max(0, depth - 6)));
+	}
+
+	/**
+	 * {@link #cobbleDeliveryDue(ServerLevel, VillageData, Container, int, boolean)} for a miner at {@code depth} cells, where the whole
+	 * crew in the gallery carries {@code crewCarried}. Several miners share the digging, so none of them alone reaches the whole
+	 * shortage although together they hold it: the crew's stone counts too (each miner still brings a fair share, at least
+	 * {@link #CREW_SHARE_MIN}).
+	 */
+	public static boolean cobbleDeliveryDue(ServerLevel level, VillageData data, Container stock, int carried, boolean underground,
+			int depth, int crewCarried) {
+		if (!cobbleDeliveryDue(level, data, stock, carried)) return false;
+		if (!underground || carried >= deepDeliveryLoad(depth)) return true;
+		int shortage = Math.max(Math.max(cobbleShortage(data, stock), villageCobbleShortage(data, stock)), stockGap(data, stock));
+		if (shortage <= 0) return false;
+		if (carried - COBBLE_RESERVE >= shortage) return true;
+		return carried >= CREW_SHARE_MIN && crewCarried - COBBLE_RESERVE >= shortage;
+	}
+
 	/** {@link #cobbleDeliveryDue(ServerLevel, VillageData, Container, int)} for a resident who may be underground (needs {@link #DEEP_DELIVERY_LOAD} there). */
 	public static boolean cobbleDeliveryDue(ServerLevel level, VillageData data, Container stock, int carried, boolean underground) {
 		if (!cobbleDeliveryDue(level, data, stock, carried)) return false;
 		if (!underground || carried >= DEEP_DELIVERY_LOAD) return true;
-		int shortage = Math.max(cobbleShortage(data, stock), villageCobbleShortage(data, stock));
+		int shortage = Math.max(Math.max(cobbleShortage(data, stock), villageCobbleShortage(data, stock)), stockGap(data, stock));
 		return shortage > 0 && carried - COBBLE_RESERVE >= shortage;
 	}
 

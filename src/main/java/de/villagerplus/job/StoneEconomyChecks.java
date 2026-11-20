@@ -113,6 +113,23 @@ public final class StoneEconomyChecks {
 			check(gaveUp && state.mineCheckAt > u - 100L,
 				"after three stalls the walk is dropped for a while (gave up " + gaveUp + ", teleports " + teleports + ", mineCheckAt in " + (state.mineCheckAt - u) + ")"); checks++;
 
+			// 7. Circling on the last stretch (it keeps getting a little closer, then falls back) is a stall too: the resident is set down at
+			// the portal, near it, instead of circling for hours.
+			Mining.resetApproachForTest();
+			worker.setPos(start.getX() + 0.5, start.getY(), start.getZ() + 0.5);
+			long v7 = now + 400_000L;
+			double circle = 300.0;
+			boolean circled = false;
+			boolean earlyCircle = false;
+			Mining.approachStalled(ctx(level, worker, state, memory, ref, v7), circle, mine);
+			for (long dt = 50L; dt <= Mining.APPROACH_NEAR_BAND_TICKS + 100L && !circled; dt += 50L) {
+				circle = circle > 120.0 ? circle - 10.0 : 300.0;
+				circled = Mining.approachStalled(ctx(level, worker, state, memory, ref, v7 + dt), circle, mine);
+				if (circled && dt < Mining.APPROACH_NEAR_BAND_TICKS) earlyCircle = true;
+			}
+			check(circled && !earlyCircle && worker.blockPosition().distSqr(start) > 4,
+				"circling on the last stretch for longer than the band limit sets the resident down elsewhere (circled " + circled + ", early " + earlyCircle + ")"); checks++;
+
 			// 6. Free, safe lanes but no path to them (a resident on a terrace above the mine): after the allowance the resident is put
 			// on the village street instead of asking again and again for hours.
 			Mining.resetNoLanePathForTest();

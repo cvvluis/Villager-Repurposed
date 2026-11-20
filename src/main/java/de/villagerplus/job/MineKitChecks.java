@@ -98,6 +98,22 @@ public final class MineKitChecks {
 				"once the hold-off is over a structural section asks for its kit again, got " + after); checks++;
 			worker.setPos(chestPos.getX() - 0.5, chestPos.getY(), chestPos.getZ() + 0.5);
 
+			// 2b. A light section whose torch cannot be made (no torch and no coal in the depot) is not waited for; with coal it still is.
+			Mining.resetKitWaitForTest();
+			mine.index = 3;
+			worker.getInventory().clearContent();
+			chest.clearContent();
+			add(chest, planks, 10);
+			var dark = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now + 5L), ref, mine);
+			check(dark == Mining.SupplyStatus.READY && worker.getInventory().isEmpty(),
+				"a light section that lacks only a torch nobody can make is dug at once, got " + dark); checks++;
+			add(chest, Items.COAL, 1);
+			Mining.resetKitWaitForTest();
+			var lit = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now + 6L), ref, mine);
+			check(lit != Mining.SupplyStatus.READY, "with coal in the depot the light section still asks for its torch, got " + lit); checks++;
+			worker.getInventory().clearContent();
+			mine.index = 2;
+
 			// 3. One trip carries the next support, the following torch and the support after it: complete structures only.
 			Mining.resetKitWaitForTest();
 			mine.index = 2;
@@ -184,6 +200,8 @@ public final class MineKitChecks {
 			Container chest = ref.chest(level);
 			if (chest == null) throw new IllegalStateException("MINE KIT CHECK FAILED: fixture chest missing");
 			chest.clearContent();
+			// The stock floor (see PlanStoneSupply.STOCK_FLOOR) is filled with stand-ins, so the checks below see the batch shortage alone.
+			add(chest, Items.ANDESITE, PlanStoneSupply.STOCK_FLOOR);
 			data.planType = "granary";
 			data.planOrigin = Optional.of(bell.offset(0, 0, 20));
 			data.wanted.clear();
@@ -202,6 +220,25 @@ public final class MineKitChecks {
 				&& PlanStoneSupply.cobbleDeliveryDue(level, data, chest, PlanStoneSupply.DEEP_DELIVERY_LOAD, true)
 				&& PlanStoneSupply.cobbleDeliveryDue(level, data, chest, PlanStoneSupply.DEEP_DELIVERY_LOAD - 1, false),
 				"a deep miner turns back at the deep load, a resident on the surface at the ordinary load"); checks++;
+			// The deeper the face, the dearer the walk out: the load that justifies it grows with the depth (up to the pocket-bound maximum).
+			check(PlanStoneSupply.deepDeliveryLoad(0) == PlanStoneSupply.DEEP_DELIVERY_LOAD
+				&& PlanStoneSupply.deepDeliveryLoad(30) > PlanStoneSupply.DEEP_DELIVERY_LOAD
+				&& PlanStoneSupply.deepDeliveryLoad(500) == PlanStoneSupply.DEEP_DELIVERY_MAX,
+				"the deep delivery load grows with the depth and is capped"); checks++;
+			data.wanted.clear();
+			data.wanted.add("minecraft:cobblestone#400");
+			int deepLoad = PlanStoneSupply.deepDeliveryLoad(30);
+			check(!PlanStoneSupply.cobbleDeliveryDue(level, data, chest, deepLoad - 1, true, 30, deepLoad - 1)
+				&& PlanStoneSupply.cobbleDeliveryDue(level, data, chest, deepLoad, true, 30, deepLoad),
+				"a miner thirty cells down turns back at the depth-scaled load, not at the shallow one"); checks++;
+			check(PlanStoneSupply.cobbleDeliveryDue(level, data, chest, PlanStoneSupply.DEEP_DELIVERY_LOAD, true, 0, PlanStoneSupply.DEEP_DELIVERY_LOAD),
+				"at the shaft the shallow deep load still applies"); checks++;
+			data.wanted.clear();
+			data.wanted.add("minecraft:cobblestone#100");
+			check(PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 30, true, 30, 30 + 40 + 40)
+				&& !PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 30, true, 30, 60)
+				&& !PlanStoneSupply.cobbleDeliveryDue(level, data, chest, PlanStoneSupply.CREW_SHARE_MIN - 1, true, 30, 300),
+				"the stone of the whole crew in the gallery may send a miner up once it covers the shortage, but only with a fair share on board"); checks++;
 			data.wanted.clear();
 			data.wanted.add("minecraft:cobblestone#18");
 			data.wanted.clear();
@@ -211,9 +248,20 @@ public final class MineKitChecks {
 				"a load that covers the whole remaining shortage (besides the miner's repair reserve) is delivered at once, a smaller one is not"); checks++;
 			add(chest, Items.COBBLESTONE, 5);
 			check(!PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 30), "nothing is delivered once the public chest already covers the plan"); checks++;
+			// Stock floor: while a plan is under way the chest keeps a modest stock, so the next batches are served at once.
+			chest.clearContent();
+			check(PlanStoneSupply.stockGap(data, chest) == PlanStoneSupply.STOCK_FLOOR
+				&& PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 12), "an empty chest is below the stock floor and a load of twelve is delivered"); checks++;
+			add(chest, Items.COBBLESTONE, 40);
+			check(PlanStoneSupply.stockGap(data, chest) == PlanStoneSupply.STOCK_FLOOR - 40 && Mining.needed(level, ref, data, chest, Mining.Need.STONE),
+				"below the floor the mine keeps working although the plan's batch is covered"); checks++;
+			add(chest, Items.DIORITE, PlanStoneSupply.STOCK_FLOOR);
+			check(PlanStoneSupply.stockGap(data, chest) == 0 && !PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 30),
+				"stand-ins count towards the floor, and nothing is delivered once the stock is there"); checks++;
 			chest.clearContent();
 			data.planType = "";
 			data.planOrigin = Optional.empty();
+			check(PlanStoneSupply.stockGap(data, chest) == 0, "without a plan or a project that needs cobblestone there is no stock floor"); checks++;
 			check(!PlanStoneSupply.cobbleDeliveryDue(level, data, chest, 40), "without a plan the miner keeps its stone for the ordinary 64-item delivery"); checks++;
 
 			// Real tick: a resident at the chest with a load and a pickaxe brings it to the public chest.

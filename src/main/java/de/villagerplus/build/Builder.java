@@ -77,6 +77,23 @@ import net.minecraft.world.phys.AABB;
 public final class Builder {
 	private static final Map<Long, VillageStyle> STYLES = new HashMap<>();
 	private static final Map<Long, List<Step>> STEPS = new HashMap<>();
+
+	/**
+	 * Cobblestone pieces (blocks, stairs and slabs counted one each) the paid steps of the plan at {@code origin} still ask for from
+	 * step {@code from} on. Zero when the plan's steps are not loaded. Lets the stone supply keep a modest stock while a plan
+	 * will need stone later on, even if its current batch of wanted items asks for wood only.
+	 */
+	public static int cobbleStepsAhead(BlockPos origin, int from) {
+		List<Step> steps = origin == null ? null : STEPS.get(origin.asLong());
+		if (steps == null) return 0;
+		long total = 0;
+		for (int i = Math.max(0, from); i < steps.size(); i++) {
+			Step step = steps.get(i);
+			if (step.free() || step.optional() || step.linkedTo() != null || step.cost() <= 0 || step.item() == null) continue;
+			if (step.item() == Items.COBBLESTONE || step.item() == Items.COBBLESTONE_STAIRS || step.item() == Items.COBBLESTONE_SLAB) total += step.cost();
+		}
+		return (int) Math.min(Integer.MAX_VALUE, total);
+	}
 	private static final Map<Long, String> PLAN_DIAGNOSTICS = new HashMap<>();
 	private static final Map<Long, Optional<HouseTemplate>> TEMPLATES = new HashMap<>();
 	private static final long STUCK_TICKS = 36000L;
@@ -2455,7 +2472,7 @@ public final class Builder {
 				return true;
 			}
 			int carried = JobUtil.count(c.v().getInventory(), stack -> stack.is(Items.COBBLESTONE));
-			if (shouldDepositPlanStone(carried)) {
+			if (shouldDepositPlanStone(carried) && !de.villagerplus.job.Mining.holdLoadUnderground(c, carried)) {
 				if (JobUtil.depositSurplus(c, stack -> stack.is(Items.COBBLESTONE), 0, 0)) {
 					de.villagerplus.dev.G02SupplyTrace.stage(c, "supply-deliver-plan-stone", c.st().activity);
 					return true;
@@ -2483,7 +2500,7 @@ public final class Builder {
 				return true;
 			}
 			de.villagerplus.dev.G02SupplyTrace.stage(c, "supply-check-carried-stone", "checking worker inventory for cobblestone");
-			if (shouldDepositPlanStone(carriedCobble)
+			if (shouldDepositPlanStone(carriedCobble) && !de.villagerplus.job.Mining.holdLoadUnderground(c, carriedCobble)
 				&& JobUtil.depositSurplus(c, stack -> stack.is(Items.COBBLESTONE), 0, 0)) {
 				de.villagerplus.dev.G02SupplyTrace.stage(c, "supply-deliver-carried-stone", c.st().activity);
 				return true;

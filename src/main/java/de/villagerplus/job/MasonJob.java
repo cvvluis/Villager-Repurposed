@@ -51,7 +51,8 @@ public class MasonJob implements Job {
 			return false;
 		}
 		// Volles Inventar vorher zur Dorfkiste bringen.
-		if (JobUtil.depositSurplus(c, produce(), 64, 0)) {
+		if (!Mining.holdLoadUnderground(c, JobUtil.count(c.v().getInventory(), de.villagerplus.build.CobbleLike::stone))
+			&& JobUtil.depositSurplus(c, produce(), 64, 0)) {
 			return true;
 		}
 		if (Mining.tick(c, Mining.Need.STONE)) {

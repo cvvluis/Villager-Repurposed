@@ -156,6 +156,33 @@ public final class MineWalkChecks {
 				"and is moved again after the doubled spacing"); checks++;
 			require(!JobUtil.stepOffPerch(new Ctx(level, worker, state, memory, null, now + 10 * JobUtil.PERCH_NUDGE_SPACING)),
 				"a villager that stands on a normal floor is never moved"); checks++;
+
+			// D: look-ahead. In a flat, already dug gallery the walker is sent up to three cells ahead in his own lane (a stop at every
+			// single cell cost most of the walking time); a blocked cell ends the look-ahead in front of it, and the portal cell itself
+			// is always entered by a single step.
+			VillageData.Mine flat = new VillageData.Mine(origin.offset(0, 0, 6), Direction.EAST.get2DDataValue(), 12, origin.getY(), false);
+			worker.setNoAi(false);
+			Ctx walk = new Ctx(level, worker, state, memory, null, now);
+			worker.setPos(origin.getX() + 2.5, origin.getY(), origin.getZ() + 6.5);
+			worker.setOnGround(true);
+			require(origin.offset(5, 0, 6).equals(Mining.lookAheadCell(walk, flat, 2, 9, 0)), "the walker is sent three cells ahead in the centre lane"); checks++;
+			require(origin.offset(5, 0, 5).equals(Mining.lookAheadCell(walk, flat, 2, 9, 1)), "a walker of the side lane gets the same cell in his own lane"); checks++;
+			worker.setPos(origin.getX() + 6.5, origin.getY(), origin.getZ() + 6.5);
+			require(origin.offset(3, 0, 6).equals(Mining.lookAheadCell(walk, flat, 6, 0, 0)), "on the way out the look-ahead points towards the portal"); checks++;
+			worker.setPos(origin.getX() + 7.5, origin.getY(), origin.getZ() + 6.5);
+			require(origin.offset(9, 0, 6).equals(Mining.lookAheadCell(walk, flat, 7, 9, 0)) && Mining.lookAheadCell(walk, flat, 9, 9, 0) == null,
+				"the look-ahead never passes the target and is empty on arrival"); checks++;
+			require(Mining.lookAheadCell(walk, flat, 0, 5, 0) == null && Mining.lookAheadCell(walk, flat, -1, 5, 0) == null,
+				"at the portal and outside the gallery the ordinary single step is taken"); checks++;
+			worker.setPos(origin.getX() + 2.5, origin.getY(), origin.getZ() + 6.5);
+			level.setBlock(origin.offset(4, 0, 6), Blocks.STONE.defaultBlockState(), 3);
+			require(origin.offset(3, 0, 6).equals(Mining.lookAheadCell(walk, flat, 2, 9, 0)), "a blocked cell ends the look-ahead in front of it"); checks++;
+			level.setBlock(origin.offset(3, 0, 6), Blocks.STONE.defaultBlockState(), 3);
+			require(Mining.lookAheadCell(walk, flat, 2, 9, 0) == null, "with the very next cell blocked there is no look-ahead at all"); checks++;
+			level.setBlock(origin.offset(3, 0, 6), Blocks.AIR.defaultBlockState(), 3);
+			level.setBlock(origin.offset(4, 0, 6), Blocks.AIR.defaultBlockState(), 3);
+			level.setBlock(origin.offset(4, -1, 6), Blocks.AIR.defaultBlockState(), 3);
+			require(origin.offset(3, 0, 6).equals(Mining.lookAheadCell(walk, flat, 2, 9, 0)), "a missing floor ends the look-ahead as well"); checks++;
 			return checks;
 		} finally {
 			JobUtil.clearLongRoutes();

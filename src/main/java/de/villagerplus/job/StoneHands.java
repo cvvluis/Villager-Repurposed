@@ -109,7 +109,7 @@ public final class StoneHands {
 			int carried = JobUtil.count(c.v().getInventory(), de.villagerplus.build.CobbleLike::stone);
 			if (carried <= 0) {
 				CARRIERS.remove(id);
-			} else if ((!needed || PlanStoneSupply.cobbleDeliveryDue(c.level(), ref.data(), box, carried))
+			} else if ((!needed || PlanStoneSupply.cobbleDeliveryDue(c.level(), ref.data(), box, carried)) && !Mining.holdLoadUnderground(c, carried)
 				&& JobUtil.depositSurplus(c, de.villagerplus.build.CobbleLike::stone, 1, 0)) {
 				return true;
 			}

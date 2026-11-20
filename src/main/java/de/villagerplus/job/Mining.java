@@ -165,6 +165,8 @@ public final class Mining {
 		if (PlanStoneSupply.needsCobble(level, d, box)) return true;
 		// Any active plan that waits on cobblestone counts, not only the one shown in the primary plan view.
 		if (PlanStoneSupply.villageCobbleShortage(d, box) > 0) return true;
+		// A modest stock in the chest keeps the plan's next batches from waiting for a whole new mining trip each.
+		if (PlanStoneSupply.stockGap(d, box) > 0) return true;
 		// The plan asks for plain cobblestone directly (rustic or woodless palettes): mine it once the village chest cannot cover it.
 		// Cobblestone stairs and slabs are crafted from cobblestone (6 per 4 stairs, 3 per 6 slabs), so they count as demand too.
 		int stairs = PlanStoneSupply.wanted(d, net.minecraft.world.item.Items.COBBLESTONE_STAIRS);
@@ -225,7 +227,7 @@ public final class Mining {
 	/** Section the running kit wait belongs to: a new section starts a fresh wait, so one timeout never unlocks the whole mine. */
 	private static final java.util.Map<Long, Integer> KIT_WAIT_INDEX = new java.util.HashMap<>();
 	/** Timber or coal may simply not exist near a village: after this much working time spent on one section's kit (restock trips, crafting, waiting) the miners dig that section without it, and the following ones too for {@link #KIT_SKIP_TICKS}. */
-	static final long KIT_WAIT_TICKS = 1800L;
+	static final long KIT_WAIT_TICKS = 900L;
 	/** After such a release the following sections are dug without waiting for the same kit again for this long. */
 	static final long KIT_SKIP_TICKS = 12000L;
 	/** One call counts at most this much waiting time, so nights and rest periods between two work spells are not charged. */
@@ -234,7 +236,7 @@ public final class Mining {
 	private static final java.util.Map<Long, Long> KIT_WAIT_LAST = new java.util.HashMap<>();
 	private static final java.util.Map<Long, Long> KIT_SKIP_UNTIL = new java.util.HashMap<>();
 	/** The supply trip also covers the next few sections (only what the depot holds), so a trip is not made for every support or torch. */
-	static final int KIT_LOOKAHEAD_SECTIONS = 6;
+	static final int KIT_LOOKAHEAD_SECTIONS = 16;
 	private static final java.util.Map<java.util.UUID, Long> NOSTART_DIAG = new java.util.HashMap<>();
 
 	/** True when mineDiag would log for this resident now (lets callers skip building expensive messages). */
@@ -326,7 +328,8 @@ public final class Mining {
 		// The stone variants broken out of the same rock (andesite, diorite, granite) pay plain cobblestone steps too, so they travel with it.
 		boolean underground = c.v().getY() < m.entrance.getY() - 0.5 && nearest(m, c.v().position()) >= 1;
 		if (need == Need.STONE && PlanStoneSupply.cobbleDeliveryDue(c.level(), ref.data(), box,
-				JobUtil.count(c.v().getInventory(), de.villagerplus.build.CobbleLike::stone), underground)) {
+				JobUtil.count(c.v().getInventory(), de.villagerplus.build.CobbleLike::stone), underground,
+				underground ? nearest(m, c.v().position()) : 0, underground ? crewCobble(c, m) : 0)) {
 			if (underground) {
 				requestCapacityReturn(c, m);
 				return true;
@@ -482,6 +485,8 @@ public final class Mining {
 		BlockPos workStand = mineWorkStand(m, stand, workSlot);
 		if (here != stand || !atMineWorkStand(c.v(), workStand)) {
 			BlockPos next = nextMineWorkWaypoint(m, here, stand, workSlot);
+			BlockPos ahead = Math.abs(stand - here) > 1 ? lookAheadCell(c, m, here, stand, workSlot) : null;
+			if (ahead != null) next = ahead;
 			MineWalk result = walkMineStep(c, m, next);
 			mineDiagnose(c, "Lauf " + result + " pos=" + c.v().blockPosition().toShortString() + " Eingang=" + m.entrance.toShortString()
 				+ " Zelle=" + here + "/" + stand + " naechster=" + next.toShortString() + " Slot=" + workSlot);
@@ -2125,6 +2130,19 @@ public final class Mining {
 			|| stack.is(net.minecraft.tags.ItemTags.WOODEN_FENCES)) == 0;
 	}
 
+	/**
+	 * The only thing the next section lacks is a torch and the depot holds neither a torch nor coal or charcoal to make one from:
+	 * walking up, to the depot and back (a quarter of a working day in a deep gallery) cannot change that. The section is dug
+	 * plain, its light spot stays free, and the next section that has the means (coal arrives) is lit as usual.
+	 */
+	static boolean lightCannotBeMade(Ctx c, VillageRef ref, MineSupplies missingStructural) {
+		if (missingStructural.fences() > 0 || missingStructural.framePlanks() > 0 || missingStructural.torches() <= 0) return false;
+		Container chest = ref.chest(c.level());
+		if (chest == null) return false;
+		if (JobUtil.count(c.v().getInventory(), stack -> stack.is(Items.TORCH) || stack.is(net.minecraft.tags.ItemTags.COALS)) > 0) return false;
+		return JobUtil.count(chest, stack -> stack.is(Items.TORCH) || stack.is(net.minecraft.tags.ItemTags.COALS)) == 0;
+	}
+
 	/** Restock at the village chest before the next structural section; excavation never conjures its supports or light. */
 	private static SupplyStatus ensureMineSupplies(Ctx c, VillageRef ref, VillageData.Mine mine) {
 		MineFrameMaterials materials = mineFrameMaterials(c, mine);
@@ -2134,6 +2152,7 @@ public final class Mining {
 		// Supports, ribs and torches stop the digging; the paved walkway strip does not (a village without oak planks must not
 		// wait ten minutes for one), so a section that needs no structure is dug at once with what the resident carries.
 		if (missing.structural().empty()) return anticipateKit(c, ref, mine, materials);
+		if (lightCannotBeMade(c, ref, missing.structural())) return SupplyStatus.READY;
 		if (c.v().getY() < mine.entrance.getY() - 0.5 && nearest(mine, c.v().position()) >= 1) {
 			// Leave by the saved route first; the movement guard keeps the return trip inside the gallery.
 			c.st().miningUntil = c.now();
@@ -2187,7 +2206,7 @@ public final class Mining {
 			}
 		}
 		// One trip serves the next sections too: besides the next section's structure it takes, as far as the depot holds them
-		// COMPLETE, the structures of the following few sections and the walkway planks. Nothing is crafted or reserved for that.
+		// COMPLETE, the structures of the following few sections and the walkway planks.
 		Map<Item, Integer> need = mineSupplyItems(missing.structural(), materials);
 		Map<Item, Integer> grab = new LinkedHashMap<>(need);
 		MineSupplies cumulative = required.structural();
@@ -2238,16 +2257,17 @@ public final class Mining {
 	 */
 	private static SupplyStatus anticipateKit(Ctx c, VillageRef ref, VillageData.Mine mine, MineFrameMaterials materials) {
 		if (inMineArea(mine, c.v())) return SupplyStatus.READY;
-		MineSupplies ahead = null;
 		int last = Math.min(mine.index + KIT_LOOKAHEAD_SECTIONS, descent(mine) + MAX_HORIZONTAL);
-		for (int i = mine.index + 1; i < last && ahead == null; i++) {
+		MineSupplies first = null;
+		int firstIndex = -1;
+		for (int i = mine.index + 1; i < last && first == null; i++) {
 			VillageData.Mine section = new VillageData.Mine(mine.entrance, mine.dir, i, mine.targetY, false);
 			MineSupplies need = mineSuppliesForNextSection(c.level(), section, materials).structural();
-			if (!need.empty()) ahead = need;
+			if (!need.empty()) { first = need; firstIndex = i; }
 		}
-		if (ahead == null) return SupplyStatus.READY;
+		if (first == null) return SupplyStatus.READY;
 		Container inventory = c.v().getInventory();
-		MineSupplies missing = missingMineSupplies(inventory, ahead, materials);
+		MineSupplies missing = missingMineSupplies(inventory, first, materials);
 		BlockPos chestPos = ref.chestPos(c.level());
 		Container chest = ref.chest(c.level());
 		if (missing.structural().empty() || chestPos == null || chest == null) return SupplyStatus.READY;
@@ -2258,7 +2278,23 @@ public final class Mining {
 			return craftMineSupplies(c, chest, chestPos, inventory, missing.structural(), materials)
 				? SupplyStatus.BUSY : SupplyStatus.READY;
 		}
+		// The depot holds the first need: take as many of the following sections' structures along as it holds complete.
 		Map<Item, Integer> grab = mineSupplyItems(missing.structural(), materials);
+		MineSupplies cumulative = first;
+		for (int i = mine.index + 1; i < last; i++) {
+			VillageData.Mine ahead = new VillageData.Mine(mine.entrance, mine.dir, i, mine.targetY, false);
+			MineSupplies section = mineSuppliesForNextSection(c.level(), ahead, materials).structural();
+			if (section.empty() || i <= firstIndex) continue;
+			MineSupplies candidate = cumulative.plus(section);
+			Map<Item, Integer> items = mineSupplyItems(missingMineSupplies(inventory, candidate, materials).structural(), materials);
+			boolean complete = true;
+			for (Map.Entry<Item, Integer> entry : items.entrySet()) {
+				if (JobUtil.count(chest, stack -> stack.is(entry.getKey())) < entry.getValue()) complete = false;
+			}
+			if (!complete || !fits(inventory, stacksOf(items))) break;
+			cumulative = candidate;
+			grab = items;
+		}
 		if (!fits(inventory, stacksOf(grab))) return SupplyStatus.READY;
 		if (!atChest && !JobUtil.approachLong(c, chestPos, 4.5)) {
 			c.setActivity("holt Stollenmaterial aus dem Dorflager");
@@ -2550,6 +2586,32 @@ public final class Mining {
 		return new AABB(minX, mine.targetY - 4.0, minZ, maxX, mine.entrance.getY() + 5.0, maxZ);
 	}
 
+	/**
+	 * True while a resident down in the gallery should keep digging with the stone he carries: the village is short of stone and
+	 * his load is not yet one that justifies the long walk out. Plan owners and stone hands used to leave at twelve stones, which
+	 * in a deep gallery is a quarter of a working day of walking for one minute of digging.
+	 */
+	public static boolean holdLoadUnderground(Ctx c, int carried) {
+		VillageRef ref = c.village();
+		if (ref == null) return false;
+		VillageData.Mine m = mineAround(c);
+		if (m == null || m.done || c.v().getY() >= m.entrance.getY() - 0.5) return false;
+		int depth = nearest(m, c.v().position());
+		if (depth < 1) return false;
+		Container box = ref.chest(c.level());
+		if (box == null || !needed(c.level(), ref, ref.data(), box, Need.STONE)) return false;
+		return !PlanStoneSupply.cobbleDeliveryDue(c.level(), ref.data(), box, carried, true, depth, crewCobble(c, m));
+	}
+
+	/** Cobblestone carried by everybody who works inside the gallery (the resident himself included). */
+	private static int crewCobble(Ctx c, VillageData.Mine m) {
+		int total = JobUtil.count(c.v().getInventory(), de.villagerplus.build.CobbleLike::stone);
+		for (Villager other : mineRouteWorkers(c.level(), m)) {
+			if (other != c.v() && inMineArea(m, other)) total += JobUtil.count(other.getInventory(), de.villagerplus.build.CobbleLike::stone);
+		}
+		return total;
+	}
+
 	private static List<Villager> mineRouteWorkers(ServerLevel level, VillageData.Mine mine) {
 		// Residents still walking in from the village hold a lane too (their route lease), otherwise they all get the same free stand.
 		return level.getEntitiesOfClass(Villager.class, mineWorkerBounds(mine).inflate(96.0, 40.0, 96.0), villager -> {
@@ -2610,6 +2672,34 @@ public final class Mining {
 	private static BlockPos nextMineWorkWaypoint(VillageData.Mine mine, int current, int target, int slot) {
 		int next = current < 0 ? 0 : current + Integer.signum(target - current);
 		return mineWorkStand(mine, next, slot);
+	}
+
+	/** Cells of the verified gallery a walker may be sent ahead in one go (a stop at every single cell cost most of the walking time). */
+	static final int WALK_LOOKAHEAD = 3;
+
+	/**
+	 * The farthest cell, at most {@link #WALK_LOOKAHEAD} sections from {@code from} towards {@code to}, up to which every cell of
+	 * the (already dug and floor-checked) gallery is a safe landing, in the walker's own lane ({@code slot} 0..2, else the centre).
+	 * Null when not even the next cell qualifies: the caller then takes its ordinary single step with all its repairs.
+	 */
+	static BlockPos lookAheadCell(Ctx c, VillageData.Mine m, int from, int to, int slot) {
+		int step = Integer.signum(to - from);
+		if (from < 1 || step == 0) return null;
+		List<BlockPos> cells = new ArrayList<>();
+		int reach = Math.min(WALK_LOOKAHEAD, Math.abs(to - from));
+		for (int i = 1; i <= reach; i++) {
+			int index = from + step * i;
+			BlockPos cell = slot >= 0 && slot < MINE_WORK_STAND_COUNT ? mineWorkStand(m, index, slot) : bottom(m, index);
+			if (cell == null || !safeMineLanding(c.level(), cell) || !safeCell(c, cell)) break;
+			cells.add(cell);
+		}
+		// Vanilla navigation must follow the gallery to the farther cell: a path that detours (over the hill above the shaft, past a
+		// bend) sends the walker away from the tube, so such a cell is left to the single steps.
+		for (int i = cells.size(); i >= 2; i--) {
+			var path = c.v().getNavigation().createPath(cells.get(i - 1), 0);
+			if (path != null && path.canReach() && path.getNodeCount() <= i + 3) return cells.get(i - 1);
+		}
+		return cells.isEmpty() ? null : cells.get(0);
 	}
 
 	private static boolean atMineWorkStand(Villager villager, BlockPos stand) {
@@ -2747,15 +2837,24 @@ public final class Mining {
 		return true;
 	}
 
+	/** Deeper than this the three lanes of the gallery let walkers pass each other: only the shaft and the portal are single file. */
+	static final int EXIT_LANES_FROM = 1;
+
 	private static boolean mineExitTurn(Ctx c, VillageData.Mine mine, int currentIndex) {
+		MineRoute own = mineRoute(c.v());
+		int ownSlot = own == null ? -1 : workSlotForRoute(own, c.v());
 		for (Villager other : mineRouteWorkers(c.level(), mine)) {
 			if (other == c.v()) continue;
 			MineRoute route = mineRoute(other);
 			if (route == null || route.index() < 0 || other.getY() >= mine.entrance.getY() - 0.5) continue;
 			int otherIndex = nearest(mine, other.position());
 			if (otherIndex < 0) otherIndex = nearestForReturnRecovery(mine, other.position());
+			if (currentIndex >= EXIT_LANES_FROM && otherIndex >= EXIT_LANES_FROM && ownSlot >= 0
+				&& workSlotForRoute(route, other) != ownSlot) continue;
 			if (otherIndex >= 0 && (otherIndex < currentIndex
-				|| otherIndex == currentIndex && other.getUUID().compareTo(c.v().getUUID()) < 0)) return false;
+				|| otherIndex == currentIndex && other.getUUID().compareTo(c.v().getUUID()) < 0)) {
+				return false;
+			}
 		}
 		return true;
 	}
@@ -3040,7 +3139,7 @@ public final class Mining {
 
 		// Far from the mine (vanilla navigation range is short): hand the walk to the bounded long-route search first.
 		double farSq = c.v().position().distanceToSqr(Vec3.atBottomCenterOf(cell));
-		if (farSq > 8.0 * 8.0 && onMineSurface(mine, c.v()) && approachStalled(c, farSq)) return MineWalk.MOVING;
+		if (farSq > 8.0 * 8.0 && onMineSurface(mine, c.v()) && approachStalled(c, farSq, mine)) return MineWalk.MOVING;
 		// A walk that got no closer for a while on the last stretch is handed to the bounded long-route search as well: vanilla
 		// navigation then follows a partial path (observed: past the village plaza, away from the portal) or a stale one.
 		boolean assisted = farSq <= 20.0 * 20.0 && farSq > 8.0 * 8.0 && onMineSurface(mine, c.v()) && approachNeedsAssist(c);
@@ -3078,7 +3177,7 @@ public final class Mining {
 			}
 		}
 		clearMineStepMisses(mine.entrance.asLong());
-		return approachMineStep(c, cell);
+		return approachMineStep(c, cell, inMineArea(mine, c.v()));
 	}
 
 	/** First time a resident found a free lane it could not path to, per resident (see {@link #noLanePathWatchdog}). */
@@ -3148,7 +3247,7 @@ public final class Mining {
 	private record ApproachProgress(double bestSq, long bestAt, long lastSeen, int stalls) { }
 	private static final Map<UUID, ApproachProgress> MINE_APPROACH = new HashMap<>();
 	/** A walk to the mine that gets no closer for this long is stuck (a doorway, a yard, a fight over the walk target), not slow. */
-	static final long APPROACH_STALL_TICKS = 600L;
+	static final long APPROACH_STALL_TICKS = 300L;
 	static final int APPROACH_STALLS_BEFORE_GIVING_UP = 3;
 
 	/**
@@ -3158,20 +3257,42 @@ public final class Mining {
 	 * Returns true when this call handled the resident.
 	 */
 	static boolean approachStalled(Ctx c, double farSq) {
+		return approachStalled(c, farSq, null);
+	}
+
+	/** Circling on the last 8 to 20 blocks before the portal for this long is a stall as well, whatever the "closest distance" says. */
+	static final long APPROACH_NEAR_BAND_TICKS = 450L;
+	private static final Map<UUID, Long> MINE_NEAR_BAND = new HashMap<>();
+
+	/** {@link #approachStalled(Ctx, double)} for a walk to {@code mine}: a stalled resident is set down at the portal when a stand is free. */
+	static boolean approachStalled(Ctx c, double farSq, VillageData.Mine mine) {
 		UUID id = c.v().getUUID();
 		long now = c.now();
 		ApproachProgress p = MINE_APPROACH.get(id);
-		if (p == null || now - p.lastSeen() > 200L) {
-			MINE_APPROACH.put(id, new ApproachProgress(farSq, now, now, p == null || now - p.lastSeen() > 6000L ? 0 : p.stalls()));
-			return false;
+		boolean circling = false;
+		if (mine != null && farSq <= 20.0 * 20.0) {
+			Long since = MINE_NEAR_BAND.get(id);
+			if (since == null || now - since > 6000L || p == null || now - p.lastSeen() > 200L) MINE_NEAR_BAND.put(id, now);
+			else circling = now - since > APPROACH_NEAR_BAND_TICKS;
+		} else {
+			MINE_NEAR_BAND.remove(id);
 		}
-		if (farSq < p.bestSq() - 4.0) {
-			MINE_APPROACH.put(id, new ApproachProgress(farSq, now, now, p.stalls()));
-			return false;
-		}
-		if (now - p.bestAt() <= APPROACH_STALL_TICKS) {
-			MINE_APPROACH.put(id, new ApproachProgress(p.bestSq(), p.bestAt(), now, p.stalls()));
-			return false;
+		if (circling) {
+			MINE_NEAR_BAND.remove(id);
+			if (p == null) p = new ApproachProgress(farSq, now, now, 0);
+		} else {
+			if (p == null || now - p.lastSeen() > 200L) {
+				MINE_APPROACH.put(id, new ApproachProgress(farSq, now, now, p == null || now - p.lastSeen() > 6000L ? 0 : p.stalls()));
+				return false;
+			}
+			if (farSq < p.bestSq() - 4.0) {
+				MINE_APPROACH.put(id, new ApproachProgress(farSq, now, now, p.stalls()));
+				return false;
+			}
+			if (now - p.bestAt() <= APPROACH_STALL_TICKS) {
+				MINE_APPROACH.put(id, new ApproachProgress(p.bestSq(), p.bestAt(), now, p.stalls()));
+				return false;
+			}
 		}
 		int stalls = p.stalls() + 1;
 		BlockPos stuckAt = c.v().blockPosition();
@@ -3189,18 +3310,35 @@ public final class Mining {
 				c.mem().name, c.v().blockPosition().toShortString(), (int) Math.sqrt(farSq));
 			return true;
 		}
-		BlockPos arrival = c.village() == null ? null : de.villagerplus.build.Builder.villageReturn(c.level(), c.village().bell());
+		BlockPos portal = mine == null ? null : portalArrival(c, mine);
+		BlockPos arrival = portal != null ? portal
+			: c.village() == null ? null : de.villagerplus.build.Builder.villageReturn(c.level(), c.village().bell());
 		if (arrival != null) {
-			arrival = spreadArrival(c, arrival);
+			if (portal == null) arrival = spreadArrival(c, arrival);
 			c.v().teleportTo(arrival.getX() + 0.5, arrival.getY(), arrival.getZ() + 0.5);
 			c.v().resetFallDistance();
 		}
 		c.st().cooldownUntil = now + 20;
-		// The position is the one the resident stood on when the walk stalled, not the street spot he is set onto.
-		LOGGER.info("Mine: {} kam auf dem Weg zur Mine {} Ticks nicht naeher (Abstand {}, bei {}, {} Dorfbewohner dicht daneben, unter {}) und wurde auf die Dorfstrasse gesetzt",
+		// The position is the one the resident stood on when the walk stalled, not the spot he is set onto.
+		LOGGER.info("Mine: {} kam auf dem Weg zur Mine {} Ticks nicht naeher (Abstand {}, bei {}, {} Dorfbewohner dicht daneben, unter {}) und wurde {} gesetzt",
 			c.mem().name, APPROACH_STALL_TICKS, (int) Math.sqrt(farSq), stuckAt.toShortString(), crowd,
-			c.level().getBlockState(stuckAt.below()).getBlock().getDescriptionId());
+			c.level().getBlockState(stuckAt.below()).getBlock().getDescriptionId(), portal != null ? "an das Minenportal" : "auf die Dorfstrasse");
 		return true;
+	}
+
+	/** A free, standable waiting pad beside the portal (no path needed: the resident is set there, not walked), or null. */
+	private static BlockPos portalArrival(Ctx c, VillageData.Mine mine) {
+		List<Villager> routeWorkers = mineRouteWorkers(c.level(), mine);
+		AABB nearMine = new AABB(mine.entrance).inflate(WAITING_STAND_SCAN_MARGIN, 4, WAITING_STAND_SCAN_MARGIN);
+		List<LivingEntity> nearby = c.level().getEntitiesOfClass(LivingEntity.class, nearMine, entity -> entity != c.v() && entity.isAlive());
+		int preferred = preferredMineWaitingSlot(c.v().getUUID());
+		for (int offset = 0; offset < WAITING_STAND_COUNT; offset++) {
+			int slot = (preferred + offset) % WAITING_STAND_COUNT;
+			if (!mineWaitingStandAvailable(c, mine, slot, routeWorkers, nearby)) continue;
+			BlockPos stand = mineWaitingStand(c.level(), mine, slot);
+			if (stand != null && arrivalStandable(c.level(), stand)) return stand;
+		}
+		return null;
 	}
 
 	/** No progress for this long on the last stretch to the mine: the long-route search takes over from vanilla navigation. */
@@ -3257,6 +3395,7 @@ public final class Mining {
 	/** Test hook: forget the walk-progress bookkeeping. */
 	static void resetApproachForTest() {
 		MINE_APPROACH.clear();
+		MINE_NEAR_BAND.clear();
 	}
 
 	/** Propagates JobUtil's anti-stuck abort instead of immediately recreating the same mine waypoint. */
@@ -3305,7 +3444,14 @@ public final class Mining {
 		return true;
 	}
 
+	/** Walking speed of a resident inside the gallery (the guard keeps him on the paved lanes; the surface keeps the calmer 0.55). */
+	static final float GALLERY_WALK_SPEED = 0.65F;
+
 	static MineWalk approachMineStep(Ctx c, BlockPos cell) {
+		return approachMineStep(c, cell, false);
+	}
+
+	static MineWalk approachMineStep(Ctx c, BlockPos cell, boolean gallery) {
 		long cooldownBefore = c.st().cooldownUntil;
 		if (JobUtil.approach(c, cell, ARRIVAL_RADIUS)) {
 			c.v().getNavigation().stop();
@@ -3350,7 +3496,8 @@ public final class Mining {
 		c.v().getBrain().setMemory(MemoryModuleType.WALK_TARGET,
 			// closeEnough 0: the brain keeps walking until the villager stands IN the cell. With 1 it stops on the neighbouring block
 			// (Manhattan distance 1) while the arrival test above wants 0.9 blocks - the walker then hangs one step short.
-			new WalkTarget(Vec3.atBottomCenterOf(cell), (float) Math.min(0.55, 0.45 * Skills.speed(c.mem())), 0));
+			new WalkTarget(Vec3.atBottomCenterOf(cell), (float) (gallery
+				? Math.min(GALLERY_WALK_SPEED, 0.55 * Skills.speed(c.mem())) : Math.min(0.55, 0.45 * Skills.speed(c.mem()))), 0));
 		return MineWalk.MOVING;
 	}
 
@@ -3387,6 +3534,23 @@ public final class Mining {
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * A resident who works underground stays at the face through the short break while the village lacks stone: leaving the gallery
+	 * and coming back costs far more than the break lasts (a round trip of about a minute per fifteen cells of depth). Lunch and the
+	 * evening still bring everybody up. Same rules as the ordinary work call (lane, kit, safety), nothing is skipped.
+	 */
+	public static boolean workThroughBreak(Ctx c) {
+		VillageRef ref = c.village();
+		if (ref == null) return false;
+		MineRoute route = mineRoute(c.v());
+		if (route == null || route.index() < 0) return false;
+		VillageData.Mine m = mineAround(c);
+		if (m == null || m.done || c.v().getY() >= m.entrance.getY() - 0.5) return false;
+		Container box = ref.chest(c.level());
+		if (box == null || !needed(c.level(), ref, ref.data(), box, Need.STONE)) return false;
+		return tick(c, Need.STONE, StoneHands.claimed(c.v().getUUID(), c.now()));
 	}
 
 	/** Steckt der Dorfbewohner gerade im Stollen (unter Tage), ohne dort zu arbeiten? */
@@ -3609,6 +3773,8 @@ public final class Mining {
 			return;
 		}
 		BlockPos next = nextMineWaypoint(m, k, 0);
+		BlockPos ahead = k > 1 ? lookAheadCell(c, m, k, 0, saved == null ? -1 : workSlotForRoute(saved, c.v())) : null;
+		if (ahead != null) next = ahead;
 		MineWalk result = walkMineStep(c, m, next);
 		if (result == MineWalk.STUCK) {
 			deferMineRouteAfterStall(c);

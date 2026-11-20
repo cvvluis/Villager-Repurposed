@@ -487,6 +487,11 @@ public final class JobManager {
 			Anim.apply(v, st, now);
 			return;
 		}
+		if (phase == Phase.BREAK && Mining.workThroughBreak(ctx)) {
+			Caravan.releasePorter(v);
+			Anim.apply(v, st, now);
+			return;
+		}
 		if (Mining.insideMine(ctx)) {
 			Caravan.releasePorter(v);
 			Mining.exitStep(ctx);

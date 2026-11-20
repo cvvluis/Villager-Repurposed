@@ -174,6 +174,7 @@ public final class StoneHandsChecks {
 			check(StoneHands.work(ctx(level, w1, s1, ref, now)) && StoneHands.claimed(w1.getUUID(), now)
 				&& level.getBlockState(p1).isAir() && JobUtil.count(w1.getInventory(), s -> s.is(Items.COBBLESTONE)) == 1,
 				"an idle resident breaks exposed stone for the waiting plan and keeps his claim"); checks++;
+			check(!Mining.holdLoadUnderground(ctx(level, w1, s1, ref, now), 80), "a resident on the surface never holds a load back: only the gallery does"); checks++;
 			s2.idleSince = now - 1000L;
 			check(StoneHands.work(ctx(level, w2, s2, ref, now + 1)) && StoneHands.claimCount(now + 1) == 2, "a second hand joins"); checks++;
 			s3.idleSince = now - 1000L;
