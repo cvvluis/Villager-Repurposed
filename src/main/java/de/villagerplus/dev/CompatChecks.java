@@ -54,7 +54,26 @@ public final class CompatChecks {
 		checks += professionMapping(registry);
 		checks += seasonTags(level);
 		checks += villageStructures(level);
+		checks += renderMods();
 		return checks;
+	}
+
+	/**
+	 * E04 honesty check: reports which skin/model mods share the runtime. This mod has no EMF/ETF-specific code (role skins are plain
+	 * vanilla textures composed on the client), so the server-side run can only prove that both mods load next to it without breaking the
+	 * profession and role classification; skin rendering under EMF/ETF/Fresh Animations needs a client and stays unverified.
+	 */
+	private static int renderMods() {
+		var loader = net.fabricmc.loader.api.FabricLoader.getInstance();
+		for (String id : new String[] {"entity_model_features", "entity_texture_features"}) {
+			String version = loader.getModContainer(id).map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("absent");
+			System.out.println("COMPAT E04 render mod " + id + "=" + version + " (skin rendering with it: UNVERIFIED, needs a client)");
+		}
+		for (de.villagerplus.job.E04Role role : de.villagerplus.job.E04Role.values()) {
+			if (role == de.villagerplus.job.E04Role.NONE) continue;
+			check(!role.textureName().isEmpty(), "E04 role " + role + " has a skin name"); 
+		}
+		return 4;
 	}
 
 	/** Professions of More Villagers (ids read from its acquirable_job_site POI list) and Village Taverns that must exist once the mod is present. */
