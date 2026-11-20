@@ -3041,9 +3041,12 @@ public final class Mining {
 		// Far from the mine (vanilla navigation range is short): hand the walk to the bounded long-route search first.
 		double farSq = c.v().position().distanceToSqr(Vec3.atBottomCenterOf(cell));
 		if (farSq > 8.0 * 8.0 && onMineSurface(mine, c.v()) && approachStalled(c, farSq)) return MineWalk.MOVING;
-		if (farSq > 20.0 * 20.0 && onMineSurface(mine, c.v())) {
+		// A walk that got no closer for a while on the last stretch is handed to the bounded long-route search as well: vanilla
+		// navigation then follows a partial path (observed: past the village plaza, away from the portal) or a stale one.
+		boolean assisted = farSq <= 20.0 * 20.0 && farSq > 8.0 * 8.0 && onMineSurface(mine, c.v()) && approachNeedsAssist(c);
+		if ((farSq > 20.0 * 20.0 && onMineSurface(mine, c.v())) || assisted) {
 			c.setActivity("geht zur Mine");
-			if (!JobUtil.approachLong(c, cell, 10.0)) return c.st().cooldownUntil > c.now() ? MineWalk.STUCK : MineWalk.MOVING;
+			if (!JobUtil.approachLong(c, cell, assisted ? 4.0 : 10.0)) return c.st().cooldownUntil > c.now() ? MineWalk.STUCK : MineWalk.MOVING;
 		}
 		// Preflight only when vanilla navigation is not already following this bounded waypoint.
 		if (c.v().getNavigation().isDone() || !cell.equals(c.v().getNavigation().getTargetPos())) {
@@ -3126,6 +3129,7 @@ public final class Mining {
 		c.v().getNavigation().stop();
 		c.v().getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
 		c.st().clearTarget();
+		arrival = spreadArrival(c, arrival);
 		c.v().teleportTo(arrival.getX() + 0.5, arrival.getY(), arrival.getZ() + 0.5);
 		c.v().resetFallDistance();
 		c.st().cooldownUntil = now + 20;
@@ -3170,6 +3174,8 @@ public final class Mining {
 			return false;
 		}
 		int stalls = p.stalls() + 1;
+		BlockPos stuckAt = c.v().blockPosition();
+		int crowd = c.level().getEntitiesOfClass(Villager.class, c.v().getBoundingBox().inflate(1.5), o -> o != c.v()).size();
 		MINE_APPROACH.put(id, new ApproachProgress(Double.MAX_VALUE, now, now, stalls));
 		c.v().getNavigation().stop();
 		c.v().getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
@@ -3185,13 +3191,67 @@ public final class Mining {
 		}
 		BlockPos arrival = c.village() == null ? null : de.villagerplus.build.Builder.villageReturn(c.level(), c.village().bell());
 		if (arrival != null) {
+			arrival = spreadArrival(c, arrival);
 			c.v().teleportTo(arrival.getX() + 0.5, arrival.getY(), arrival.getZ() + 0.5);
 			c.v().resetFallDistance();
 		}
 		c.st().cooldownUntil = now + 20;
-		LOGGER.info("Mine: {} kam auf dem Weg zur Mine {} Ticks nicht naeher (Abstand {}, bei {}) und wurde auf die Dorfstrasse gesetzt",
-			c.mem().name, APPROACH_STALL_TICKS, (int) Math.sqrt(farSq), c.v().blockPosition().toShortString());
+		// The position is the one the resident stood on when the walk stalled, not the street spot he is set onto.
+		LOGGER.info("Mine: {} kam auf dem Weg zur Mine {} Ticks nicht naeher (Abstand {}, bei {}, {} Dorfbewohner dicht daneben, unter {}) und wurde auf die Dorfstrasse gesetzt",
+			c.mem().name, APPROACH_STALL_TICKS, (int) Math.sqrt(farSq), stuckAt.toShortString(), crowd,
+			c.level().getBlockState(stuckAt.below()).getBlock().getDescriptionId());
 		return true;
+	}
+
+	/** No progress for this long on the last stretch to the mine: the long-route search takes over from vanilla navigation. */
+	static final long APPROACH_ASSIST_TICKS = 200L;
+
+	/** True when the current walk to the mine has not got closer for {@link #APPROACH_ASSIST_TICKS} (but is still being watched). */
+	static boolean approachNeedsAssist(Ctx c) {
+		ApproachProgress p = MINE_APPROACH.get(c.v().getUUID());
+		return p != null && c.now() - p.lastSeen() <= 200L && c.now() - p.bestAt() >= APPROACH_ASSIST_TICKS;
+	}
+
+	/** Offsets around the street spot (nearest first) where several residents set back at once can stand without piling up. */
+	private static final int[][] ARRIVAL_RING = {
+		{ 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 }, { 1, 1 }, { -1, -1 }, { 1, -1 }, { -1, 1 },
+		{ 2, 0 }, { -2, 0 }, { 0, 2 }, { 0, -2 }, { 2, 1 }, { -2, -1 }, { 1, -2 }, { -1, 2 },
+		{ 2, -1 }, { -2, 1 }, { 1, 2 }, { -1, -2 }, { 2, 2 }, { -2, -2 }, { 2, -2 }, { -2, 2 }
+	};
+
+	/**
+	 * A free, safe stand beside the village street spot. Every resident put back on the street used to land on the very same block;
+	 * five or more then stood inside each other at the narrow walk past the plaza buildings and none of them got to the portal
+	 * (natural run: {@code nah=4..7} villagers within 1.5 blocks of each stalled walker). Loaded columns only, no chunk is requested.
+	 */
+	static BlockPos spreadArrival(Ctx c, BlockPos street) {
+		int start = Math.floorMod(c.v().getUUID().hashCode(), ARRIVAL_RING.length);
+		for (int i = -1; i < ARRIVAL_RING.length; i++) {
+			int dx = i < 0 ? 0 : ARRIVAL_RING[(start + i) % ARRIVAL_RING.length][0];
+			int dz = i < 0 ? 0 : ARRIVAL_RING[(start + i) % ARRIVAL_RING.length][1];
+			for (int dy : new int[] { 0, 1, -1 }) {
+				BlockPos feet = street.offset(dx, dy, dz);
+				if (!arrivalStandable(c.level(), feet)) continue;
+				AABB around = new AABB(feet).inflate(0.8, 1.0, 0.8);
+				if (!c.level().getEntitiesOfClass(Villager.class, around, o -> o != c.v() && o.isAlive()).isEmpty()) break;
+				return feet;
+			}
+		}
+		return street;
+	}
+
+	/** A loaded cell with a firm floor (a dirt path counts), two free blocks of air and no liquid. */
+	private static boolean arrivalStandable(ServerLevel level, BlockPos feet) {
+		BlockPos below = feet.below();
+		BlockPos head = feet.above();
+		if (!de.villagerplus.world.LoadedColumns.ready(level, feet) || !de.villagerplus.world.LoadedColumns.ready(level, below)
+			|| !de.villagerplus.world.LoadedColumns.ready(level, head)) return false;
+		BlockState ground = level.getBlockState(below);
+		BlockState body = level.getBlockState(feet);
+		BlockState upper = level.getBlockState(head);
+		return (ground.isFaceSturdy(level, below, Direction.UP) || ground.is(Blocks.DIRT_PATH)) && ground.getFluidState().isEmpty()
+			&& body.getFluidState().isEmpty() && upper.getFluidState().isEmpty()
+			&& body.getCollisionShape(level, feet).isEmpty() && upper.getCollisionShape(level, head).isEmpty();
 	}
 
 	/** Test hook: forget the walk-progress bookkeeping. */
@@ -3200,12 +3260,67 @@ public final class Mining {
 	}
 
 	/** Propagates JobUtil's anti-stuck abort instead of immediately recreating the same mine waypoint. */
+	/** A resident's last arrival at a mine waypoint: the waypoint and when it first arrived there without the route moving on. */
+	record ArrivalMark(long cell, long since) { }
+	private static final Map<UUID, ArrivalMark> MINE_ARRIVALS = new HashMap<>();
+	/** The walk counts as arrived within this distance of a waypoint (see {@link JobUtil#approach}); the work stand and the section lookup are far stricter. */
+	static final double ARRIVAL_RADIUS = 0.9;
+	/** An arrival that does not move the route on within this many ticks sets the resident onto the waypoint centre. */
+	static final long ARRIVAL_SNAP_TICKS = 20L;
+	/** Closer than this to the centre counts as standing on the waypoint ({@link #atMineWorkStand} accepts 0.3). */
+	static final double ARRIVAL_CENTRED = 0.2;
+
+	/**
+	 * Decides whether an arrival at {@code cell} is stuck short of the centre. Walking stops as soon as the resident is within
+	 * {@link #ARRIVAL_RADIUS} of the waypoint, but the gallery only counts a section as reached when the resident is nearer to its
+	 * centre than to the neighbouring one, and a work stand only when he stands within 0.3 blocks of it. A resident who stopped
+	 * 0.4 to 0.9 blocks short therefore arrived forever without digging or moving on (natural run: three miners held every lane of the
+	 * shaft that way for 250 000 ticks). Returns true when he is to be set onto the centre now; {@code mark} is the previous arrival.
+	 */
+	static boolean arrivalNeedsSnap(double gapSq, ArrivalMark mark, long cell, long now) {
+		if (gapSq <= ARRIVAL_CENTRED * ARRIVAL_CENTRED) return false;
+		return mark != null && mark.cell() == cell && now - mark.since() >= ARRIVAL_SNAP_TICKS;
+	}
+
+	/** Test hook: forget the arrival bookkeeping. */
+	static void resetArrivalsForTest() {
+		MINE_ARRIVALS.clear();
+	}
+
+	/** Test hook for {@link #arrivalNeedsSnap(double, ArrivalMark, long, long)} with plain numbers. */
+	static boolean arrivalNeedsSnapForTest(double gapSq, long markCell, long markSince, long cell, long now) {
+		return arrivalNeedsSnap(gapSq, new ArrivalMark(markCell, markSince), cell, now);
+	}
+
+	/** Sets a resident who stopped short of a safe waypoint exactly onto it, unless somebody already stands there. */
+	private static boolean snapOntoWaypoint(Ctx c, BlockPos cell) {
+		if (!safeCell(c, cell)) return false;
+		AABB spot = new AABB(cell).inflate(0.2, 0.0, 0.2);
+		for (Villager other : c.level().getEntitiesOfClass(Villager.class, spot, o -> o != c.v() && o.isAlive())) {
+			if (other.position().distanceToSqr(Vec3.atBottomCenterOf(cell)) < 0.6 * 0.6) return false;
+		}
+		c.v().teleportTo(cell.getX() + 0.5, cell.getY(), cell.getZ() + 0.5);
+		c.v().resetFallDistance();
+		c.v().setDeltaMovement(Vec3.ZERO);
+		return true;
+	}
+
 	static MineWalk approachMineStep(Ctx c, BlockPos cell) {
 		long cooldownBefore = c.st().cooldownUntil;
-		if (JobUtil.approach(c, cell, 0.9)) {
+		if (JobUtil.approach(c, cell, ARRIVAL_RADIUS)) {
 			c.v().getNavigation().stop();
 			c.v().getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
 			c.st().clearTarget();
+			UUID id = c.v().getUUID();
+			ArrivalMark mark = MINE_ARRIVALS.get(id);
+			double gapSq = c.v().position().distanceToSqr(Vec3.atBottomCenterOf(cell));
+			if (mark == null || mark.cell() != cell.asLong() || c.now() - mark.since() > 1200L) {
+				MINE_ARRIVALS.put(id, new ArrivalMark(cell.asLong(), c.now()));
+			} else if (arrivalNeedsSnap(gapSq, mark, cell.asLong(), c.now()) && snapOntoWaypoint(c, cell)) {
+				MINE_ARRIVALS.remove(id);
+				LOGGER.info("Mine: {} stand {} Bloecke neben dem Wegpunkt {} still und wurde mittig daraufgesetzt", c.mem().name,
+					String.format(java.util.Locale.ROOT, "%.1f", Math.sqrt(gapSq)), cell.toShortString());
+			}
 			return MineWalk.ARRIVED;
 		}
 		if (c.st().cooldownUntil > cooldownBefore && c.st().cooldownUntil > c.now()) {

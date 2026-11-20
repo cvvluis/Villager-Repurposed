@@ -12,6 +12,7 @@ import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Fixture checks for the stone economy rules: the walk to the mine is watched for stalls (a resident who stands in a doorway
@@ -23,8 +24,9 @@ public final class StoneEconomyChecks {
 
 	public static int run(ServerLevel level, VillageRef ref, BlockPos bell) {
 		Villager worker = null;
+		Villager other = null;
 		int checks = 0;
-		Mining.resetApproachForTest();
+		Mining.resetApproachForTest(); Mining.resetArrivalsForTest();
 		try {
 			BlockPos entrance = bell.offset(30, 0, 0);
 			level.getChunk(entrance);
@@ -88,7 +90,7 @@ public final class StoneEconomyChecks {
 				"a pause of many ticks between two looks does not count as standing still"); checks++;
 
 			// 5. Three stalls in a row: no more teleports, the walk is dropped for a while and the mine route is cleared.
-			Mining.resetApproachForTest();
+			Mining.resetApproachForTest(); Mining.resetArrivalsForTest();
 			long u = later + 1_000L;
 			int teleports = 0;
 			boolean gaveUp = false;
@@ -134,11 +136,63 @@ public final class StoneEconomyChecks {
 			boolean moved = Mining.noLanePathWatchdog(ctx(level, worker, state, memory, ref, v + Mining.NO_LANE_PATH_TICKS + 50L), ref.data().mine.get());
 			check(moved && worker.blockPosition().distSqr(perch) > 100 && state.mineCheckAt > v,
 				"after the allowance the resident is put on the village street (moved " + moved + ", now at " + worker.blockPosition() + ")"); checks++;
+
+			// 7. Residents set back on the street do not pile up on one block: a second one finds a free stand beside the first.
+			BlockPos streetSpot = de.villagerplus.build.Builder.villageReturn(level, bell);
+			other = EntityTypes.VILLAGER.create(level, EntitySpawnReason.COMMAND);
+			if (other == null) throw new IllegalStateException("STONE ECONOMY CHECK FAILED: second villager missing");
+			other.setNoAi(true);
+			other.setInvulnerable(true);
+			other.addTag("vp090_fixture");
+			other.setPos(streetSpot.getX() + 0.5, streetSpot.getY(), streetSpot.getZ() + 0.5);
+			level.addFreshEntity(other);
+			BlockPos spread = Mining.spreadArrival(ctx(level, worker, state, memory, ref, v), streetSpot);
+			check(spread != null && !spread.equals(streetSpot) && Math.abs(spread.getY() - streetSpot.getY()) <= 1
+				&& other.position().distanceToSqr(Vec3.atBottomCenterOf(spread)) >= 0.8 * 0.8,
+				"a resident set back on the street stands beside the one already there (spot " + spread + ", street " + streetSpot + ")"); checks++;
+			other.discard();
+			BlockPos freeSpot = Mining.spreadArrival(ctx(level, worker, state, memory, ref, v), streetSpot);
+			check(streetSpot.equals(freeSpot), "a free street spot is used as it is (got " + freeSpot + ")"); checks++;
+
+			// 8. A walk with no progress for a while is handed to the long-route search; progress takes it back.
+			Mining.resetApproachForTest();
+			long w = v + 100_000L;
+			Mining.approachStalled(ctx(level, worker, state, memory, ref, w), far);
+			check(!Mining.approachNeedsAssist(ctx(level, worker, state, memory, ref, w + 100L)), "a fresh walk needs no help"); checks++;
+			Mining.approachStalled(ctx(level, worker, state, memory, ref, w + 150L), far);
+			check(Mining.approachNeedsAssist(ctx(level, worker, state, memory, ref, w + Mining.APPROACH_ASSIST_TICKS + 20L)),
+				"a walk without progress for the assist time is helped"); checks++;
+			Mining.approachStalled(ctx(level, worker, state, memory, ref, w + 260L), far - 200.0);
+			check(!Mining.approachNeedsAssist(ctx(level, worker, state, memory, ref, w + 300L)), "progress takes the help away again"); checks++;
+
+			// 9. An arrival short of the waypoint centre that does not move the route on sets the resident onto the centre.
+			check(!Mining.arrivalNeedsSnapForTest(0.1 * 0.1, 7L, 1000L, 7L, 1000L + Mining.ARRIVAL_SNAP_TICKS),
+				"a resident already on the centre is never moved"); checks++;
+			check(!Mining.arrivalNeedsSnapForTest(0.6 * 0.6, 7L, 1000L, 7L, 1000L + Mining.ARRIVAL_SNAP_TICKS - 1L),
+				"a fresh arrival short of the centre waits for the route to move on"); checks++;
+			check(!Mining.arrivalNeedsSnapForTest(0.6 * 0.6, 8L, 1000L, 7L, 1000L + 500L),
+				"an arrival at another waypoint starts its own wait"); checks++;
+			check(Mining.arrivalNeedsSnapForTest(0.6 * 0.6, 7L, 1000L, 7L, 1000L + Mining.ARRIVAL_SNAP_TICKS),
+				"an arrival 0.6 blocks short that stays put is set onto the centre"); checks++;
+
+			// 10. In the world: a resident who stopped 0.6 blocks short of a safe waypoint stands on its centre after the wait.
+			Mining.resetArrivalsForTest();
+			JobState walkState = new JobState();
+			long x0 = level.getGameTime() + 200_000L;
+			worker.setPos(entrance.getX() + 0.5 + 0.6, entrance.getY(), entrance.getZ() + 0.5);
+			boolean firstArrival = Mining.approachMineStep(ctx(level, worker, walkState, memory, ref, x0), entrance) == Mining.MineWalk.ARRIVED;
+			boolean stillShort = worker.position().distanceToSqr(Vec3.atBottomCenterOf(entrance)) > 0.5 * 0.5;
+			boolean secondArrival = Mining.approachMineStep(ctx(level, worker, walkState, memory, ref, x0 + Mining.ARRIVAL_SNAP_TICKS), entrance) == Mining.MineWalk.ARRIVED;
+			check(firstArrival && stillShort && secondArrival
+				&& worker.position().distanceToSqr(Vec3.atBottomCenterOf(entrance)) < 0.05 * 0.05,
+				"an arrival that stays 0.6 blocks short is set onto the waypoint centre (first " + firstArrival + ", short " + stillShort
+					+ ", second " + secondArrival + ", at " + worker.position() + ")"); checks++;
 			return checks;
 		} finally {
+			if (other != null) other.discard();
 			if (worker != null) worker.discard();
 			ref.data().mine = Optional.empty();
-			Mining.resetApproachForTest();
+			Mining.resetApproachForTest(); Mining.resetArrivalsForTest();
 			Mining.resetNoLanePathForTest();
 		}
 	}
