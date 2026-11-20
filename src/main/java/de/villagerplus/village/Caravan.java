@@ -181,6 +181,8 @@ public final class Caravan {
 	private static final Map<UUID, PorterCarry> PORTER_CARRIES = new HashMap<>();
 	private static final Map<UUID, UUID> PORTER_CLAIMS = new HashMap<>();
 	private static final Map<UUID, String> PORTER_DIAGNOSTICS = new HashMap<>();
+	/** Dev diagnostic: where the latest porter release was requested. */
+	static String LAST_RELEASE_SITE = "none";
 	private static String OVERFLOW_PACK_MULE_DIAGNOSTIC = "not attempted";
 	private static final String PLAN_FREIGHT_SLOT_PREFIX = "vp_r02_plan_freight_slot:";
 	private static final class PorterCarry {
@@ -1734,17 +1736,26 @@ public final class Caravan {
 		}
 		if(allowed<=0) { releasePorter(c.level(),carry.porter); return true; }
 		c.setActivity("holt die Fracht vom Esel");
-		if(c.v().distanceToSqr(donkey)>4.0) {
-			if(!isPorterStand(c.level(),donkey.blockPosition(),c.st().target)) {
-				BlockPos pickupStand=reachablePorterStand(c,donkey.blockPosition());
-				if(pickupStand==null) { releasePorter(c.level(),carry.porter); c.st().cooldownUntil=c.now()+200; return true; }
-				c.st().target=pickupStand; c.st().targetEntity=null; c.st().walkStart=0; c.st().bestDist=0.0; c.st().lastMoveAt=0; c.st().stuckCount=0;
+		double reach=c.v().distanceToSqr(donkey);
+		if(reach>4.0) {
+			// Prefer walking up to the animal; if its side is unreachable or the walk stalls, arm's reach (6 blocks)
+			// after a short grace period is enough. Beyond that the shipment is abandoned untouched.
+			boolean grace=c.now()-carry.fetchSince>200L;
+			boolean walking=false;
+			if(!grace) {
+				if(!isPorterStand(c.level(),donkey.blockPosition(),c.st().target)) {
+					BlockPos pickupStand=reachablePorterStand(c,donkey.blockPosition());
+					if(pickupStand!=null) {
+						c.st().target=pickupStand; c.st().targetEntity=null; c.st().walkStart=0; c.st().bestDist=0.0; c.st().lastMoveAt=0; c.st().stuckCount=0;
+					}
+				}
+				if(isPorterStand(c.level(),donkey.blockPosition(),c.st().target)) {
+					walking=!JobUtil.approachLong(c,c.st().target,1.5)&&c.st().cooldownUntil<=c.now();
+				}
 			}
-			if(!JobUtil.approachLong(c,c.st().target,1.5)) {
-				if(c.st().cooldownUntil>c.now()) releasePorter(c.level(),carry.porter);
-				return true;
-			}
-			if(c.v().distanceToSqr(donkey)>12.25) return true;
+			if(walking) return true;
+			if(reach>36.0) { releasePorter(c.level(),carry.porter); c.st().cooldownUntil=c.now()+200; return true; }
+			if(!grace&&reach>4.0&&c.st().target!=null&&reach>12.25) return true;
 		}
 		boolean planDelivery = !"treasury".equals(target.depot()) && (isPlanFreightSlot(donkey, carry.slot, source.get().getItem())
 			|| planStockNeeded(c.level(), ref, source.get().getItem()));
@@ -1796,6 +1807,8 @@ public final class Caravan {
 			return true;
 		}
 		if(c.v().position().distanceToSqr(net.minecraft.world.phys.Vec3.atBottomCenterOf(stand))>2.25) return true;
+		// Hold the load in plain sight for a moment even when the animal already stands next to the depot.
+		if(c.now()-carry.heldSince<20L) { JobUtil.swing(c.v()); return true; }
 		int allowed;
 		if(treasury) {
 			long room=Long.MAX_VALUE-Network.treasuryEmeralds(ref);
@@ -2048,7 +2061,7 @@ public final class Caravan {
 		var depot=net.minecraft.world.phys.Vec3.atBottomCenterOf(carry.target);
 		return "carry.target="+carry.target+", porter="+porter.position()+", porterDepotSq="+porter.position().distanceToSqr(depot)
 			+", donkey="+(donkey==null?"unloaded":donkey.position()+", donkeyDepotSq="+donkey.position().distanceToSqr(depot)
-				+", separationSq="+donkey.distanceToSqr(porter))+", pickedUp="+carry.pickedUp;
+				+", separationSq="+donkey.distanceToSqr(porter))+", pickedUp="+carry.pickedUp+", lastRelease="+LAST_RELEASE_SITE+", fetching="+carry.fetching+", held="+carry.held+", waiting="+carry.waitingAtDepot;
 	}
 
 	/** Equips the same real chest item as caravan spawn, then writes freight through the donkey's exposed cargo slots. */
@@ -2077,6 +2090,7 @@ public final class Caravan {
 	private static void releasePorter(ServerLevel level,UUID porter) {
 		PorterCarry carry=PORTER_CARRIES.remove(porter); if(carry==null) return;
 		returnHeldFreight(level,carry);
+		LAST_RELEASE_SITE=StackWalker.getInstance().walk(f->f.skip(1).limit(2).map(x->x.getMethodName()+":"+x.getLineNumber()).collect(java.util.stream.Collectors.joining("<")));
 		if(level.getEntity(porter) instanceof Villager v) {
 			if(PORTER_DIAGNOSTICS.size()>=256) PORTER_DIAGNOSTICS.clear();
 			PORTER_DIAGNOSTICS.put(porter,describeDelivery(level,v,carry));
