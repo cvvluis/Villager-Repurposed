@@ -73,7 +73,7 @@ public final class WoodHands {
 		if (c.st().roadRepair != null || ref == null || !ref.data().hasPlan() || !Woodcutting.planNeedsWood(ref.data())) return null;
 		Container box = ref.chest(c.level());
 		if (box == null || Woodcutting.planLogShortfall(ref.data().wanted, box) <= 0) return null;
-		var demanded = Woodcutting.demandedLogIds(ref.data().wanted);
+		var demanded = Woodcutting.deficientLogIds(ref.data().wanted, box);
 		java.util.function.Predicate<ItemStack> requested = stack -> !BuildHaul.isMarkedCargo(stack)
 			&& Woodcutting.matchesRequestedLog(stack, demanded);
 		return JobUtil.count(c.v().getInventory(), requested) > 0 ? requested : null;
@@ -93,7 +93,14 @@ public final class WoodHands {
 		WoodcutterWork work = c.v().getAttached(de.villagerplus.VillagerPlus.WOODCUTTER_WORK);
 		if (work == null || work.root().isEmpty() && !work.removalPending()) return false;
 		// This priority is for civic supply, not the village's general wood stock. Already earned drops may still be paid.
-		if (!work.removalConfirmed() && (!c.village().data().hasPlan() || !Woodcutting.planNeedsWood(c.village().data()))) return false;
+		if (!work.removalConfirmed()) {
+			if (!c.village().data().hasPlan() || !Woodcutting.planNeedsWood(c.village().data())) return false;
+			Container box = c.village().chest(c.level());
+			if (box == null) return false;
+			var deficient = Woodcutting.deficientLogIds(c.village().data().wanted, box);
+			if (deficient.isEmpty() || work.root().filter(root -> de.villagerplus.world.LoadedColumns.ready(c.level(), root)
+				&& Woodcutting.matchesRequestedLog(c.level().getBlockState(root).getBlock(), deficient)).isEmpty()) return false;
+		}
 		var target = work.log().orElse(work.root().orElse(null));
 		if (target == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), target)) return false;
 		// Pending removal is replayed before Woodcutting's normal approach. Return to the original root stand first;
@@ -137,7 +144,7 @@ public final class WoodHands {
 		boolean midTree = work.root().isPresent() || work.removalPending();
 		boolean demand = data.hasPlan() && Woodcutting.planNeedsWood(data);
 		int shortage = demand ? Woodcutting.planLogShortfall(data.wanted, box) : 0;
-		var demanded = demand ? Woodcutting.demandedLogIds(data.wanted) : java.util.Set.<String>of();
+		var demanded = demand ? Woodcutting.deficientLogIds(data.wanted, box) : java.util.Set.<String>of();
 		java.util.function.Predicate<ItemStack> requested = stack -> Woodcutting.matchesRequestedLog(stack, demanded);
 		int carried = JobUtil.count(c.v().getInventory(), requested);
 		if (carried > 0 && (!demand || shortage <= 0) && !midTree

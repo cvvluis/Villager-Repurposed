@@ -68,10 +68,10 @@ public final class StoneHandsChecks {
 				&& WoodHands.handsFor(1000) == WoodHands.MAX_HANDS, "wood hands wanted: one per 8 missing logs, 1..4"); checks++;
 			// The log shortage counts the planks behind wished wooden shapes (a granary asks for dozens of stairs and nothing else).
 			SimpleContainer noStock = new SimpleContainer(27);
-			check(Woodcutting.planLogShortfall(List.of("minecraft:spruce_stairs#50"), noStock) == 19
+			check(Woodcutting.planLogShortfall(List.of("minecraft:spruce_stairs#50"), noStock) == 20
 				&& Woodcutting.planLogShortfall(List.of("minecraft:spruce_slab#50"), noStock) == 7
 				&& Woodcutting.planLogShortfall(List.of("minecraft:cobblestone_stairs#50", "minecraft:stone_slab#9"), noStock) == 0,
-				"fifty spruce stairs lack nineteen logs, fifty slabs seven, stone shapes none");
+				"fifty spruce stairs need twenty logs for thirteen whole recipe batches, fifty slabs seven, stone shapes none");
 			checks++;
 			SimpleContainer stairsStock = new SimpleContainer(27);
 			stairsStock.setItem(0, new ItemStack(Items.SPRUCE_STAIRS, 20));
@@ -80,6 +80,31 @@ public final class StoneHandsChecks {
 				&& Woodcutting.planLogShortfall(List.of("minecraft:spruce_planks#8", "minecraft:spruce_log#3", "minecraft:spruce_stairs#4"), noStock) == 7,
 				"stairs already in the chest and logs in stock are deducted, planks and logs still count as before");
 			checks++;
+			SimpleContainer processedWood = new SimpleContainer(27);
+			processedWood.setItem(0, new ItemStack(Items.SPRUCE_PLANKS, 32));
+			check(Woodcutting.planLogShortfall(List.of("minecraft:spruce_stairs#20"), processedWood) == 0
+				&& Woodcutting.planLogShortfall(List.of("minecraft:spruce_stairs#20", "minecraft:spruce_log#3"), processedWood) == 3,
+				"matching processed planks cover shape inputs but cannot replace direct structural logs"); checks++;
+			processedWood.setItem(0, new ItemStack(Items.OAK_PLANKS, 32));
+			processedWood.setItem(1, new ItemStack(Items.OAK_LOG, 32));
+			check(Woodcutting.planLogShortfall(List.of("minecraft:spruce_stairs#20"), processedWood) == 8,
+				"another species' planks and logs cannot hide a spruce supply shortage"); checks++;
+			processedWood.clearContent();
+			processedWood.setItem(0, new ItemStack(Items.SPRUCE_PLANKS, 10));
+			check(Woodcutting.planLogShortfall(List.of("minecraft:spruce_planks#8", "minecraft:spruce_stairs#4", "minecraft:spruce_log#3"), processedWood) == 4,
+				"direct planks and shape inputs share each stored plank only once, leaving one conversion log plus three structural logs"); checks++;
+			processedWood.clearContent();
+			processedWood.setItem(0, new ItemStack(Items.SPRUCE_PLANKS, 2));
+			boolean singleStairNeedsLog = Woodcutting.planLogShortfall(List.of("minecraft:spruce_stairs#1"), processedWood) == 1;
+			processedWood.setItem(0, new ItemStack(Items.SPRUCE_PLANKS, 8));
+			check(singleStairNeedsLog && Woodcutting.planLogShortfall(List.of("minecraft:spruce_stairs#5"), processedWood) == 1,
+				"partial stair requests still fund whole loaded recipe batches before crediting stored planks"); checks++;
+			processedWood.setItem(0, new ItemStack(Items.SPRUCE_PLANKS, 5));
+			boolean fenceNeedsStickBatch = Woodcutting.planLogShortfall(List.of("minecraft:spruce_fence#1"), processedWood) == 1;
+			processedWood.setItem(0, new ItemStack(Items.SPRUCE_PLANKS, 4));
+			processedWood.setItem(1, new ItemStack(Items.STICK, 2));
+			check(fenceNeedsStickBatch && Woodcutting.planLogShortfall(List.of("minecraft:spruce_fence#1"), processedWood) == 0,
+				"fences budget the loaded stick batch and can use already stored sticks without demanding another tree"); checks++;
 			check(de.villagerplus.build.Builder.shouldHoldForSpecial(true, true, true, true)
 				&& de.villagerplus.build.Builder.shouldHoldForSpecial(true, true, false, false)
 				&& !de.villagerplus.build.Builder.shouldHoldForSpecial(true, true, false, true)
@@ -243,7 +268,7 @@ public final class StoneHandsChecks {
 			data.putBuildProject(project("granary", granary, List.of("minecraft:spruce_stairs#50"), false));
 			data.syncPrimaryProjectView();
 			chest.clearContent();
-			check(Woodcutting.planNeedsWood(data) && Woodcutting.planLogShortfall(data.wanted, chest) == 19 && WoodHands.handsFor(19) == 3,
+			check(Woodcutting.planNeedsWood(data) && Woodcutting.planLogShortfall(data.wanted, chest) == 20 && WoodHands.handsFor(20) == 3,
 				"a stairs-only wish list asks for timber (19 logs, three hands)"); checks++;
 			Villager logCarrier = worker(level, workers, SurfaceStone.standFor(level, p3));
 			logCarrier.getInventory().setItem(0, new ItemStack(Items.SPRUCE_LOG, 12));
@@ -424,6 +449,28 @@ public final class StoneHandsChecks {
 				check(!WoodHands.resumeTree(ctx(level, lib, libState, ref, level.getGameTime() + 160L))
 					&& lib.getAttachedOrCreate(VillagerPlus.WOODCUTTER_WORK).equals(advancedWood),
 					"after civic demand clears, early tree continuation yields to the profession without losing the cursor"); checks++;
+				data.putBuildProject(project("granary", granary, List.of("minecraft:spruce_stairs#20"), false));
+				data.syncPrimaryProjectView();
+				chest.clearContent();
+				chest.setItem(0, new ItemStack(Items.SPRUCE_PLANKS, 32));
+				check(!WoodHands.resumeTree(ctx(level, lib, libState, ref, level.getGameTime() + 165L))
+					&& lib.getAttachedOrCreate(VillagerPlus.WOODCUTTER_WORK).equals(advancedWood),
+					"enough public planks for every requested stair end early felling priority even while the general log reserve is low"); checks++;
+				chest.clearContent();
+				data.buildProjects.clear();
+				data.putBuildProject(project("granary", granary, List.of("minecraft:oak_log#1", "minecraft:spruce_log#1"), false));
+				data.syncPrimaryProjectView();
+				chest.setItem(0, new ItemStack(Items.OAK_LOG, 32));
+				level.setBlock(p4, Blocks.OAK_LOG.defaultBlockState(), 2);
+				var surplusOakWork = WoodcutterWork.empty().start(p4, "minecraft:oak_log").select(p4).withStage(6);
+				lib.setAttached(VillagerPlus.WOODCUTTER_WORK, surplusOakWork);
+				check(!WoodHands.resumeTree(ctx(level, lib, libState, ref, level.getGameTime() + 168L))
+					&& lib.getAttachedOrCreate(VillagerPlus.WOODCUTTER_WORK).equals(surplusOakWork),
+					"an oak cursor yields when only spruce remains deficient, despite oak also appearing in the requested materials"); checks++;
+				chest.clearContent();
+				level.setBlock(p4, Blocks.SPRUCE_LOG.defaultBlockState(), 2);
+				lib.setAttached(VillagerPlus.WOODCUTTER_WORK, advancedWood);
+				data.buildProjects.clear();
 				data.putBuildProject(project("granary", granary, List.of("minecraft:spruce_stairs#20"), false));
 				data.syncPrimaryProjectView();
 				BlockPos crown = p4.above(6);

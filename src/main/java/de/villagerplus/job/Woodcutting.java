@@ -20,6 +20,7 @@ import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.ai.village.poi.PoiTypes;
 import net.minecraft.world.entity.ai.village.poi.PoiManager;
 import net.minecraft.world.level.block.entity.HopperBlockEntity;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -54,7 +55,7 @@ public final class Woodcutting {
 	}
 
 	public static boolean needed(net.minecraft.server.level.ServerLevel level, VillageRef ref, VillageData d, Container box) {
-		if (planNeedsWood(d)) return true;
+		if (planLogShortfall(d.wanted, box) > 0) return true;
 		// A farmer who cannot fence the first field waits for public wood: that is demand too.
 		if (FarmerJob.fenceWoodWanted(ref, level.getGameTime())) return true;
 		// Kein festes Limit: Holz wird beschafft, solange es im Vergleich zu Essen, Stein und Metall nicht im Ueberfluss da ist.
@@ -372,8 +373,8 @@ public final class Woodcutting {
 			return false;
 		}
 		ServerLevel level = c.level();
-		boolean planWoodDemand = ref.data().hasPlan() && planNeedsWood(ref.data());
-		Set<String> demandedLogs = planWoodDemand ? demandedLogIds(ref.data().wanted) : Set.of();
+		Set<String> demandedLogs = ref.data().hasPlan() ? deficientLogIds(ref.data().wanted, box) : Set.of();
+		boolean planWoodDemand = !demandedLogs.isEmpty();
 		BlockPos base = work.root().orElse(null);
 		boolean materialDemand = needed(level, ref, ref.data(), box);
 		if (!planWoodDemand && base == null) {
@@ -538,48 +539,118 @@ public final class Woodcutting {
 		return moving;
 	}
 
-	/**
-	 * Logs the wish list still lacks in the public chest: wished logs plus a quarter of the wished planks, plus the planks behind
-	 * wished wooden shapes (stairs, slabs, doors, fences ...) that the chest does not hold yet, minus the logs already there.
-	 * A granary asks for dozens of spruce stairs and nothing else: counting only logs and planks left the shortage at zero, so
-	 * no resident was called to help with the timber while the plan stood still.
-	 */
+	/** Timber shortage after matching public logs, processed planks, sticks and finished shapes pay whole loaded recipe batches. */
 	static int planLogShortfall(List<String> wanted, Container box) {
-		int need = 0;
-		int shapePlanksTimesTwo = 0;
+		long total = planLogShortfalls(wanted, box).values().stream().mapToLong(Integer::longValue).sum();
+		return (int) Math.min(Integer.MAX_VALUE, total);
+	}
+
+	static Set<String> deficientLogIds(List<String> wanted, Container box) {
+		return planLogShortfalls(wanted, box).keySet();
+	}
+
+	/** Share processed stock once, budget whole loaded recipe batches, and retain the deficient species. */
+	private static Map<String, Integer> planLogShortfalls(List<String> wanted, Container box) {
+		Map<String, Long> directLogs = new java.util.LinkedHashMap<>();
+		Map<String, Long> planks = new java.util.LinkedHashMap<>();
+		Map<String, Long> sticks = new java.util.LinkedHashMap<>();
 		for (String request : wanted) {
 			if (request == null || request.isBlank()) continue;
 			String[] fields = request.split("#", 2);
-			int count = positiveCount(fields);
-			if (fields[0].endsWith("_planks")) need += (count + 3) / 4;
-			else if (fields[0].endsWith("_log")) need += count;
-			else {
-				int perItemTimesTwo = woodShapePlanksTimesTwo(fields[0]);
-				if (perItemTimesTwo > 0) {
-					net.minecraft.world.item.Item item = BuiltInRegistries.ITEM.getOptional(net.minecraft.resources.Identifier.tryParse(fields[0])).orElse(null);
-					int held = item == null ? 0 : JobUtil.count(box, stack -> stack.is(item));
-					shapePlanksTimesTwo += Math.max(0, count - held) * perItemTimesTwo;
-				}
+			long count = positiveCount(fields);
+			Set<String> logs = demandedLogIds(List.of(request));
+			if (logs.isEmpty()) continue;
+			String naturalLog = logs.iterator().next();
+			Item requestedItem = BuiltInRegistries.ITEM.getOptional(net.minecraft.resources.Identifier.parse(fields[0])).orElse(null);
+			Item logItem = BuiltInRegistries.ITEM.getOptional(net.minecraft.resources.Identifier.parse(naturalLog)).orElse(null);
+			Item plankItem = planksForLog(naturalLog);
+			if (requestedItem == null || logItem == null) continue;
+			if (isNaturalLog(requestedItem)) {
+				directLogs.merge(naturalLog, count, Long::sum);
+			} else if (fields[0].endsWith("_log")) {
+				long missing = Math.max(0L, count - JobUtil.count(box, stack -> stack.is(requestedItem)));
+				directLogs.merge(naturalLog, missing, Long::sum);
+			} else if (fields[0].endsWith("_planks")) {
+				planks.merge(naturalLog, count, Long::sum);
+			} else if (supportedWoodShape(fields[0]) && plankItem != null) {
+				long missing = Math.max(0L, count - JobUtil.count(box, stack -> stack.is(requestedItem)));
+				TimberCost cost = timberRecipeCost(requestedItem, logItem, plankItem, missing);
+				if (cost == null) continue; // No indexed loaded crafting route: more timber cannot provide this recipe.
+				directLogs.merge(naturalLog, cost.logs(), Long::sum);
+				planks.merge(naturalLog, cost.planks(), Long::sum);
+				sticks.merge(naturalLog, cost.sticks(), Long::sum);
 			}
 		}
-		need += (shapePlanksTimesTwo + 7) / 8;
-		return Math.max(0, need - JobUtil.count(box, stack -> stack.is(ItemTags.LOGS)));
+		Set<String> species = new LinkedHashSet<>(directLogs.keySet());
+		species.addAll(planks.keySet());
+		species.addAll(sticks.keySet());
+		long remainingSticks = JobUtil.count(box, stack -> stack.is(Items.STICK));
+		Map<String, Integer> shortages = new java.util.LinkedHashMap<>();
+		for (String naturalLog : species) {
+			Item logItem = BuiltInRegistries.ITEM.getOptional(net.minecraft.resources.Identifier.parse(naturalLog)).orElse(null);
+			Item plankItem = planksForLog(naturalLog);
+			if (logItem == null) continue;
+			long stickNeed = sticks.getOrDefault(naturalLog, 0L);
+			long missingSticks = Math.max(0L, stickNeed - remainingSticks);
+			remainingSticks = Math.max(0L, remainingSticks - stickNeed);
+			TimberCost stickCost = plankItem == null ? null : timberRecipeCost(Items.STICK, logItem, plankItem, missingSticks);
+			long plankNeed = planks.getOrDefault(naturalLog, 0L)
+				+ (stickCost == null ? 2L * ((missingSticks + 3L) / 4L) : stickCost.planks());
+			long missingPlanks = Math.max(0L, plankNeed - (plankItem == null ? 0L : JobUtil.count(box, stack -> stack.is(plankItem))));
+			TimberCost conversion = plankItem == null ? null : timberRecipeCost(plankItem, logItem, plankItem, missingPlanks);
+			long need = directLogs.getOrDefault(naturalLog, 0L)
+				+ (conversion == null ? (missingPlanks + 3L) / 4L : conversion.logs());
+			long missing = Math.max(0L, need - JobUtil.count(box, stack -> stack.is(logItem)));
+			if (missing > 0L) shortages.put(naturalLog, (int) Math.min(Integer.MAX_VALUE, missing));
+		}
+		return java.util.Collections.unmodifiableMap(shortages);
 	}
 
-	/** Planks (times two) that one piece of this wooden shape costs: stairs 1.5, slab 0.5, door 2, trapdoor 3, fence 1.5, gate 4 (two planks and four sticks), plate 2, button 1. */
-	static int woodShapePlanksTimesTwo(String itemId) {
-		if (itemId == null || !itemId.startsWith("minecraft:")) return 0;
+	private static Item planksForLog(String naturalLog) {
+		var id = net.minecraft.resources.Identifier.parse(naturalLog);
+		if (!id.getPath().endsWith("_log")) return null;
+		String stem = id.getPath().substring(0, id.getPath().length() - "_log".length());
+		return BuiltInRegistries.ITEM.getOptional(net.minecraft.resources.Identifier.fromNamespaceAndPath(id.getNamespace(), stem + "_planks")).orElse(null);
+	}
+
+	private record TimberCost(long logs, long planks, long sticks) { }
+
+	/** Count repeated placement slots, including the minimum full batch, without crafting or mutating stock. */
+	private static TimberCost timberRecipeCost(Item output, Item log, Item planks, long missing) {
+		if (missing <= 0L) return new TimberCost(0L, 0L, 0L);
+		for (var holder : de.villagerplus.village.RecipeIndex.result(output)) {
+			if (!(holder.value() instanceof net.minecraft.world.item.crafting.CraftingRecipe recipe)) continue;
+			ItemStack preview = RecipeCrafting.preview(recipe);
+			if (preview == null || !preview.is(output)) continue;
+			var placement = recipe.placementInfo();
+			if (placement.isImpossibleToPlace()) continue;
+			long logCount = 0L, plankCount = 0L, stickCount = 0L, other = 0L;
+			for (int slot = 0; slot < placement.slotsToIngredientIndex().size(); slot++) {
+				int index = placement.slotsToIngredientIndex().getInt(slot);
+				if (index < 0) continue;
+				var ingredient = placement.ingredients().get(index);
+				if (ingredient.test(new ItemStack(planks))) plankCount++;
+				else if (ingredient.test(new ItemStack(log))) logCount++;
+				else if (ingredient.test(new ItemStack(Items.STICK))) stickCount++;
+				else other++;
+			}
+			if (logCount + plankCount + stickCount == 0L) continue;
+			if (output == planks && (plankCount != 0L || stickCount != 0L || other != 0L)) continue;
+			if (output == Items.STICK && (logCount != 0L || stickCount != 0L || other != 0L)) continue;
+			long batches = (missing + preview.getCount() - 1L) / preview.getCount();
+			return new TimberCost(logCount * batches, plankCount * batches, stickCount * batches);
+		}
+		return null;
+	}
+
+	/** Keep the established wood-shape scope; costs come from loaded recipes rather than fractional estimates. */
+	private static boolean supportedWoodShape(String itemId) {
+		if (itemId == null || !itemId.startsWith("minecraft:")) return false;
 		String path = itemId.substring("minecraft:".length());
-		if (path.startsWith("stripped_") || path.endsWith("_planks") || path.endsWith("_log")) return 0;
-		if (path.endsWith("_stairs")) return woodPath(path, "_stairs") ? 3 : 0;
-		if (path.endsWith("_slab")) return woodPath(path, "_slab") ? 1 : 0;
-		if (path.endsWith("_fence_gate")) return woodPath(path, "_fence_gate") ? 8 : 0;
-		if (path.endsWith("_fence")) return woodPath(path, "_fence") ? 3 : 0;
-		if (path.endsWith("_trapdoor")) return woodPath(path, "_trapdoor") ? 6 : 0;
-		if (path.endsWith("_door")) return woodPath(path, "_door") ? 4 : 0;
-		if (path.endsWith("_pressure_plate")) return woodPath(path, "_pressure_plate") ? 4 : 0;
-		if (path.endsWith("_button")) return woodPath(path, "_button") ? 2 : 0;
-		return 0;
+		for (String suffix : new String[] {"_pressure_plate", "_fence_gate", "_trapdoor", "_stairs", "_slab", "_fence", "_door", "_button"}) {
+			if (path.endsWith(suffix)) return woodPath(path, suffix);
+		}
+		return false;
 	}
 
 	/** Only shapes of a wood species count (the stem has a matching log), never stone or metal shapes. */
