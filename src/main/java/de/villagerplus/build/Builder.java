@@ -1165,6 +1165,12 @@ public final class Builder {
 					boolean siteReady = helper && !setupHaulOnly
 						? nextPlacementHasSiteMaterials(c, ref, preparedSteps, origin, d.planStep, siteStock)
 						: updateWanted(c, ref, d.planType, preparedSteps, box, siteStock, cargoManifest, origin, d.planStep, false);
+					if (!helper && !siteReady && de.villagerplus.job.Workshop.tickAtSite(c,
+						ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.CONSTRUCTION, null), siteStock,
+						sitePlacementReservations(c.level(), preparedSteps, d.planStep, siteStock))) {
+						updateWanted(c, ref, d.planType, preparedSteps, box, siteStock, cargoManifest, origin, d.planStep, false);
+						return true;
+					}
 					if (setupHaulOnly) {
 						BlockPos deliveryStand = workStand(c, origin, dir, preparedSteps,
 							villageGroundY(c.level(), ref.bell()) - 12);
@@ -4313,6 +4319,35 @@ public final class Builder {
 			&& !ConstructionSite.missingSetupMaterials(c.level(), construction, steps, origin,
 				Direction.from2DDataValue(d.planDir), siteStock).isEmpty()) return false;
 		return nextPlacementHasSiteMaterials(c, ref, steps, origin, start, siteStock);
+	}
+
+	/** Reserve concrete site items already paying direct placements in the current window, including tag alternatives. */
+	public static Map<Item, Integer> sitePlacementReservations(ServerLevel level, List<Step> steps, int from, Container stock) {
+		int start = Math.max(0, Math.min(from, steps.size()));
+		List<Step> window = steps.subList(start, materialDemandWindowEnd(steps, start));
+		Map<Item, Integer> counts = new java.util.LinkedHashMap<>();
+		for (int slot = 0; slot < stock.getContainerSize(); slot++) {
+			ItemStack stack = stock.getItem(slot);
+			if (!stack.isEmpty()) counts.merge(stack.getItem(), stack.getCount(), Builder::saturatingCount);
+		}
+		Map<Item, Integer> available = new java.util.LinkedHashMap<>(counts);
+		for (Gap gap : missing(level, window, 0, new net.minecraft.world.SimpleContainer(1), Map.of())) {
+			if (gap.item() == null) continue;
+			int left = consumeAvailable(available, gap.item(), gap.total());
+			if (gap.tag() != null && left > 0) {
+				for (Item alternative : counts.keySet()) {
+					if (alternative.equals(gap.item()) || !new ItemStack(alternative).is(gap.tag())) continue;
+					left = consumeAvailable(available, alternative, left);
+					if (left == 0) break;
+				}
+			}
+		}
+		Map<Item, Integer> reserved = new java.util.LinkedHashMap<>();
+		counts.forEach((item, count) -> {
+			int used = count - available.getOrDefault(item, 0);
+			if (used > 0) reserved.put(item, used);
+		});
+		return reserved;
 	}
 
 	private enum PublicStockStage { MOVED, SCANNING, NONE }

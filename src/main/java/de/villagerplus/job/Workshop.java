@@ -34,6 +34,39 @@ public final class Workshop {
 	private Workshop() {
 	}
 
+	/** Uses only a prepared site's unreserved stock at its actual, reachable crafting table. */
+	public static boolean tickAtSite(Ctx c, de.villagerplus.build.ConstructionSite site, Container stock,
+		Map<Item, Integer> reserved) {
+		if (c.village() == null || site == null || stock == null || stock.isEmpty() || !site.prepared()
+			|| !c.village().data().planOrigin.filter(site.origin()::equals).isPresent()) return false;
+		BlockPos bench = site.temporary().stream().filter(de.villagerplus.build.ConstructionSite.TemporaryBlock::workbench)
+			.map(de.villagerplus.build.ConstructionSite.TemporaryBlock::pos)
+			.filter(pos -> de.villagerplus.world.LoadedColumns.ready(c.level(), pos)
+				&& c.level().getBlockState(pos).is(net.minecraft.world.level.block.Blocks.CRAFTING_TABLE))
+			.findFirst().orElse(null);
+		if (bench == null) return false;
+		for (var demand : de.villagerplus.build.PlanSupplyOrder.shortages(c.village().data().wanted).entrySet()) {
+			if (!RecipeCrafting.craftForSite(c, stock, bench, demand.getKey(), demand.getValue(), reserved, false)) continue;
+			if (c.v().position().distanceToSqr(net.minecraft.world.phys.Vec3.atBottomCenterOf(bench)) > 9.0) {
+				BlockPos stand = JobUtil.sharedStandSpot(c, bench, 2.5);
+				if (stand == null) return false;
+				var path = de.villagerplus.build.Builder.workPath(c, stand);
+				if (path == null || !path.canReach()) return false;
+				JobUtil.approachShared(c, stand, 0.75);
+				return true;
+			}
+			int jobsBefore = c.mem().jobsDone;
+			if (RecipeCrafting.craftForSite(c, stock, bench, demand.getKey(), demand.getValue(), reserved, true)) {
+				if (c.mem().jobsDone != jobsBefore) {
+					c.village().data().planProgress = c.now();
+					c.village().dirty();
+				}
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/** true = beschaeftigt. */
 	public static boolean tick(Ctx c) {
 		VillageRef ref = c.village();

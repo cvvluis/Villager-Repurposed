@@ -216,6 +216,7 @@ public final class BuildHaulChecks {
 				"real haul progress refreshes stalled project clocks while preserving the in-transit reservation"); checks++;
 			check(!BuildHaul.touchProjectProgressForHaul(villageData, origin, progressNow),
 				"same-tick haul heartbeat does not dirty project progress repeatedly"); checks++;
+			checks += siteWorkshopChecks(level, ref, carrier, barrelPos, origin);
 			return checks;
 		} finally {
 			if (barrelPlaced && barrelPos != null && oldBarrelState != null) level.setBlock(barrelPos, oldBarrelState, 3);
@@ -228,6 +229,131 @@ public final class BuildHaulChecks {
 			villageData.buildProjectVersion = oldProjectVersion;
 			ref.dirty();
 			carrier.discard();
+		}
+	}
+
+	/** The observed roof stall: logs already delivered to the site must be usable there, without moving public goods. */
+	private static int siteWorkshopChecks(ServerLevel level, VillageRef ref, Villager worker, BlockPos bench, BlockPos origin) {
+		var data = ref.data();
+		var oldOrigin = data.planOrigin;
+		String oldType = data.planType;
+		var oldWanted = List.copyOf(data.wanted);
+		BlockState oldBench = level.getBlockState(bench);
+		int checks = 0;
+		try {
+			data.planOrigin = Optional.of(origin);
+			data.planType = "granary";
+			data.wanted.clear();
+			data.wanted.add("minecraft:spruce_stairs#24");
+			var site = new de.villagerplus.build.ConstructionSite(origin,
+				List.of(new de.villagerplus.build.ConstructionSite.TemporaryBlock(bench, true)), List.of(), true);
+			SimpleContainer stock = new SimpleContainer(27);
+			stock.setItem(0, new ItemStack(Items.SPRUCE_LOG, 14));
+			level.setBlock(bench, Blocks.CRAFTING_TABLE.defaultBlockState(), 3);
+			worker.setPos(bench.getX() + 1.5, bench.getY(), bench.getZ() + 0.5);
+			Ctx c = new Ctx(level, worker, new JobState(), worker.getAttachedOrCreate(VillagerPlus.MEMORY), ref, level.getGameTime());
+			int publicBefore = JobUtil.count(ref.chest(level), stack -> true);
+			checks += siteWorkshopReviewChecks(c, site, bench);
+			check(!Workshop.tickAtSite(c, new de.villagerplus.build.ConstructionSite(origin, site.temporary()), stock, Map.of())
+				&& !Workshop.tickAtSite(c, new de.villagerplus.build.ConstructionSite(origin.east(), site.temporary(), List.of(), true), stock, Map.of())
+				&& JobUtil.count(stock, stack -> stack.is(Items.SPRUCE_LOG)) == 14,
+				"unprepared or foreign project sites cannot consume the selected project's materials"); checks++;
+			worker.setPos(bench.getX() + 12.5, bench.getY(), bench.getZ() + 0.5);
+			Workshop.tickAtSite(c, site, stock, Map.of());
+			check(JobUtil.count(stock, stack -> stack.is(Items.SPRUCE_LOG)) == 14
+				&& JobUtil.count(stock, stack -> stack.is(Items.SPRUCE_PLANKS)) == 0,
+				"a distant worker cannot consume site stock or craft remotely"); checks++;
+			worker.setPos(bench.getX() + 1.5, bench.getY(), bench.getZ() + 0.5);
+			check(Workshop.tickAtSite(c, site, stock, Map.of()), "site logs must start the loaded plank/stair recipe chain at the real site workbench"); checks++;
+			for (int attempt = 0; attempt < 8 && JobUtil.count(stock, stack -> stack.is(Items.SPRUCE_STAIRS)) < 24; attempt++) {
+				int missing = 24 - JobUtil.count(stock, stack -> stack.is(Items.SPRUCE_STAIRS));
+				data.wanted.clear();
+				data.wanted.add("minecraft:spruce_stairs#" + missing);
+				Workshop.tickAtSite(c, site, stock, Map.of());
+			}
+			int stairs = JobUtil.count(stock, stack -> stack.is(Items.SPRUCE_STAIRS));
+			int planks = JobUtil.count(stock, stack -> stack.is(Items.SPRUCE_PLANKS));
+			int logs = JobUtil.count(stock, stack -> stack.is(Items.SPRUCE_LOG));
+			check(stairs == 24 && 3 * stairs + 2 * planks + 8 * logs == 112,
+				"twenty-four site stairs conserve all fourteen logs through loaded recipes, including leftover planks [stairs=" + stairs + ", planks=" + planks + ", logs=" + logs + "]"); checks++;
+			check(JobUtil.count(ref.chest(level), stack -> true) == publicBefore,
+				"site crafting does not withdraw from or deposit into public storage"); checks++;
+			data.wanted.clear();
+			check(!Workshop.tickAtSite(c, site, stock, Map.of()), "a satisfied site does not keep crafting"); checks++;
+			SimpleContainer full = new SimpleContainer(2);
+			full.setItem(0, new ItemStack(Items.SPRUCE_LOG, 64));
+			full.setItem(1, new ItemStack(Items.COBBLESTONE, 64));
+			data.wanted.clear();
+			data.wanted.add("minecraft:spruce_stairs#4");
+			check(!Workshop.tickAtSite(c, site, full, Map.of()) && full.getItem(0).getCount() == 64 && full.getItem(1).getCount() == 64,
+				"a full site rejects an intermediate recipe without losing logs or unrelated materials"); checks++;
+			data.wanted.add("minecraft:spruce_stairs#4");
+			level.setBlock(bench, Blocks.AIR.defaultBlockState(), 3);
+			check(!Workshop.tickAtSite(c, site, stock, Map.of()) && JobUtil.count(stock, stack -> stack.is(Items.SPRUCE_STAIRS)) == stairs,
+				"a removed site workbench prevents crafting without consuming any stock"); checks++;
+			return checks;
+		} finally {
+			level.setBlock(bench, oldBench, 3);
+			data.planOrigin = oldOrigin;
+			data.planType = oldType;
+			data.wanted.clear();
+			data.wanted.addAll(oldWanted);
+		}
+	}
+
+	private static int siteWorkshopReviewChecks(Ctx c, de.villagerplus.build.ConstructionSite site, BlockPos bench) {
+		var data = c.village().data();
+		var wanted = List.copyOf(data.wanted);
+		long progress = data.planProgress;
+		List<String> failures = new java.util.ArrayList<>();
+		try {
+			SimpleContainer partial = new SimpleContainer(8);
+			partial.setItem(0, new ItemStack(Items.SPRUCE_STAIRS, 4));
+			partial.setItem(1, new ItemStack(Items.SPRUCE_PLANKS, 6));
+			data.wanted.clear(); data.wanted.add("minecraft:spruce_stairs#1");
+			Workshop.tickAtSite(c, site, partial, Map.of());
+			if (JobUtil.count(partial, stack -> stack.is(Items.SPRUCE_STAIRS)) != 8) failures.add("partial final stair batch rejected");
+
+			SimpleContainer logs = new SimpleContainer(8);
+			logs.setItem(0, new ItemStack(Items.SPRUCE_LOG, 8));
+			data.wanted.clear(); data.wanted.add("minecraft:spruce_stairs#4");
+			var directLogs = List.of(
+				new de.villagerplus.build.Step(bench.above(5), Items.OAK_LOG, net.minecraft.tags.ItemTags.LOGS, 6, false, null, b -> b.defaultBlockState()),
+				new de.villagerplus.build.Step(bench.above(6), Items.SPRUCE_STAIRS, null, 4, false, null, b -> b.defaultBlockState()));
+			var reserves = de.villagerplus.build.Builder.sitePlacementReservations(c.level(), directLogs, 0, logs);
+			if (reserves.getOrDefault(Items.SPRUCE_LOG, 0) != 6) failures.add("log tag alternatives not reserved for direct steps");
+			Workshop.tickAtSite(c, site, logs, reserves);
+			if (JobUtil.count(logs, stack -> stack.is(Items.SPRUCE_LOG)) < 6) failures.add("direct log placement reserve consumed");
+
+			SimpleContainer planks = new SimpleContainer(8);
+			planks.setItem(0, new ItemStack(Items.SPRUCE_PLANKS, 12));
+			data.wanted.clear(); data.wanted.add("minecraft:spruce_stairs#8");
+			Workshop.tickAtSite(c, site, planks, Map.of(Items.SPRUCE_PLANKS, 6));
+			if (JobUtil.count(planks, stack -> stack.is(Items.SPRUCE_PLANKS)) < 6) failures.add("direct plank placement reserve consumed");
+
+			SimpleContainer stone = new SimpleContainer(8);
+			stone.setItem(0, new ItemStack(Items.STONE_BRICKS, 1));
+			data.wanted.clear(); data.wanted.add("minecraft:stone_brick_stairs#1");
+			if (Workshop.tickAtSite(c, site, stone, Map.of()) || stone.getItem(0).getCount() != 1
+				|| !stone.getItem(0).is(Items.STONE_BRICKS)) failures.add("crafting table executed stonecutter recipe");
+
+			SimpleContainer distant = new SimpleContainer(8);
+			distant.setItem(0, new ItemStack(Items.SPRUCE_PLANKS, 6));
+			data.wanted.clear(); data.wanted.add("minecraft:spruce_stairs#4");
+			c.v().setPos(bench.getX() + 12.5, bench.getY(), bench.getZ() + 0.5);
+			if (Workshop.tickAtSite(c, site, distant, Map.of())) failures.add("unreachable suspended bench monopolizes owner");
+			c.v().setPos(bench.getX() + 1.5, bench.getY(), bench.getZ() + 0.5);
+
+			SimpleContainer fresh = new SimpleContainer(8);
+			fresh.setItem(0, new ItemStack(Items.SPRUCE_PLANKS, 6));
+			data.planProgress = c.now() - 40_000;
+			Workshop.tickAtSite(c, site, fresh, Map.of());
+			if (data.planProgress != c.now()) failures.add("committed craft leaves progress clock stale");
+			check(failures.isEmpty(), String.join("; ", failures));
+			return 7;
+		} finally {
+			data.wanted.clear(); data.wanted.addAll(wanted);
+			data.planProgress = progress;
 		}
 	}
 

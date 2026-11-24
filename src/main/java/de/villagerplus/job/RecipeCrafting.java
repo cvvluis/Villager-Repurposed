@@ -11,6 +11,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CraftingInput;
 import net.minecraft.world.item.crafting.CraftingRecipe;
@@ -70,6 +71,78 @@ public final class RecipeCrafting {
 			}
 		}
 		return false;
+	}
+
+	/** Site-only crafting: reserve paid direct placements, allow the last whole batch, and use no other station types. */
+	static boolean craftForSite(Ctx c, Container stock, BlockPos workPos, Item target, int shortage,
+		Map<Item, Integer> reserved, boolean execute) {
+		if (shortage <= 0) return false;
+		Container available = unreserved(stock, reserved);
+		for (RecipeHolder<?> holder : RecipeIndex.crafting()) {
+			if (!(holder.value() instanceof CraftingRecipe recipe)) continue;
+			ItemStack preview = preview(recipe);
+			if (preview == null || !preview.is(target)) continue;
+			long minimum = (long) count(stock, stack -> stack.is(target)) + shortage;
+			if (craftSiteRecipe(c, stock, workPos, recipe, target, minimum, reserved, execute)) return true;
+			PlacementInfo placement = recipe.placementInfo();
+			if (placement.isImpossibleToPlace()) continue;
+			long batches = ((long) shortage + preview.getCount() - 1) / preview.getCount();
+			for (int ingredientIndex = 0; ingredientIndex < placement.ingredients().size(); ingredientIndex++) {
+				Ingredient ingredient = placement.ingredients().get(ingredientIndex);
+				for (RecipeHolder<?> candidateHolder : RecipeIndex.crafting()) {
+					if (!(candidateHolder.value() instanceof CraftingRecipe candidate)) continue;
+					ItemStack intermediate = preview(candidate);
+					if (intermediate == null || intermediate.isEmpty() || intermediate.is(target) || !ingredient.test(intermediate)) continue;
+					int occurrences = 0;
+					for (int slot = 0; slot < placement.slotsToIngredientIndex().size(); slot++) {
+						int index = placement.slotsToIngredientIndex().getInt(slot);
+						if (index >= 0 && placement.ingredients().get(index).test(intermediate)) occurrences++;
+					}
+					long missing = (long) occurrences * batches - count(available, ingredient::test);
+					if (missing <= 0) continue;
+					long intermediateMinimum = (long) count(stock, stack -> stack.is(intermediate.getItem())) + missing;
+					if (craftSiteRecipe(c, stock, workPos, candidate, intermediate.getItem(), intermediateMinimum, reserved, execute)) return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/** Choose ingredients from unreserved stock; commit against the full stock so real capacity and remainders stay atomic. */
+	private static boolean craftSiteRecipe(Ctx c, Container stock, BlockPos workPos, CraftingRecipe recipe,
+		Item target, long minimum, Map<Item, Integer> reserved, boolean execute) {
+		int batches = 0;
+		while (batches < MAX_PLANK_BATCHES && count(stock, stack -> stack.is(target)) < minimum) {
+			CraftingInput input = inputFor(recipe, unreserved(stock, reserved), c.level());
+			if (input == null) break;
+			ItemStack output = recipe.assemble(input);
+			if (output.isEmpty() || !output.is(target)) break;
+			List<ItemStack> remainder = recipe.getRemainingItems(input);
+			if (!commit(copy(stock), input, output, remainder)) break;
+			if (!execute) return true;
+			if (!JobUtil.approachLong(c, workPos, 3.0)) return true;
+			if (!commit(stock, input, output, remainder)) break;
+			batches++;
+		}
+		if (batches == 0) return false;
+		c.setActivity("stellt her: " + new ItemStack(target).getHoverName().getString());
+		Anim.hold(c, target);
+		c.st().cooldownUntil = c.now() + 100 + PLANK_BATCH_PAUSE * (batches - 1);
+		c.mem().jobsDone++;
+		return true;
+	}
+
+	private static Container unreserved(Container stock, Map<Item, Integer> reserved) {
+		Container available = copy(stock);
+		Map<Item, Integer> remaining = new HashMap<>(reserved);
+		for (int slot = 0; slot < available.getContainerSize(); slot++) {
+			ItemStack stack = available.getItem(slot);
+			int keep = Math.min(stack.getCount(), Math.max(0, remaining.getOrDefault(stack.getItem(), 0)));
+			if (keep <= 0) continue;
+			remaining.merge(stack.getItem(), -keep, Integer::sum);
+			available.setItem(slot, stack.copyWithCount(stack.getCount() - keep));
+		}
+		return available;
 	}
 
 	/** Read-only check for a loaded vanilla crafting recipe that can produce the requested output from this stock. */
