@@ -183,6 +183,16 @@ public final class AutoTest {
 		"cookdelight", "compat"
 	};
 
+	/** Construction supply, inventory and scheduler continuation regression gate. */
+	private static final String[] CONSTRUCTION_CONTINUATION = {
+		"builderchecks", "builderpaths", "builderprojects", "buildhaul", "firstbuilding", "supply",
+		"planstonesupply", "craftrecipes", "recipecrafting", "constructionsite", "stockpolicy", "langkeys",
+		"roles", "a01behavior", "stonehands", "stoneeconomy", "woodsupply", "treewalkback",
+		"woodcuttinggroup", "roadwork", "roadlighting", "lightspacing", "roads", "railwork",
+		"mining", "miningcycle", "minelifecycle", "minewalk", "minekit", "strandrescue",
+		"caravandelivery", "caravanr02", "caravanroad", "railtransport", "railtransportdispatch", "demolition",
+		"wallconstruction"};
+
 	private AutoTest() { }
 
 	private static String readModeFile() {
@@ -303,7 +313,7 @@ public final class AutoTest {
 					: mode.equals("nextgameplayfix") ? NEXT_GAMEPLAY_FIX
 					: mode.equals("performance") ? PERFORMANCE
 					: mode.equals("foodverify") ? FOODVERIFY
-					: mode.equals("resumefixbatch") ? RESUME_FIX_BATCH : new String[] {mode};
+					: mode.equals("resumefixbatch") ? RESUME_FIX_BATCH : mode.equals("constructioncontinuation") ? CONSTRUCTION_CONTINUATION : new String[] {mode};
 				System.out.println("VP_AUTOTEST MODES " + String.join(",", modes));
 				int passed = 0;
 				var failedModes = new java.util.ArrayList<String>();
