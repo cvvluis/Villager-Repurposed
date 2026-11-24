@@ -606,7 +606,11 @@ public final class JobManager {
 	/** Finish the real reserved load before offering any new profession or construction work. */
 	static boolean continueConstructionHaul(Ctx c) {
 		if (!BuildHaul.carrying(c.v())) return false;
-		return BuildHaul.returnOrphanedCargo(c) || de.villagerplus.build.Builder.deliverConstructionCargo(c);
+		if (BuildHaul.returnOrphanedCargo(c) || de.villagerplus.build.Builder.deliverConstructionCargo(c)) return true;
+		// An unloaded destination or missing safe stand is not permission for another job to spend reserved goods.
+		if (!BuildHaul.carrying(c.v())) return false;
+		c.setActivity("wartet auf den geladenen Baustellenstand");
+		return true;
 	}
 
 	/**

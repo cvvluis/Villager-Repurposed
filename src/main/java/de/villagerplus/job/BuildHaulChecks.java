@@ -415,7 +415,20 @@ public final class BuildHaulChecks {
 			worker.getInventory().setItem(0, new ItemStack(Items.OAK_PLANKS, 3));
 			check(!JobManager.continueConstructionHaul(c) && worker.getInventory().getItem(0).getCount() == 3,
 				"unmarked personal goods never start the construction continuation");
-			return 4;
+			BlockPos unloadedOrigin = new BlockPos(500_000, 280, 500_000);
+			check(!de.villagerplus.world.LoadedColumns.ready(level, unloadedOrigin),
+				"the continuation retry fixture uses an unloaded destination without loading its chunk");
+			data.buildProjects.clear();
+			data.putBuildProject(new VillageData.BuildProject("house", unloadedOrigin, 0, 0, 0, Optional.empty(), 1L,
+				Optional.empty(), 0L, List.of(), VillageData.ProjectHaul.empty(), Optional.empty(),
+				Optional.of(new de.villagerplus.build.ConstructionSite(unloadedOrigin, List.of(), List.of(), true)),
+				Optional.empty(), false, false));
+			worker.getInventory().setItem(0, BuildHaul.markForCheck(new ItemStack(Items.SPRUCE_LOG, 1), c, unloadedOrigin, source));
+			check(JobManager.continueConstructionHaul(c)
+				&& JobUtil.count(worker.getInventory(), BuildHaul::isMarkedCargo) == 1
+				&& !de.villagerplus.world.LoadedColumns.ready(level, unloadedOrigin),
+				"an unavailable cargo destination keeps ownership of the work attempt and preserves its reserved log without a chunk load");
+			return 6;
 		} catch (ReflectiveOperationException failure) {
 			throw new IllegalStateException("cargo continuation step fixture unavailable", failure);
 		} finally {
