@@ -1,0 +1,53 @@
+name: Publish verified 0.11.2 playtest
+
+on:
+  push:
+    branches: [codex/release-0.11.2]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-v0.11.2
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RELEASE_SOURCE_SHA: 0ee57a8322994eea1fdd3cea4ed96cedd4a7fd23
+    steps:
+      - name: Check out the verified source commit
+        uses: actions/checkout@v4
+        with:
+          ref: 0ee57a8322994eea1fdd3cea4ed96cedd4a7fd23
+          persist-credentials: false
+      - name: Set up Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+      - name: Build the release artifact
+        run: |
+          test "$(git rev-parse HEAD)" = "$RELEASE_SOURCE_SHA"
+          bash ./gradlew clean build --no-daemon --console=plain
+          test -s build/libs/villagers-repurposed-0.11.2.jar
+          python3 - <<'PYTHON'
+          import json, zipfile
+          with zipfile.ZipFile('build/libs/villagers-repurposed-0.11.2.jar') as archive:
+              assert json.loads(archive.read('fabric.mod.json'))['version'] == '0.11.2'
+          PYTHON
+          printf 'Source commit: %s\n' "$RELEASE_SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          sha256sum build/libs/villagers-repurposed-0.11.2.jar >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish the playtest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create v0.11.2 build/libs/villagers-repurposed-0.11.2.jar \
+            --target "$RELEASE_SOURCE_SHA" \
+            --title "Villagers Repurposed 0.11.2 - construction supply playtest" \
+            --notes-file RELEASE_NOTES_0.11.2.md \
+            --prerelease --latest=false
