@@ -1,23 +1,49 @@
-# Änderungsprotokoll
+# Changelog
 
-Alle genannten Versionen gelten für Fabric, Minecraft 26.2 und Java 25. Die JAR heißt `villagers-repurposed-<version>.jar`.
+Versions below target Fabric, Minecraft 26.2 and Java 25. The artifact is named `villagers-repurposed-<version>.jar`.
 
-## 0.11.1
+## 0.11.2 (playtest)
 
-See RELEASE_NOTES_0.11.1.md.
+See RELEASE_NOTES_0.11.2.md.
+
+- **Supply helpers resume existing work before changing jobs.** Unclaimed stone/log loads needed by a plan get an early physical hand-in offer. Existing tree cursors resume before unrelated profession tasks, without selecting a second tree; full inventories and unloaded tree targets yield safely. Active mining work and marked construction freight remain reserved. The ordinary wood/stone helper paths also reject marked cargo, and public routine deposits and evening private storage preserve another project's reserved load. Early tree continuation requires civic demand, returns to the root before pending removal, and yields to live road tasks so fetched post material stays reserved.
+
+- **Useful mine loads can return before the stock buffer is full.** A load that can fund a live direct cobblestone request takes the existing physical return route. The mine reserve stays intact; variants count only for a proven prepared above-ground substitutable window. Foundations, unknown plans and marked freight stay protected.
+
+- **Processed timber counts toward supply.** Matching public planks, sticks and finished shapes now pay whole loaded crafting batches before villagers seek more logs. Direct structural logs remain separate. Plan tree selection and early continuation follow the species still missing; partial recipe batches cannot falsely clear demand.
+
+- **Overnight gaps no longer trigger morning palette swaps.** A stalled plan accumulates short, observed supplier-work intervals; gaps longer than 400 ticks do not advance the 3,000-tick fallback clock. Changed demand or cursor signatures reset it. This estimates active work and excludes long routine, weather and unload gaps; it is not an exact work-time meter.
+
+- **Construction stock can be crafted on site.** A plan owner uses the site's paid, loaded crafting table to turn already delivered surplus materials into missing plan blocks through loaded crafting recipes. Materials paying direct placements remain reserved, recipe batches keep their real ingredient costs and leftovers, and crafting is rejected without capacity or a reachable workbench. Actual crafting refreshes progress without treating approach retries as completed work.
+
+- **Construction carriers finish their existing load first.** Every profession resumes its marked construction delivery before starting unrelated work. The real stack goes to its tagged project's persisted site stock even when the next placement is already funded; cancelled or completed orders return the stack physically to public storage. This uses the same inventory and manifest transactions as normal hauling, without changing the save format.
 
 - **E02/E04 integration checks (dev only, no gameplay change).** The Village Taverns world probe no longer ends in SKIP on a world without a tavern: group `tavernservice` now builds a tavern-like room with the mod's real `village_taverns:barrel` marker and proves the marker scan, the reachable-stand search and the rejection of a vanilla barrel (23 checks). **Not proven:** the `StructureStart` lookup of a naturally generated tavern and the evening gathering itself (status stays *partial*). Group `compat` now reports the EMF/ETF versions on the dev classpath; the mod has no EMF/ETF-specific code, and role skins with EMF, ETF or Fresh Animations stay *unverified* until a client has looked at them.
 
 - **New rail track is built by a villager, not by the village tick (D07).** The tick now only records the next affordable rail piece (or the station platform); a road builder collects the rail (and redstone block for powered rail) from the public stock, walks to the site and places it from his inventory, and the saved cursor advances once per placed piece. Repair of existing track is unchanged. Saved worlds keep their cursor; the pending-job marker is an extra key. New checks in `railmetro` (physical fetch, no placement from a distance, carried item consumed). The road groups (`roads`, `roadterrain`, `roadlighting`, `lightspacing`, `roadwork`, `roadroute`, `roadbridge`, `roadclear`, `caravanroad`) were re-run green. Station platform materials are still paid from the village stock at placement. Verified on the dev server only.
 
 - **Caravan porters carry freight by hand (K04).** After leading the donkey to the depot, the porter now walks to it, moves the real stack from the donkey chest into his own hands (shown in his main hand), walks it to the matching chest/granary/tool shed/treasury stand and puts it in. The held stack is the only copy while he carries it; an interruption, unload or death returns it to the donkey chest (or drops it if the chest is full) so goods are never duplicated or lost. Fixture checks (`caravandelivery`) cover the hand-carry, conservation, abort/return, full-chest drop and the emerald purchase (crate first, then treasury) with full reversal when it cannot be paid. The visible look in a client was not observed.
+
+- **Civic center leaves the house expansion pad free (G10).** The plaza site search and the town hall site search now skip any footprint (plus clearance) that touches the prepared house expansion pad. New fixture checks in groups `civic` and `houses` (the latter also replays the home/civic size rotation for the small/medium/multi-story mix, G09). Fixture-level proof only; richer plaza decoration and natural-village placement are not observed in a client.
+
+- **Ruined-building detection (G11).** Villagers identify ruined village buildings and schedule physical demolition. This does not establish the complete natural demolition, renaturation and replacement chain.
+
+- **Mine recovery walks (G12).** Mine recovery uses walking routes instead of teleporting workers. Safe, reliable navigation in every natural mine remains unverified.
+
+- **Timber supply.** Plan demand includes the logs needed for wooden stairs, slabs and other shapes; shapes are crafted in batches. Unclaimed log carriers hand in their loads, and a refused stack no longer prevents other goods in a mixed deposit from being delivered.
+
+- **Development mining checks.** Cold remote fixture chunks have up to 1,200 ticks to become entity-ticking, matching the rail preparation budget. The former 200-tick deadline expired before terrain generation finished in this environment; all mining assertions and readiness gates remain unchanged.
+
+## 0.11.1
+
+See RELEASE_NOTES_0.11.1.md.
+
 - **Fixes a server crash on startup.** `RecipeIndex.rebuild` assembled every crafting recipe with an empty grid to index its result. The vanilla decorated pot recipe throws `ArrayIndexOutOfBoundsException` for an empty grid, so the server (and a single-player world) crashed while starting with 0.11.0. A recipe that cannot assemble an empty grid is now skipped instead. Found by running the dev server on the 0.11.0 state; not yet confirmed in the game client.
 
 - **Translatable player texts (de_de + en_us).** About 150 hard-coded German `Component.literal` messages (chat and action-bar notices, village map and board headers, trade-network messages, builder/caravan/staffing/mining notices, village board buttons) are now `Component.translatable` keys in `assets/villagerplus/lang/de_de.json` and `en_us.json`; the German texts are unchanged, English texts were added. Keys follow the existing `message.villagerplus.*` / `gui.villagerplus.*` scheme. The chat marker prefix `◆ DORF  › ` stays a literal in `VillageMessages.format`, so the client toast still triggers in every language. New dev check group `langkeys` verifies that both lang files have identical keys and placeholders, that every key used by the compiled classes exists in both files, and that each `Component.translatable` call passes as many arguments as its text has placeholders. **Caveat:** translatable components are resolved by the client; a client without the mod shows raw keys when joining a dedicated server with the mod (the mod is required on the client anyway). Texts built from plain strings (village statistics lines, demolition/relocation results, profession names, sign text, entity names, the debug commands) are not translated yet. Verified on the dev server only, not in the game client.
 
 - **More translatable texts.** The board's zone tool buttons, the "Live" button, profession names on the profession slider, the villager nameplate (profession/apprentice line) and the fallback texts of board result notices are now `Component.translatable` keys (de_de + en_us). The `langkeys` check now also fails when a new `Component.literal` with plain words appears outside a short allowlist. Still German-only on purpose: texts generated as strings on the server (village statistics, villager info, demolition/relocation/network results, board tab lines), entity names and sign text that game logic matches by text (caravan donkey/guard/trader, guests, mine signs), and dev commands. Not visually verified in the game client.
 
-- **Civic center leaves the house expansion pad free (G10).** The plaza site search and the town hall site search now skip any footprint (plus clearance) that touches the prepared house expansion pad. New fixture checks in groups `civic` and `houses` (the latter also replays the home/civic size rotation for the small/medium/multi-story mix, G09). Fixture-level proof only; richer plaza decoration and natural-village placement are not observed in a client.
 - **Villagers use cobblestone variants.** Plain cobblestone block steps are paid first with andesite, diorite or granite (largest stock first); foundations, stairs and slabs still need real cobblestone. Miners and stone hands deliver variants too.
 - **Mines survive single-worker path failures.** Path failures are tracked per entrance and per worker, expire, and reset on any successful path. A mine closes only when two workers fail or one worker fails repeatedly over time.
 - **Masons can dig the whole mine.** The "lived below the village" rescue carried the plan's own mason back to the street whenever he went more than 12 blocks below it, so every mine section beyond number 12 was dug by helpers only (about two sections a day); a mason who works the mine is now left alone. A miner underground also turns back for a bigger load (36) than a resident on the surface (12), which saves most of the round trips through the single-file shaft.
