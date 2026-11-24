@@ -2225,6 +2225,36 @@ public final class Builder {
 			&& !profession.is(net.minecraft.world.entity.npc.villager.VillagerProfession.NITWIT);
 	}
 
+	/** Deliver an existing marked stack without claiming new work or advancing a funded placement. */
+	public static boolean deliverConstructionCargo(Ctx c) {
+		VillageRef ref = c.village();
+		BlockPos origin = de.villagerplus.job.BuildHaul.carriedProject(c);
+		if (ref == null || origin == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), origin)) return false;
+		VillageData data = ref.data();
+		migrateLegacyProjects(c, ref, data);
+		VillageData.BuildProject project = data.buildProject(origin).orElse(null);
+		if (!supportsConstructionHaul(project)) return false;
+		Container stock = siteStock(project);
+		List<String> manifest = new ArrayList<>(de.villagerplus.job.BuildHaul.manifest(c, origin, project.cargoManifest()));
+		loadProjectView(ref, data, project);
+		try {
+			Direction dir = Direction.from2DDataValue(project.dir());
+			List<Step> steps = stepsFor(c.level(), ref, origin, dir, c);
+			if (steps == null) return false;
+			BlockPos stand = workStand(c, origin, dir, steps, villageGroundY(c.level(), ref.bell()) - 12);
+			if (stand == null) return false;
+			return de.villagerplus.job.BuildHaul.tick(c, origin, stand, List.of(), true, stock);
+		} finally {
+			try {
+				manifest = new ArrayList<>(de.villagerplus.job.BuildHaul.manifest(c, origin, manifest));
+				persistProjectView(c, ref, data, project, stock, manifest);
+			} finally {
+				restorePrimaryProject(ref, data);
+				ref.dirty();
+			}
+		}
+	}
+
 	/** Let an available adult resume their own building cursor or take a reserved crew slot after normal job work. */
 	public static boolean buildHelperWork(Ctx c) {
 		VillageRef ref = c.village();

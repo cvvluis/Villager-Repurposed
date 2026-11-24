@@ -163,6 +163,19 @@ public final class BuildHaul {
 		return cargo(stack) != null;
 	}
 
+	/** A real reserved load keeps priority over unrelated profession work until it is delivered. */
+	static boolean carrying(Villager worker) {
+		return worker != null && firstCargo(worker) != null;
+	}
+
+	/** The first real carried load is authoritative, including after restart or a profession change. */
+	public static BlockPos carriedProject(Ctx c) {
+		if (c == null || c.village() == null) return null;
+		Cargo carried = cargo(firstCargo(c.v()));
+		return carried != null && carried.bell() == c.village().bell().asLong()
+			&& carried.dimension().equals(c.level().dimension().identifier().toString()) ? BlockPos.of(carried.project()) : null;
+	}
+
 	/** Current loaded cargo, for diagnostics. Use the manifest overload for saved reservations. */
 	public static Map<Item, Integer> inTransit(Ctx c, BlockPos projectOrigin) {
 		return inTransit(manifest(c, projectOrigin, List.of()));

@@ -630,7 +630,9 @@ public final class JobUtil {
 	 *
 	 * @param keep soviele passende Items behaelt der Dorfbewohner selbst
 	 */
-	public static boolean depositSurplus(Ctx c, Predicate<ItemStack> allMatches, int threshold, int keep) {
+	public static boolean depositSurplus(Ctx c, Predicate<ItemStack> requestedMatches, int threshold, int keep) {
+		// Construction freight has a persisted owner/project and may only use its dedicated delivery/refund transaction.
+		Predicate<ItemStack> allMatches = stack -> !BuildHaul.isMarkedCargo(stack) && requestedMatches.test(stack);
 		int total = count(c.v().getInventory(), allMatches);
 		if (total < threshold || total <= keep || c.now() < c.st().depositBlockedUntil) {
 			return false;

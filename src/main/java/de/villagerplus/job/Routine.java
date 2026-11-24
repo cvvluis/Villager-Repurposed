@@ -500,7 +500,7 @@ public final class Routine {
 		int keepFood = 4;
 		for (int i = 0; i < inv.getContainerSize(); i++) {
 			ItemStack s = inv.getItem(i);
-			if (s.isEmpty() || job.produce().test(s)) {
+			if (s.isEmpty() || BuildHaul.isMarkedCargo(s) || job.produce().test(s)) {
 				continue;
 			}
 			if (Meals.isFood(s)) {

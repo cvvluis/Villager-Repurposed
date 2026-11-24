@@ -217,6 +217,7 @@ public final class BuildHaulChecks {
 			check(!BuildHaul.touchProjectProgressForHaul(villageData, origin, progressNow),
 				"same-tick haul heartbeat does not dirty project progress repeatedly"); checks++;
 			checks += siteWorkshopChecks(level, ref, carrier, barrelPos, origin);
+			checks += constructionContinuationChecks(level, carrier, barrelPos.above(5));
 			return checks;
 		} finally {
 			if (barrelPlaced && barrelPos != null && oldBarrelState != null) level.setBlock(barrelPos, oldBarrelState, 3);
@@ -354,6 +355,74 @@ public final class BuildHaulChecks {
 		} finally {
 			data.wanted.clear(); data.wanted.addAll(wanted);
 			data.planProgress = progress;
+		}
+	}
+
+	/** Exercise the dispatcher continuation against real marked inventory, funded placements, and a cancelled order. */
+	private static int constructionContinuationChecks(ServerLevel level, Villager worker, BlockPos bell) {
+		Map<BlockPos, BlockState> before = new java.util.LinkedHashMap<>();
+		BlockPos origin = bell.south(4), source = bell.east();
+		List<de.villagerplus.build.Step> oldSteps = null;
+		Map<Long, List<de.villagerplus.build.Step>> cachedSteps = null;
+		try {
+			for (int dx = -12; dx <= 12; dx++) for (int dz = -12; dz <= 12; dz++) for (int dy = -1; dy <= 2; dy++) {
+				BlockPos pos = bell.offset(dx, dy, dz);
+				level.getChunkAt(pos);
+				if (level.getBlockEntity(pos) != null) throw new IllegalStateException("cargo continuation fixture overlaps a block entity");
+				before.put(pos, level.getBlockState(pos));
+				level.setBlock(pos, dy == -1 ? Blocks.STONE.defaultBlockState() : Blocks.AIR.defaultBlockState(), 2);
+			}
+			level.setBlock(bell, Blocks.BELL.defaultBlockState(), 2);
+			level.setBlock(source, Blocks.CHEST.defaultBlockState(), 2);
+			var bellEntity = (net.minecraft.world.level.block.entity.BellBlockEntity) level.getBlockEntity(bell);
+			VillageData data = new VillageData();
+			data.chest = Optional.of(source);
+			bellEntity.setAttached(VillagerPlus.VILLAGE, data);
+			VillageRef ref = new VillageRef(bell, data, bellEntity);
+			de.villagerplus.village.Villages.noteChunk(level.getChunkAt(bell));
+			worker.setVillagerData(worker.getVillagerData().withProfession(level.registryAccess(),
+				net.minecraft.world.entity.npc.villager.VillagerProfession.FARMER));
+			worker.setNoAi(false);
+			de.villagerplus.village.Villages.bindResident(level, ref, worker, null);
+			worker.getInventory().clearContent();
+			worker.setPos(origin.getX() + 0.5, origin.getY(), origin.getZ() + 5.5);
+			Ctx c = new Ctx(level, worker, new JobState(), worker.getAttachedOrCreate(VillagerPlus.MEMORY), ref, level.getGameTime());
+			var field = de.villagerplus.build.Builder.class.getDeclaredField("STEPS");
+			field.setAccessible(true);
+			@SuppressWarnings("unchecked") var map = (Map<Long, List<de.villagerplus.build.Step>>) field.get(null);
+			cachedSteps = map;
+			oldSteps = map.put(origin.asLong(), List.of(de.villagerplus.build.Step.block(origin, Blocks.OAK_PLANKS)));
+			var project = new VillageData.BuildProject("house", origin, 0, 0, 0, Optional.empty(), 1L,
+				Optional.empty(), 0L, List.of(), new VillageData.ProjectHaul(List.of(new ItemStack(Items.OAK_PLANKS, 1)), List.of()),
+				Optional.empty(), Optional.of(new de.villagerplus.build.ConstructionSite(origin, List.of(), List.of(), true)),
+				Optional.empty(), false, false);
+			data.putBuildProject(project);
+			worker.getInventory().setItem(0, BuildHaul.markForCheck(new ItemStack(Items.OAK_PLANKS, 5), c, origin, source));
+			check(JobManager.continueConstructionHaul(c), "a non-porter resumes its real reserved cargo without needing a crew assignment");
+			var delivered = data.buildProject(origin).orElseThrow();
+			int siteCount = delivered.siteStock().stream().filter(stack -> stack.is(Items.OAK_PLANKS)).mapToInt(ItemStack::getCount).sum();
+			check(siteCount == 6 && worker.getInventory().isEmpty() && delivered.step() == 0 && level.getBlockState(origin).isAir(),
+				"delivery comes before construction even when the next placement is funded; all five planks join the real site stock");
+
+			data.buildProjects.clear();
+			data.putBuildProject(new VillageData.BuildProject(project.type(), origin, 0, 0, 0, Optional.empty(), 1L,
+				Optional.empty(), 0L, List.of(), VillageData.ProjectHaul.empty(), Optional.empty(), Optional.empty(), Optional.empty(), false, true));
+			worker.getInventory().setItem(0, BuildHaul.markForCheck(new ItemStack(Items.OAK_PLANKS, 7), c, origin, source));
+			worker.setPos(source.getX() + 1.5, source.getY(), source.getZ() + 0.5);
+			check(JobManager.continueConstructionHaul(c) && worker.getInventory().isEmpty()
+				&& JobUtil.count(ref.chest(level), stack -> stack.is(Items.OAK_PLANKS)) == 7,
+				"a farmer physically returns all reserved goods after cancellation instead of retaining orphan cargo");
+			worker.getInventory().setItem(0, new ItemStack(Items.OAK_PLANKS, 3));
+			check(!JobManager.continueConstructionHaul(c) && worker.getInventory().getItem(0).getCount() == 3,
+				"unmarked personal goods never start the construction continuation");
+			return 4;
+		} catch (ReflectiveOperationException failure) {
+			throw new IllegalStateException("cargo continuation step fixture unavailable", failure);
+		} finally {
+			if (cachedSteps != null) {
+				if (oldSteps == null) cachedSteps.remove(origin.asLong()); else cachedSteps.put(origin.asLong(), oldSteps);
+			}
+			before.forEach((pos, state) -> level.setBlock(pos, state, 2));
 		}
 	}
 
