@@ -1,3 +1,50 @@
+## Verification update — 2026-11-24
+
+Strict classification remains **17 implemented / 30 partial / 15 unverified (62 total)**. No requirement is promoted. Code is published on main; this documentation branch intentionally retains its older code. Current evidence below supersedes the historical notes.
+
+Published playtest: [v0.11.2](https://github.com/cvvluis/Villager-Repurposed/releases/tag/v0.11.2) from main `0ee57a8`. [Direct JAR download](https://github.com/cvvluis/Villager-Repurposed/releases/download/v0.11.2/villagers-repurposed-0.11.2.jar), 3,917,028 bytes. SHA-256: `69afb4192c5457f958e7fba1d829aa8409bca5092bc0b6f81561894cc9cc7b69`. [Actions run](https://github.com/cvvluis/Villager-Repurposed/actions/runs/45423597183) built the exact verified source commit after direct cloud upload returned HTTP401; the downloaded release artifact is byte-for-byte identical to the locally verified JAR. No binary was committed. The isolated release-workflow branch is `codex/release-0.11.2`; it is not merged into main.
+
+### Verified changes
+
+- Builders craft missing shapes from already delivered, unreserved site stock at the real loaded crafting table. Direct placement inputs, tag alternatives, capacity and recipe remainders are protected; no remote consumption or other station types. `buildhaul` adds fifteen site-workshop checks.
+- Every profession can complete its actual marked construction delivery before taking unrelated work, without advancing a funded placement. Cancelled orders refund real goods. Ordinary public deposits and evening private storage reject construction markers. Six real continuation/retry checks cover delivery/refund and unavailable destinations; morning and evening routine regressions cover the generic deposit and home-storage paths.
+- A stalled plan's palette timer accumulates consecutive observed work intervals, excluding gaps longer than 400 ticks. Five new clock checks include overnight gaps and the 3,000-tick threshold. This is an approximation, not exact active-work accounting.
+- Existing stone/log loads needed by civic plans receive early hand-in offers. Saved tree work resumes only for civic wood demand (or already earned drops); full inventories and unavailable columns yield. Unconfirmed crown removal first returns to the loaded root stand, preserving pending drops on abort. A live road task retains its fetched material. `stonehands` passes 73 checks, including real scheduler hand-in, marker protection, demand clearing, crown proximity and fetched-log post placement.
+- Timber shortage now reads whole loaded crafting recipe batches, shares matching public planks/sticks once, preserves structural-log demand and tracks deficient species through tree selection. Partial stair/fence batches and a stocked-oak/missing-spruce cursor are covered. Fifty stairs require thirteen full batches (78 planks, twenty logs), correcting the former nineteen-log fractional estimate. Early continuation yields once these actual public inputs suffice.
+- A real mine load can return before the background stock target when it can fund a live direct cobblestone request. The mine reserve stays intact. Actual item types are checked; variants require a prepared cached above-ground substitutable window, otherwise only cobblestone counts. Unknown/foundation/cleanup/already-funded requests and marked cargo cannot justify the new exception. Existing scalar bulk-delivery APIs are unchanged. Eight new real-container cases cover this policy.
+- Mining fixture readiness permits up to 1,200 ticks for cold remote terrain, matching the rail budget. The original 200-tick timeout expired before assertions; the readiness gate and all 73 assertions remain unchanged.
+
+### Verification
+
+Java 25 `./gradlew clean build` passed after the last production change. `constructioncontinuation` passed **37 groups / 3,867 checks**, including all 23 groups requested at takeover. This registered bundle preserves each group's original assertions and readiness gates. Development fixtures are not proof of natural behavior.
+
+Check counts: a01behavior 20, builderchecks 323, builderpaths 88, builderprojects 36, buildhaul 44, caravandelivery 39, caravanr02 49, caravanroad 22, constructionsite 21, craftrecipes 13, demolition 31, firstbuilding 12, langkeys 1936, lightspacing 71, minekit 37, minelifecycle 41, minewalk 35, mining 73, miningcycle 200, planstonesupply 34, railtransport 22, railtransportdispatch 5, railwork 18, recipecrafting 35, roadlighting 27, roads 149, roadwork 34, roles 118, stockpolicy 59, stoneeconomy 20, stonehands 73, strandrescue 27, supply 30, treewalkback 32, wallconstruction 30, woodcuttinggroup 48, woodsupply 15
+
+### Natural observations
+
+Each fresh observation uses seed 4242, the taiga village, the same 100 forced chunks, 30 × 2,400 sprint ticks, no client/player, no agent-injected fixtures or item grants, explicit building orders or manual villager teleports. Runs with different implementations are kept separate. Existing worlds were preserved; continuations used copies.
+
+| Code variant | Fresh runs | First civic completed by the end of the run | Details |
+| --- | ---: | ---: | --- |
+| Baseline main `265e06b` | 2 | 1/2 | Run 1: granary 269/441, storage 190/266, farm 9/41. Run 2: granary 437/437 finished 56851, storage 103/266. |
+| Site workshop + dedicated cargo delivery, before clock/supply changes | 3 | 1/3 | Run 1: granary finished 54084, storage 174/266. Run 2: granary 212/439, storage 224/266. Run 3: granary 269/437, storage 172/266. Farms9/41. |
+| Plus inactive-gap clock | 2 | 1/2 | Run 1: granary 269/437, storage 172/266. Run 2: granary finished 57272, storage 171/266. |
+| Supply continuation before final review safeguards | 1 | 0/1 | Granary377/437; supply2 interrupted before completing a sprint and supply3 not started, both excluded. |
+| First review safeguards, before raw-stock/retry corrections | 3 | 1/3 | Run 1: storage finished 54610, granary 307/437. Run 2: granary 403/437, no civic finish. Run 3: granary 333/437, storage 140/266, house 0/260. |
+| Matching processed stock, whole batches, deficient species and unavailable-cargo retry (`f6f2a31`) | 3 | 1/3 | Run 1: granary 370/437, storage 0/266. Run 2: granary 442/442 finished 56114, storage 91/266, farm 9/41. Run 3: granary 393/437, storage 83/266. |
+| Plus typed project-funding mine returns (`37be47f`, release candidate) | 3 | 1/3 | Run 1: granary 288/437, storage 194/266, house 0/260. Run 2: granary 204/433, storage 140/266. Run 3: storage finished 54953, granary 293/441. No granary finished in this batch. |
+
+Paired copied-baseline-1 continuations (+24k ticks), **n=1 per variant**: unchanged control storage finished 79155 / granary 357; site-only revision no finish, storage 264 / granary 323; final dedicated-haul revision storage finished 79054 / granary 394. These observations do not isolate a repeatable throughput improvement. Earlier prototypes were discarded and are not evidence for the shipped revision.
+
+Copied final1 +24k continuation, **n=1 per clean variant**: unchanged control granary finished 75305; typed-request treatment finished 75235. The70-tick difference is not a reliable speedup. A prior control run suffered an observer-script parse error after all ten sprints and was excluded from the clean comparison; its world was saved and preserved.
+
+Read-only saved-world inspection found one naturally finished granary containing **one wheat** (pre-clock run 1, n=1). That proves one food arrival, not the complete G04 food-routing contract. First civic reliability, the following tool chamber/milestone sequence, natural roads/rail trips, complete G11 renaturation/replacement and G12 mine safety remain open. No client, visual review, Survival playthrough or full modpack certification. Startup logs contain More Villagers recipe/advancement parse errors and an unavailable authentication-key endpoint.
+
+### Next work
+
+Next, reproduce the loaded-delivery stall on a copy of the latest run 1: eleven spruce stairs remain in public storage, nine marked stairs are carried by a shepherd near 98.8,67,-390.7, while the granary at288/437 still requests stairs. The preserved local source is `run/vp-natural111-nov24-stone1` (ignored evidence, not committed). Trace loaded construction stand selection, path rejection and navigation ownership before changing priorities again. No potential-job-site memory was present on that saved shepherd; do not assume that old pinning bug explains this case. A finished granary later requesting eight glass panes in a repair record also needs an as-built palette check; that cause is not diagnosed. Preserve the strict audit. Client-dependent U items, visuals and full integration require an actual client observation. Do not promote an ID from a passing fixture alone.
+
+
 # CLOUD-LOG (Branch claude/village-growth-1111)
 
 Documented facts only. "Checked in-world" = dev server run; "scratch" = pure logic in a throwaway JVM; "compiled" = no proof.
