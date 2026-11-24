@@ -94,6 +94,26 @@ public final class Builder {
 		}
 		return (int) Math.min(Integer.MAX_VALUE, total);
 	}
+	/** Conservative proof for a direct stone request: cached prepared above-ground block steps only, with no support/foundation work. */
+	public static boolean stoneVariantsFitRequest(VillageData.BuildProject project, int requested) {
+		if (requested <= 0 || project == null) return false;
+		ConstructionSite site = project.construction().orElse(null);
+		List<Step> steps = STEPS.get(project.origin().asLong());
+		if (site == null || !site.prepared() || !site.origin().equals(project.origin()) || steps == null
+			|| site.phaseEnds().isEmpty() || site.phaseEnds().getLast() != steps.size()
+			|| project.step() < 0 || project.step() >= steps.size()) return false;
+		long variants = 0L;
+		for (Step step : steps.subList(project.step(), materialDemandWindowEnd(steps, project.step()))) {
+			if (step.free() || step.optional() || step.linkedTo() != null || step.cost() <= 0 || step.item() == null) continue;
+			// Ground-level work can introduce raw-cobble support columns beyond the visible block request.
+			if (step.pos().getY() <= project.origin().getY() + 1) return false;
+			if (step.item() != Items.COBBLESTONE) continue;
+			if (!CobbleLike.substitutable(step)) return false;
+			variants += step.cost();
+		}
+		return variants >= requested;
+	}
+
 	private static final Map<Long, String> PLAN_DIAGNOSTICS = new HashMap<>();
 	private static final Map<Long, Optional<HouseTemplate>> TEMPLATES = new HashMap<>();
 	private static final long STUCK_TICKS = 36000L;

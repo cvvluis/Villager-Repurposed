@@ -135,6 +135,71 @@ public final class StoneHandsChecks {
 				"a load for the second plan is delivered, a handful is not"); checks++;
 			chest.clearContent();
 
+			VillageData deliveryData = new VillageData();
+			deliveryData.putBuildProject(project("granary", granary, List.of("minecraft:cobblestone#5"), false));
+			deliveryData.putBuildProject(project("storage", storage, List.of("minecraft:cobblestone#20"), false));
+			deliveryData.syncPrimaryProjectView();
+			SimpleContainer deliveryStock = new SimpleContainer(27), deliveryLoad = new SimpleContainer(8);
+			deliveryLoad.setItem(0, new ItemStack(Items.COBBLESTONE, 9));
+			check(PlanStoneSupply.stockGap(deliveryData, deliveryStock) == 64
+				&& PlanStoneSupply.projectRequestFunded(deliveryData, deliveryStock, deliveryLoad),
+				"a real nine-cobblestone load funds one project's current five-stone request despite the public64 buffer and another project's20"); checks++;
+			deliveryLoad.setItem(0, new ItemStack(Items.COBBLESTONE, 6));
+			check(!PlanStoneSupply.projectRequestFunded(deliveryData, deliveryStock, deliveryLoad),
+				"a load that cannot fund one direct request after the two-stone reserve keeps the normal deep policy"); checks++;
+			deliveryLoad.setItem(0, new ItemStack(Items.COBBLESTONE, 2));
+			deliveryLoad.setItem(1, new ItemStack(Items.DIORITE, 7));
+			boolean mixedFoundationRejected = !PlanStoneSupply.projectRequestFunded(deliveryData, deliveryStock, deliveryLoad);
+			deliveryLoad.setItem(0, ItemStack.EMPTY); deliveryLoad.setItem(1, new ItemStack(Items.DIORITE, 9));
+			check(mixedFoundationRejected && !PlanStoneSupply.projectRequestFunded(deliveryData, deliveryStock, deliveryLoad),
+				"mixed or variant-only loads cannot fund a raw foundation request without a proven substitutable window"); checks++;
+			deliveryLoad.clearContent(); deliveryLoad.setItem(0, new ItemStack(Items.COBBLESTONE, 9));
+			deliveryData.buildProjects.clear();
+			deliveryData.putBuildProject(project("granary", granary, List.of("minecraft:cobblestone#5"), true));
+			deliveryData.putBuildProject(project("storage", storage, List.of("minecraft:cobblestone#20"), false));
+			deliveryData.syncPrimaryProjectView();
+			check(!PlanStoneSupply.projectRequestFunded(deliveryData, deliveryStock, deliveryLoad),
+				"a cleanup project's small request cannot trigger the short mine delivery"); checks++;
+			deliveryData.buildProjects.clear();
+			deliveryData.putBuildProject(project("granary", granary, List.of("minecraft:cobblestone#5"), false));
+			deliveryData.putBuildProject(project("storage", storage, List.of("minecraft:cobblestone#20"), false));
+			deliveryData.syncPrimaryProjectView();
+			deliveryStock.setItem(0, new ItemStack(Items.COBBLESTONE, 5));
+			check(!PlanStoneSupply.projectRequestFunded(deliveryData, deliveryStock, deliveryLoad),
+				"an already funded small request does not return a partial load for the larger project"); checks++;
+			deliveryStock.clearContent();
+			var deliveryStepsField = de.villagerplus.build.Builder.class.getDeclaredField("STEPS");
+			deliveryStepsField.setAccessible(true);
+			@SuppressWarnings("unchecked") var deliverySteps = (Map<Long, List<de.villagerplus.build.Step>>) deliveryStepsField.get(null);
+			var oldDeliverySteps = deliverySteps.put(granary.asLong(), java.util.stream.IntStream.range(0, 5)
+				.mapToObj(i -> de.villagerplus.build.Step.block(granary.above(3).east(i), Blocks.COBBLESTONE)).toList());
+			try {
+				var softProject = new VillageData.BuildProject("granary", granary, 0, 0, 0, Optional.empty(), 1L,
+					Optional.empty(), 0L, List.of("minecraft:cobblestone#5"), VillageData.ProjectHaul.empty(), Optional.empty(),
+					Optional.of(new de.villagerplus.build.ConstructionSite(granary, List.of(), List.of(0, 0, 0, 5, 5), true)),
+					Optional.empty(), false, false);
+				deliveryData.buildProjects.clear(); deliveryData.putBuildProject(softProject); deliveryData.syncPrimaryProjectView();
+				deliveryLoad.clearContent(); deliveryLoad.setItem(0, new ItemStack(Items.COBBLESTONE, 2)); deliveryLoad.setItem(1, new ItemStack(Items.DIORITE, 7));
+				check(PlanStoneSupply.projectRequestFunded(deliveryData, deliveryStock, deliveryLoad),
+					"a prepared cached above-ground substitutable window can use the actual two-cobble seven-diorite load"); checks++;
+				deliveryStock.setItem(0, new ItemStack(Items.DIORITE, 5));
+				check(!PlanStoneSupply.projectRequestFunded(deliveryData, deliveryStock, deliveryLoad),
+					"public variants already paying a substitutable request do not trigger another short trip"); checks++;
+				deliveryStock.clearContent();
+				deliveryLoad.clearContent();
+				Villager markerWorker = worker(level, workers, bell.above());
+				try {
+					var markerContext = ctx(level, markerWorker, new JobState(), ref, level.getGameTime());
+					deliveryLoad.setItem(0, BuildHaul.markForCheck(new ItemStack(Items.COBBLESTONE, 9), markerContext, storage, ref.chestPos(level)));
+					check(!PlanStoneSupply.projectRequestFunded(deliveryData, deliveryStock, deliveryLoad),
+						"another project's marked freight is never counted as a fundable mine return"); checks++;
+				} finally {
+					markerWorker.discard(); Villages.forget(markerWorker.getUUID()); workers.remove(markerWorker);
+				}
+			} finally {
+				if (oldDeliverySteps == null) deliverySteps.remove(granary.asLong()); else deliverySteps.put(granary.asLong(), oldDeliverySteps);
+			}
+
 			// 3. Temporary extra mason (the player's quota is not touched).
 			int pop = 12;
 			check(Staffing.stoneExtraMasons(level, ref, pop) == 0, "no extra mason without a mine to work in"); checks++;

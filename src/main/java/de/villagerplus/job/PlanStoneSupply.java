@@ -164,6 +164,30 @@ public final class PlanStoneSupply {
 		return shortage > 0 && carried - COBBLE_RESERVE >= shortage;
 	}
 
+	/** Whether the actual unreserved load can fund a live direct request without spending the mine reserve. */
+	public static boolean projectRequestFunded(VillageData data, Container stock, Container carried) {
+		if (data == null || stock == null || carried == null) return false;
+		if (data.buildProjects.isEmpty()) {
+			return data.hasPlan() && fundsDirectRequest(stock, carried, wanted(data, Items.COBBLESTONE), false);
+		}
+		for (VillageData.BuildProject project : data.buildProjects) {
+			if (!project.active() || project.cleanupOnly()) continue;
+			int requested = wantedIn(project.wanted(), "minecraft:cobblestone");
+			if (requested <= 0) continue;
+			boolean variants = de.villagerplus.build.Builder.stoneVariantsFitRequest(project, requested);
+			if (fundsDirectRequest(stock, carried, requested, variants)) return true;
+		}
+		return false;
+	}
+
+	private static boolean fundsDirectRequest(Container stock, Container carried, int requested, boolean variants) {
+		if (requested <= 0) return false;
+		java.util.function.Predicate<ItemStack> usable = stack -> !BuildHaul.isMarkedCargo(stack)
+			&& (stack.is(Items.COBBLESTONE) || variants && de.villagerplus.build.CobbleLike.variant(stack));
+		int missing = Math.max(0, requested - JobUtil.count(stock, usable));
+		return missing > 0 && JobUtil.count(carried, usable) - COBBLE_RESERVE >= missing;
+	}
+
 	/** Starts plan mining with an actual stored pickaxe or one paid from loaded recipes and public stock. */
 	public static boolean supplyMiningPickaxe(Ctx c, Container stock) {
 		return supplyMiningPickaxe(c, stock, false);

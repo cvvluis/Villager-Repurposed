@@ -99,7 +99,8 @@ public final class StoneHands {
 		java.util.function.Predicate<ItemStack> stray = stack -> de.villagerplus.build.CobbleLike.stone(stack)
 			&& !BuildHaul.isMarkedCargo(stack);
 		int carried = JobUtil.count(c.v().getInventory(), stray);
-		return PlanStoneSupply.cobbleDeliveryDue(c.level(), c.village().data(), box, carried)
+		return (PlanStoneSupply.projectRequestFunded(c.village().data(), box, c.v().getInventory())
+			|| PlanStoneSupply.cobbleDeliveryDue(c.level(), c.village().data(), box, carried))
 			&& JobUtil.depositSurplus(c, stray, 1, 0);
 	}
 
@@ -121,7 +122,8 @@ public final class StoneHands {
 			int carried = JobUtil.count(c.v().getInventory(), de.villagerplus.build.CobbleLike::stone);
 			if (carried <= 0) {
 				CARRIERS.remove(id);
-			} else if ((!needed || PlanStoneSupply.cobbleDeliveryDue(c.level(), ref.data(), box, carried)) && !Mining.holdLoadUnderground(c, carried)
+			} else if ((!needed || PlanStoneSupply.projectRequestFunded(ref.data(), box, c.v().getInventory())
+				|| PlanStoneSupply.cobbleDeliveryDue(c.level(), ref.data(), box, carried)) && !Mining.holdLoadUnderground(c, carried)
 				&& JobUtil.depositSurplus(c, de.villagerplus.build.CobbleLike::stone, 1, 0)) {
 				return true;
 			}
@@ -156,7 +158,8 @@ public final class StoneHands {
 	/** Deliver a useful load of surface stone, else break the next exposed stone (by pickaxe if carried, otherwise by hand). */
 	static boolean surfaceStep(Ctx c, Container box) {
 		int carried = JobUtil.count(c.v().getInventory(), de.villagerplus.build.CobbleLike::stone);
-		if (PlanStoneSupply.cobbleDeliveryDue(c.level(), c.village().data(), box, carried)
+		if ((PlanStoneSupply.projectRequestFunded(c.village().data(), box, c.v().getInventory())
+			|| PlanStoneSupply.cobbleDeliveryDue(c.level(), c.village().data(), box, carried))
 			&& JobUtil.depositSurplus(c, (ItemStack stack) -> de.villagerplus.build.CobbleLike.stone(stack), 1, 0)) {
 			return true;
 		}

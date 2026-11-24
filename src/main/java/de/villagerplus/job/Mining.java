@@ -327,9 +327,10 @@ public final class Mining {
 		// mine for the plan without owning it used to keep it until their pockets held 64 items, while the plan waited for it.
 		// The stone variants broken out of the same rock (andesite, diorite, granite) pay plain cobblestone steps too, so they travel with it.
 		boolean underground = c.v().getY() < m.entrance.getY() - 0.5 && nearest(m, c.v().position()) >= 1;
-		if (need == Need.STONE && PlanStoneSupply.cobbleDeliveryDue(c.level(), ref.data(), box,
+		if (need == Need.STONE && (PlanStoneSupply.projectRequestFunded(ref.data(), box, c.v().getInventory())
+			|| PlanStoneSupply.cobbleDeliveryDue(c.level(), ref.data(), box,
 				JobUtil.count(c.v().getInventory(), de.villagerplus.build.CobbleLike::stone), underground,
-				underground ? nearest(m, c.v().position()) : 0, underground ? crewCobble(c, m) : 0)) {
+				underground ? nearest(m, c.v().position()) : 0, underground ? crewCobble(c, m) : 0))) {
 			if (underground) {
 				requestCapacityReturn(c, m);
 				return true;
@@ -2588,7 +2589,8 @@ public final class Mining {
 		if (depth < 1) return false;
 		Container box = ref.chest(c.level());
 		if (box == null || !needed(c.level(), ref, ref.data(), box, Need.STONE)) return false;
-		return !PlanStoneSupply.cobbleDeliveryDue(c.level(), ref.data(), box, carried, true, depth, crewCobble(c, m));
+		return !PlanStoneSupply.projectRequestFunded(ref.data(), box, c.v().getInventory())
+			&& !PlanStoneSupply.cobbleDeliveryDue(c.level(), ref.data(), box, carried, true, depth, crewCobble(c, m));
 	}
 
 	/** Cobblestone carried by everybody who works inside the gallery (the resident himself included). */
