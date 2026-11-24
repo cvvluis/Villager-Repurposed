@@ -553,11 +553,13 @@ public final class JobManager {
 		boolean carryingCargo = job == PORTER && Caravan.carryingFor(v) && Caravan.porterDelivery(ctx);
 		// Shared market errands and construction can target outdoor sites even for a normally indoor role.
 		boolean constructionCargo = !carryingCargo && allowOutdoorSupportWork(badWeather) && continueConstructionHaul(ctx);
-		boolean sharedOutdoorWork = !constructionCargo && allowOutdoorSupportWork(badWeather) && (((job == MASON || job == PORTER)
+		boolean straySupplies = !constructionCargo && st.roadRepair == null && job != MASON && job != GUARD && allowOutdoorSupportWork(badWeather)
+			&& (StoneHands.deliverStrayPlanStone(ctx) || WoodHands.resumeTree(ctx) || WoodHands.deliverStrayPlanLogs(ctx));
+		boolean sharedOutdoorWork = !constructionCargo && !straySupplies && allowOutdoorSupportWork(badWeather) && (((job == MASON || job == PORTER)
 			&& de.villagerplus.build.Builder.buildHelperWork(ctx))
 			|| de.villagerplus.village.Market.work(ctx)
 			|| de.villagerplus.build.Builder.bootstrapBuildWork(ctx));
-		boolean busy = carryingCargo || constructionCargo || sharedOutdoorWork;
+		boolean busy = carryingCargo || constructionCargo || straySupplies || sharedOutdoorWork;
 		if (!busy) {
 			// Preserve this phase's first-choice profession work, then let an assigned resident join a
 			// prepared building before falling through to the other profession phase.

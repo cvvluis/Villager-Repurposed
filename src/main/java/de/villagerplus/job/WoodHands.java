@@ -70,12 +70,54 @@ public final class WoodHands {
 	 */
 	public static java.util.function.Predicate<ItemStack> strayPlanLogs(Ctx c) {
 		VillageRef ref = c.village();
-		if (ref == null || !ref.data().hasPlan() || !Woodcutting.planNeedsWood(ref.data())) return null;
+		if (c.st().roadRepair != null || ref == null || !ref.data().hasPlan() || !Woodcutting.planNeedsWood(ref.data())) return null;
 		Container box = ref.chest(c.level());
 		if (box == null || Woodcutting.planLogShortfall(ref.data().wanted, box) <= 0) return null;
 		var demanded = Woodcutting.demandedLogIds(ref.data().wanted);
-		java.util.function.Predicate<ItemStack> requested = stack -> Woodcutting.matchesRequestedLog(stack, demanded);
+		java.util.function.Predicate<ItemStack> requested = stack -> !BuildHaul.isMarkedCargo(stack)
+			&& Woodcutting.matchesRequestedLog(stack, demanded);
 		return JobUtil.count(c.v().getInventory(), requested) > 0 ? requested : null;
+	}
+
+	/** A live claim or an unfinished tree keeps its original supply cycle. */
+	static boolean hasActiveWork(Ctx c) {
+		if (claimed(c.v().getUUID(), c.now())) return true;
+		WoodcutterWork work = c.v().getAttached(de.villagerplus.VillagerPlus.WOODCUTTER_WORK);
+		return work != null && (work.root().isPresent() || work.removalPending());
+	}
+
+	/** Resume only an already selected tree; this must never start a second side job. */
+	static boolean resumeTree(Ctx c) {
+		if (!StoneHands.eligible(c) || c.st().roadRepair != null || BuildHaul.carrying(c.v())
+			|| !JobUtil.hasEmptySlot(c.v().getInventory())) return false;
+		WoodcutterWork work = c.v().getAttached(de.villagerplus.VillagerPlus.WOODCUTTER_WORK);
+		if (work == null || work.root().isEmpty() && !work.removalPending()) return false;
+		// This priority is for civic supply, not the village's general wood stock. Already earned drops may still be paid.
+		if (!work.removalConfirmed() && (!c.village().data().hasPlan() || !Woodcutting.planNeedsWood(c.village().data()))) return false;
+		var target = work.log().orElse(work.root().orElse(null));
+		if (target == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), target)) return false;
+		// Pending removal is replayed before Woodcutting's normal approach. Return to the original root stand first;
+		// a tall crown is worked from that stand, never by attempting to walk onto the crown itself.
+		if (work.removalPending() && !work.removalConfirmed()) {
+			var root = work.root().orElse(null);
+			if (root == null || !de.villagerplus.world.LoadedColumns.ready(c.level(), root)) return false;
+			if (!JobUtil.approachLong(c, root, 2.8))
+				return c.st().target != null && c.st().cooldownUntil <= c.now()
+					&& !JobUtil.longRouteKnownUnreachable(c.v(), root);
+		}
+		boolean busy = Woodcutting.tick(c);
+		// Retain an existing helper lease, without counting professional woodcutters as new volunteer hands.
+		if (busy && CLAIMS.containsKey(c.v().getUUID())) CLAIMS.put(c.v().getUUID(), c.now());
+		return busy;
+	}
+
+	/** Resume hand-in of logs from a finished side job before unrelated profession work. */
+	static boolean deliverStrayPlanLogs(Ctx c) {
+		if (!StoneHands.eligible(c)) return false;
+		WoodcutterWork work = c.v().getAttached(de.villagerplus.VillagerPlus.WOODCUTTER_WORK);
+		if (work != null && (work.root().isPresent() || work.removalPending())) return false;
+		var stray = strayPlanLogs(c);
+		return stray != null && JobUtil.depositSurplus(c, stray, 1, 0);
 	}
 
 	/**
@@ -83,7 +125,7 @@ public final class WoodHands {
 	 * nothing to do.
 	 */
 	public static boolean work(Ctx c) {
-		if (!StoneHands.eligible(c)) return false;
+		if (!StoneHands.eligible(c) || BuildHaul.carrying(c.v())) return false;
 		VillageRef ref = c.village();
 		Container box = ref.chest(c.level());
 		if (box == null) return false;

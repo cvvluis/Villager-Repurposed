@@ -312,6 +312,168 @@ public final class StoneHandsChecks {
 					stillWorked |= level.getBlockState(p4).isAir();
 				}
 				check(!stillWorked, "without a shortage the idle librarian does not quarry"); checks++;
+				// A restarted former helper has no idle timer or transient carrier claim, but its real stone must still reach a plan.
+				data.putBuildProject(project("granary", granary, List.of("minecraft:cobblestone#40"), false));
+				data.syncPrimaryProjectView();
+				chest.clearContent();
+				StoneHands.resetForTest();
+				lib.getInventory().clearContent();
+				lib.getInventory().setItem(0, new ItemStack(Items.COBBLESTONE, 32));
+				boolean startedReturn = false;
+				for (int attempt = 0; attempt < 8 && !startedReturn; attempt++) {
+					libState.idleSince = 0L;
+					libState.cooldownUntil = 0L;
+					JobManager.tickForDevelopment(level, lib);
+					startedReturn = libState.activity.equals("bringt Waren zur Dorfkiste") || JobUtil.count(chest, stack -> stack.is(Items.COBBLESTONE)) > 0;
+				}
+				check(startedReturn, "the normal scheduler returns a former helper's thirty-two stones before unrelated profession work, without an idle claim [" + libState.activity + "]"); checks++;
+				if (libState.target != null) lib.setPos(libState.target.getX() + .5, libState.target.getY(), libState.target.getZ() + .5);
+				for (int attempt = 0; attempt < 8 && JobUtil.count(chest, stack -> stack.is(Items.COBBLESTONE)) < 32; attempt++) {
+					libState.cooldownUntil = 0L;
+					JobManager.tickForDevelopment(level, lib);
+				}
+				check(JobUtil.count(chest, stack -> stack.is(Items.COBBLESTONE)) == 32
+					&& JobUtil.count(lib.getInventory(), stack -> stack.is(Items.COBBLESTONE)) == 0,
+					"the scheduled hand-in physically conserves all thirty-two real stones"); checks++;
+				chest.clearContent();
+				lib.getInventory().setItem(0, BuildHaul.markForCheck(new ItemStack(Items.COBBLESTONE, 20),
+					ctx(level, lib, libState, ref, level.getGameTime()), granary, ref.chestPos(level)));
+				libState.idleSince = level.getGameTime() - 1000L;
+				check(!StoneHands.deliverStrayPlanStone(ctx(level, lib, libState, ref, level.getGameTime()))
+					&& !StoneHands.work(ctx(level, lib, libState, ref, level.getGameTime()))
+					&& JobUtil.count(chest, stack -> stack.is(Items.COBBLESTONE)) == 0
+					&& JobUtil.count(lib.getInventory(), stack -> BuildHaul.isMarkedCargo(stack)) == 20,
+					"stray-stone recovery never consumes another project's reserved cargo"); checks++;
+				data.buildProjects.clear();
+				data.putBuildProject(project("granary", granary, List.of("minecraft:spruce_stairs#20"), false));
+				data.syncPrimaryProjectView();
+				chest.clearContent();
+				lib.getInventory().clearContent();
+				lib.getInventory().setItem(0, new ItemStack(Items.SPRUCE_LOG, 6));
+				lib.setVillagerData(lib.getVillagerData().withProfession(level.registryAccess(), VillagerProfession.FARMER));
+				before.putIfAbsent(p4.below(), level.getBlockState(p4.below()));
+				before.putIfAbsent(p4, level.getBlockState(p4));
+				level.setBlock(p4.below(), Blocks.FARMLAND.defaultBlockState(), 2);
+				level.setBlock(p4, Blocks.WHEAT.defaultBlockState().setValue(net.minecraft.world.level.block.CropBlock.AGE, 7), 2);
+				libState.clearTarget();
+				WoodHands.resetForTest();
+				lib.setAttached(VillagerPlus.WOODCUTTER_WORK, WoodcutterWork.empty());
+				check(WoodHands.deliverStrayPlanLogs(ctx(level, lib, libState, ref, level.getGameTime())),
+					"six unclaimed plan logs receive a real hand-in offer without waiting for the profession's idle timer"); checks++;
+				for (int attempt = 0; attempt < 16 && JobUtil.count(chest, stack -> stack.is(Items.SPRUCE_LOG)) < 6; attempt++) {
+					libState.idleSince = 0L;
+					libState.cooldownUntil = 0L;
+					JobManager.tickForDevelopment(level, lib);
+					if (libState.target != null && libState.target.distSqr(ref.chestPos(level)) <= 25)
+						lib.setPos(libState.target.getX() + .5, libState.target.getY(), libState.target.getZ() + .5);
+				}
+				check(JobUtil.count(chest, stack -> stack.is(Items.SPRUCE_LOG)) == 6
+					&& JobUtil.count(lib.getInventory(), stack -> stack.is(Items.SPRUCE_LOG)) == 0,
+					"the normal scheduler hands in six logs from a completed side job before unrelated profession work"); checks++;
+				chest.clearContent();
+				var woodContext = ctx(level, lib, libState, ref, level.getGameTime());
+				lib.getInventory().setItem(0, BuildHaul.markForCheck(new ItemStack(Items.SPRUCE_LOG, 5), woodContext, granary, ref.chestPos(level)));
+				var strayLogs = WoodHands.strayPlanLogs(woodContext);
+				check((strayLogs == null || !strayLogs.test(lib.getInventory().getItem(0)))
+					&& !WoodHands.deliverStrayPlanLogs(woodContext) && !WoodHands.work(woodContext)
+					&& JobUtil.count(lib.getInventory(), stack -> BuildHaul.isMarkedCargo(stack)) == 5,
+					"stray-log hand-in, including the routine path, never takes reserved construction cargo"); checks++;
+				libState.routinePhase = Phase.MORNING;
+				libState.stage = 1;
+				libState.depositBlockedUntil = 0L;
+				Routine.run(woodContext, new RoadBuilderJob(), Phase.MORNING);
+				if (libState.target != null) lib.setPos(libState.target.getX() + .5, libState.target.getY(), libState.target.getZ() + .5);
+				libState.stage = 1;
+				Routine.run(woodContext, new RoadBuilderJob(), Phase.MORNING);
+				check(JobUtil.count(lib.getInventory(), BuildHaul::isMarkedCargo) == 5
+					&& JobUtil.count(chest, BuildHaul::isMarkedCargo) == 0,
+					"the real morning routine's generic road-builder produce branch preserves marked cargo"); checks++;
+				BlockPos privateBoxPos = bell.offset(20, 0, -12);
+				level.setBlock(privateBoxPos, Blocks.CHEST.defaultBlockState(), 2);
+				var privateBox = (Container) level.getBlockEntity(privateBoxPos);
+				var previousHomeChest = woodContext.mem().homeChest;
+				woodContext.mem().homeChest = Optional.of(privateBoxPos);
+				try {
+					lib.setPos(privateBoxPos.getX() + 1.5, privateBoxPos.getY(), privateBoxPos.getZ() + .5);
+					libState.routinePhase = Phase.EVENING;
+					libState.stage = 2;
+					Routine.run(woodContext, new FarmerJob(), Phase.EVENING);
+					check(JobUtil.count(lib.getInventory(), BuildHaul::isMarkedCargo) == 5 && privateBox.isEmpty(),
+						"the real evening routine preserves another project's freight instead of storing it as private property"); checks++;
+				} finally {
+					woodContext.mem().homeChest = previousHomeChest;
+				}
+				lib.getInventory().setItem(0, new ItemStack(Items.SPRUCE_LOG, 5));
+				lib.setAttached(VillagerPlus.WOODCUTTER_WORK, WoodcutterWork.empty().start(p4, "minecraft:spruce_log"));
+				check(!WoodHands.deliverStrayPlanLogs(woodContext)
+					&& JobUtil.count(lib.getInventory(), stack -> stack.is(Items.SPRUCE_LOG)) == 5,
+					"an unfinished felling cursor keeps its normal tree-work cycle instead of starting a stray-log trip"); checks++;
+				level.setBlock(p4.below(), Blocks.GRASS_BLOCK.defaultBlockState(), 2);
+				level.setBlock(p4, Blocks.SPRUCE_LOG.defaultBlockState(), 2);
+				lib.setPos(p4.getX() + 1.5, p4.getY(), p4.getZ() + .5);
+				lib.setAttached(VillagerPlus.WOODCUTTER_WORK, WoodcutterWork.empty().start(p4, "minecraft:spruce_log").select(p4).withStage(6));
+				libState.woodCheckAt = 0L;
+				check(WoodHands.resumeTree(ctx(level, lib, libState, ref, level.getGameTime() + 100L)),
+					"a saved partial tree gets a finite continuation offer before a new profession task"); checks++;
+				WoodHands.resumeTree(ctx(level, lib, libState, ref, level.getGameTime() + 140L));
+				var advancedWood = lib.getAttachedOrCreate(VillagerPlus.WOODCUTTER_WORK);
+				check((advancedWood.stage() > 6 || advancedWood.removalPending()) && level.getBlockState(p4).is(Blocks.SPRUCE_LOG),
+					"resuming the same partial tree advances real break work without replacing it with a new tree"); checks++;
+				data.buildProjects.clear();
+				data.syncPrimaryProjectView();
+				check(!WoodHands.resumeTree(ctx(level, lib, libState, ref, level.getGameTime() + 160L))
+					&& lib.getAttachedOrCreate(VillagerPlus.WOODCUTTER_WORK).equals(advancedWood),
+					"after civic demand clears, early tree continuation yields to the profession without losing the cursor"); checks++;
+				data.putBuildProject(project("granary", granary, List.of("minecraft:spruce_stairs#20"), false));
+				data.syncPrimaryProjectView();
+				BlockPos crown = p4.above(6);
+				before.putIfAbsent(crown, level.getBlockState(crown));
+				level.setBlock(crown, Blocks.SPRUCE_LOG.defaultBlockState(), 2);
+				var pendingWood = WoodcutterWork.empty().start(p4, "minecraft:spruce_log").select(crown)
+					.claimRemoval(List.of(new ItemStack(Items.SPRUCE_LOG)), Blocks.SPRUCE_LOG);
+				lib.setAttached(VillagerPlus.WOODCUTTER_WORK, pendingWood);
+				lib.setPos(p4.getX() + 14.5, p4.getY(), p4.getZ() + .5);
+				WoodHands.resumeTree(ctx(level, lib, libState, ref, level.getGameTime() + 170L));
+				check(level.getBlockState(crown).is(Blocks.SPRUCE_LOG)
+					&& lib.getAttachedOrCreate(VillagerPlus.WOODCUTTER_WORK).equals(pendingWood),
+					"a distant resumed removal preserves its crown and unpaid drops while returning to the root"); checks++;
+				lib.setPos(p4.getX() + 1.5, p4.getY(), p4.getZ() + .5);
+				WoodHands.resumeTree(ctx(level, lib, libState, ref, level.getGameTime() + 175L));
+				check(level.getBlockState(crown).isAir()
+					&& lib.getAttachedOrCreate(VillagerPlus.WOODCUTTER_WORK).removalConfirmed(),
+					"a tall crown can be removed from the reached root stand without approaching the crown itself"); checks++;
+				lib.setAttached(VillagerPlus.WOODCUTTER_WORK, advancedWood);
+				for (int slot = 0; slot < lib.getInventory().getContainerSize(); slot++) lib.getInventory().setItem(slot, new ItemStack(Items.DIRT, 64));
+				check(!WoodHands.resumeTree(ctx(level, lib, libState, ref, level.getGameTime() + 180L))
+					&& lib.getAttachedOrCreate(VillagerPlus.WOODCUTTER_WORK).equals(advancedWood),
+					"a full helper inventory yields for normal delivery work and preserves its unfinished tree cursor"); checks++;
+
+				lib.getInventory().clearContent();
+				lib.setAttached(VillagerPlus.WOODCUTTER_WORK, WoodcutterWork.empty());
+				chest.clearContent();
+				chest.setItem(0, new ItemStack(Items.SPRUCE_LOG));
+				level.setBlock(p4, Blocks.AIR.defaultBlockState(), 2);
+				BlockPos post = bell.offset(24, 0, 12);
+				level.setBlock(post.below(), Blocks.GRASS_BLOCK.defaultBlockState(), 2);
+				level.setBlock(post, Blocks.AIR.defaultBlockState(), 2);
+				var roadTask = new de.villagerplus.village.Roads.Repair(post, Blocks.SPRUCE_LOG.defaultBlockState(),
+					post.east(), false, null, null, "vp_supply_check");
+				libState.roadRepair = roadTask;
+				libState.roadBuilding = false;
+				libState.depositBlockedUntil = 0L;
+				libState.cooldownUntil = 0L;
+				lib.setPos(ref.chestPos(level).getX() + 1.5, ref.chestPos(level).getY(), ref.chestPos(level).getZ() + .5);
+				check(RoadBuilderJob.work(ctx(level, lib, libState, ref, level.getGameTime() + 200L))
+					&& JobUtil.count(lib.getInventory(), stack -> stack.is(Items.SPRUCE_LOG)) == 1,
+					"the live road-lighting task physically withdraws its one post log [" + libState.activity + "; task=" + libState.roadRepair + "; stock=" + JobUtil.count(chest, stack -> stack.is(Items.SPRUCE_LOG)) + "; repairable=" + de.villagerplus.village.Roads.repairable(level, roadTask) + "]"); checks++;
+				check(!WoodHands.deliverStrayPlanLogs(ctx(level, lib, libState, ref, level.getGameTime() + 240L)),
+					"simultaneous civic stair demand cannot divert a live road task's fetched post log"); checks++;
+				lib.setPos(post.getX() + 1.5, post.getY(), post.getZ() + .5);
+				check(RoadBuilderJob.work(ctx(level, lib, libState, ref, level.getGameTime() + 240L))
+					&& level.getBlockState(post).is(Blocks.SPRUCE_LOG)
+					&& JobUtil.count(lib.getInventory(), stack -> stack.is(Items.SPRUCE_LOG)) == 0,
+					"the following road attempt consumes the fetched log in the actual post placement"); checks++;
+
 			} finally {
 				weather.setClearWeatherTime(oldClear);
 				weather.setRainTime(oldRain);

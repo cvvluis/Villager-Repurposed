@@ -91,11 +91,23 @@ public final class StoneHands {
 			&& Market.shop(ref, v.getUUID()) == null && !Caravan.carryingFor(v);
 	}
 
+	/** Complete an unclaimed side job's existing load before a different profession can take its route over. */
+	static boolean deliverStrayPlanStone(Ctx c) {
+		if (!eligible(c) || claimed(c.v().getUUID(), c.now()) || WoodHands.hasActiveWork(c)) return false;
+		Container box = c.village().chest(c.level());
+		if (box == null) return false;
+		java.util.function.Predicate<ItemStack> stray = stack -> de.villagerplus.build.CobbleLike.stone(stack)
+			&& !BuildHaul.isMarkedCargo(stack);
+		int carried = JobUtil.count(c.v().getInventory(), stray);
+		return PlanStoneSupply.cobbleDeliveryDue(c.level(), c.village().data(), box, carried)
+			&& JobUtil.depositSurplus(c, stray, 1, 0);
+	}
+
 	/**
 	 * true = busy with stone work. The caller offers this only after the resident's own job reported nothing to do.
 	 */
 	public static boolean work(Ctx c) {
-		if (!eligible(c)) return false;
+		if (!eligible(c) || BuildHaul.carrying(c.v())) return false;
 		VillageRef ref = c.village();
 		Container box = ref.chest(c.level());
 		if (box == null) return false;
