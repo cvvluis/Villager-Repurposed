@@ -132,6 +132,9 @@ public final class CaravanPorterDeliveryChecks {
 			var deliveryStart = porter.position();
 			var donkeyStart = donkey.position();
 			boolean observedLoadedTravel = false, observedVisibleHandWhileMoving = false;
+			int heldTicks = 0; boolean observedHandCarry = false, conserved = true, handShowsWheat = true;
+			double handWalk = 0.0; net.minecraft.world.phys.Vec3 handFrom = null, handPrev = null;
+			Container depotBox = (Container) level.getBlockEntity(granary);
 			for (int tick = 0; tick < 2400 && Caravan.carryingFor(porter); tick++) {
 				porter.tick();
 				donkey.tick();
@@ -139,6 +142,17 @@ public final class CaravanPorterDeliveryChecks {
 				job.primary(new Ctx(level, porter, st, mem, ref, now + 800 + tick));
 				Anim.apply(porter, st, now + 800 + tick);
 				int remaining = countDonkeyWheat(donkey);
+				int inHands = Caravan.heldCount(porter);
+				int inDepot = depotBox == null ? 0 : JobUtil.count(depotBox, s -> s.is(Items.WHEAT));
+				if (remaining + inHands + inDepot != 16) conserved = false;
+				if (Caravan.handCarrying(porter)) {
+					observedHandCarry = true; heldTicks++;
+					if (handFrom == null) handFrom = porter.position();
+					if (handPrev != null) handWalk += Math.sqrt(porter.position().distanceToSqr(handPrev));
+					handPrev = porter.position();
+					if (!porter.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND).is(Items.WHEAT)
+						|| inDepot != 0) handShowsWheat = false;
+				}
 				if (remaining == 16 && donkey.position().distanceToSqr(donkeyStart) > 4.0) {
 					observedLoadedTravel = true;
 					var hand = porter.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND);
@@ -149,6 +163,12 @@ public final class CaravanPorterDeliveryChecks {
 			}
 			check(observedLoadedTravel, "real wheat remains in the moving donkey"); checks++;
 			check(observedVisibleHandWhileMoving, "porter keeps the visible one-item wheat handstack while escorting the loaded donkey"); checks++;
+			check(observedHandCarry && handShowsWheat,
+				"K04: the porter takes the wheat out of the donkey chest into his own hands and visibly holds it before the granary has any [observed=" + observedHandCarry + ", handWheat=" + handShowsWheat
+				+ ", stTarget=" + st.target + ", cooldown=" + st.cooldownUntil + ", now=" + (now + 3200) + ", lastRelease=" + Caravan.LAST_RELEASE_SITE + ", stuck=" + st.stuckCount + ", diag=" + Caravan.porterDeliveryDiagnostic(level, porter) + "]"); checks++;
+			check(conserved, "K04: donkey + porter hands + granary always add up to exactly sixteen wheat (no dupe, no loss) during the hand-carry"); checks++;
+			check(heldTicks >= 5, "K04: the load stays in the porter's hands for several ticks before it is put in (" + heldTicks
+				+ " ticks, walked " + handWalk + " blocks while carrying)"); checks++;
 			check(!Caravan.carryingFor(porter), "porter finishes delivery by walking to the granary stand; porter="
 				+ porter.blockPosition().toShortString() + ", donkey=" + donkey.blockPosition().toShortString()
 				+ ", target=" + st.target + ", cooldown=" + st.cooldownUntil + ", wheat=" + countDonkeyWheat(donkey)
@@ -165,6 +185,52 @@ public final class CaravanPorterDeliveryChecks {
 				&& JobUtil.count(materialChest, s -> s.is(Items.WHEAT)) == 0,
 				"sixteen wheat land in the granary, not the material crate"); checks++;
 			check(countDonkeyWheat(donkey) == 0, "donkey cargo empties after successful delivery"); checks++;
+
+			// Abort while the load is in the porter's hands: goods go back to the donkey, nothing is duplicated.
+			granaryBox.clearContent();
+			check(cargo.set(new ItemStack(Items.WHEAT, 16)), "abort scenario cargo is loaded"); checks++;
+			st.cooldownUntil = 0;
+			boolean holding = false;
+			for (int tick = 0; tick < 2400 && !holding; tick++) {
+				porter.tick();
+				donkey.tick();
+				Caravan.porterDelivery(new Ctx(level, porter, st, mem, ref, now + 3000 + tick));
+				holding = Caravan.handCarrying(porter);
+			}
+			check(holding && countDonkeyWheat(donkey) == 0 && Caravan.heldCount(porter) == 16
+				&& JobUtil.count(granaryBox, s -> s.is(Items.WHEAT)) == 0,
+				"K04: all sixteen wheat leave the donkey chest into the porter's hands before the depot gets them"); checks++;
+			int wheatDropsBefore = level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, donkey.getBoundingBox().inflate(8.0),
+				e -> e.getItem().is(Items.WHEAT)).stream().mapToInt(e -> e.getItem().getCount()).sum();
+			Caravan.releasePorter(porter);
+			check(!Caravan.handCarrying(porter) && countDonkeyWheat(donkey) == 16
+				&& JobUtil.count(granaryBox, s -> s.is(Items.WHEAT)) == 0
+				&& level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, donkey.getBoundingBox().inflate(8.0),
+					e -> e.getItem().is(Items.WHEAT)).stream().mapToInt(e -> e.getItem().getCount()).sum() == wheatDropsBefore,
+				"K04: interrupting while carrying returns the goods to the donkey chest without a duplicate or a drop [carrying=" + Caravan.handCarrying(porter)
+				+ ", donkeyWheat=" + countDonkeyWheat(donkey) + ", granary=" + JobUtil.count(granaryBox, s -> s.is(Items.WHEAT))
+				+ ", items=" + level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, donkey.getBoundingBox().inflate(8.0)).size() + "]"); checks++;
+			// Donkey chest unavailable while carrying: nothing may vanish, goods drop at the porter.
+			st.cooldownUntil = 0;
+			holding = false;
+			for (int tick = 0; tick < 2400 && !holding; tick++) {
+				porter.tick();
+				donkey.tick();
+				Caravan.porterDelivery(new Ctx(level, porter, st, mem, ref, now + 6000 + tick));
+				holding = Caravan.handCarrying(porter);
+			}
+			boolean wasHolding = holding;
+			int droppedBefore = level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, porter.getBoundingBox().inflate(8.0),
+				e -> e.getItem().is(Items.WHEAT)).stream().mapToInt(e -> e.getItem().getCount()).sum();
+			for (int i = 2; i < 17; i++) { var a = donkey.getSlot(500 + i); if (a != null) a.set(new ItemStack(Items.COBBLESTONE, 64)); }
+			Caravan.releasePorter(porter);
+			int dropped = -droppedBefore + level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, porter.getBoundingBox().inflate(8.0),
+				e -> e.getItem().is(Items.WHEAT)).stream().mapToInt(e -> e.getItem().getCount()).sum();
+			check(wasHolding && !Caravan.handCarrying(porter) && dropped == 16,
+				"K04: with a full donkey chest the carried goods drop at the porter instead of vanishing; dropped=" + dropped); checks++;
+			level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, porter.getBoundingBox().inflate(8.0)).forEach(e -> e.discard());
+			for (int i = 2; i < 17; i++) { var a = donkey.getSlot(500 + i); if (a != null) a.set(ItemStack.EMPTY); }
+			st.cooldownUntil = 0;
 
 			// A full category depot must leave all cargo in the donkey and become
 			// eligible again once real capacity is made available.
@@ -215,7 +281,7 @@ public final class CaravanPorterDeliveryChecks {
 			porter.setPos(porterStart.getX() + 0.5, porterStart.getY(), porterStart.getZ() + 0.5);
 			st.cooldownUntil = 0;
 			long partialNow = now + 10_000;
-			for (int tick = 0; tick < 2400 && countDonkeyWheat(donkey) == 16; tick++) {
+			for (int tick = 0; tick < 2400 && (countDonkeyWheat(donkey) == 16 || Caravan.carryingFor(porter)); tick++) {
 				porter.tick();
 				donkey.tick();
 				Caravan.porterDelivery(new Ctx(level, porter, st, mem, ref, partialNow + tick));
@@ -237,7 +303,7 @@ public final class CaravanPorterDeliveryChecks {
 				"full depot does not consume or hide the twelve-item donkey remainder"); checks++;
 			granaryBox.setItem(1, ItemStack.EMPTY);
 			boolean partialRetry = false;
-			for (int tick = 0; tick < 2400 && countDonkeyWheat(donkey) == 12; tick++) {
+			for (int tick = 0; tick < 2400 && (countDonkeyWheat(donkey) == 12 || Caravan.carryingFor(porter)); tick++) {
 				porter.tick();
 				donkey.tick();
 				Caravan.porterDelivery(new Ctx(level, porter, st, mem, ref, partialNow + 2480 + tick));
@@ -321,6 +387,27 @@ public final class CaravanPorterDeliveryChecks {
 				&& Network.treasuryEmeralds(ref) == 0,
 				"the partial load costs the established rounded price for four bricks (" + expectedCost
 					+ " physical emerald), with no treasury debit"); checks++;
+
+			// K04 purchase end to end: mixed payment (crate emeralds first, then the real treasury) and full reversal.
+			int slot0 = cargoSlots.get(0);
+			var slotAccess = donkey.getSlot(AbstractHorse.INVENTORY_SLOT_OFFSET + slot0);
+			int fullCost = PlanSupplyOrder.emeraldCost(4, 64);
+			box.clearContent();
+			slotAccess.set(new ItemStack(Items.BRICKS, brickStackLimit - 4));
+			int bricksFreeBefore = countDonkeyItem(donkey, Items.BRICKS);
+			box.setItem(0, new ItemStack(Items.EMERALD, 1));
+			Network.creditTreasuryEmeralds(ref, fullCost - 2);
+			int rejected = Caravan.buyTradeFreight(level, state, ref, box, Items.BRICKS, 4, 64);
+			check(fullCost == 4 && rejected == 0 && countDonkeyItem(donkey, Items.BRICKS) == bricksFreeBefore
+				&& JobUtil.count(box, stack -> stack.is(Items.EMERALD)) == 1 && Network.treasuryEmeralds(ref) == fullCost - 2,
+				"K04: a purchase the village cannot pay is reversed completely (no cargo, crate emerald and treasury untouched)"); checks++;
+			Network.creditTreasuryEmeralds(ref, 2);
+			int bought = Caravan.buyTradeFreight(level, state, ref, box, Items.BRICKS, 4, 64);
+			check(bought == 4 && countDonkeyItem(donkey, Items.BRICKS) == bricksFreeBefore + 4
+				&& JobUtil.count(box, stack -> stack.is(Items.EMERALD)) == 0 && Network.treasuryEmeralds(ref) == 1,
+				"K04: a payable purchase takes the crate emerald first, then exactly the rest from the treasury (bought=" + bought
+					+ ", treasury=" + Network.treasuryEmeralds(ref) + ")"); checks++;
+			if (Network.treasuryEmeralds(ref) > 0) Network.spendTreasuryEmeralds(ref, Network.treasuryEmeralds(ref));
 			return checks;
 		} finally {
 			if (trader != null) trader.discard();
