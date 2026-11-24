@@ -373,7 +373,10 @@ public final class AutoTest {
 				String mode = entry.getKey();
 				int age = entry.getValue() + 1;
 				entry.setValue(age);
-				int timeoutTicks = mode.equals("railtransportdispatch") || mode.equals("featurebundle55") ? 1200 : 200;
+				// Cold remote mining fixtures may still be generating when the normal ten-second window ends.
+				// Keep the entity-ticking gate; allow the same bounded preparation window as rail dispatch.
+				int timeoutTicks = mode.equals("railtransportdispatch") || mode.equals("featurebundle55")
+					|| mode.equals("mining") ? 1200 : 200;
 				if (age > timeoutTicks) {
 					failPendingGroup(server, mode, failures, finalExitCode,
 						"fixture did not become ready within " + timeoutTicks + " ticks", null);
