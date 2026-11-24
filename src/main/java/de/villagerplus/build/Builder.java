@@ -1270,11 +1270,10 @@ public final class Builder {
 						long stallKey = d.planOrigin.map(BlockPos::asLong).orElse(0L);
 						if (!helper) {
 							String stallSignature = d.planStep + "|" + String.join(",", d.wanted);
-							PlanStall stall = PLAN_STALLS.get(stallKey);
-							if (stall == null || !stall.signature().equals(stallSignature)) {
-								PLAN_STALLS.put(stallKey, new PlanStall(stallSignature, c.now()));
-							} else if (c.now() - stall.since() >= STALLED_PLAN_PALETTE_FALLBACK_TICKS) {
-								LOGGER.info("Villagers: Repurposed: Bauplan {} steht seit {} Ticks still, pruefe Ersatzpalette (Variante {}, Stämme in Kiste {}, Planbesitzer {}, aktueller Arbeiter '{}' ({}), Tätigkeit '{}', Ofen nötig={}, Bruchstein nötig={}, Kiste Bruchstein/Stein/Ziegel/Kohle={}/{}/{}/{}, fehlt: {})", d.planType, c.now() - stall.since(), d.planVariant, JobUtil.count(box, stk -> stk.is(net.minecraft.tags.ItemTags.LOGS)), d.planBuilder().map(id -> c.level().getEntity(id) instanceof Villager pv ? (pv.getName().getString() + " @ " + pv.blockPosition().toShortString()) : "nicht geladen/tot").orElse("keiner"), c.mem().name, c.v().blockPosition().toShortString(), c.st().activity, de.villagerplus.job.PlanStoneSupply.needsFurnace(c.level(), d, box), de.villagerplus.job.PlanStoneSupply.needsCobble(c.level(), d, box), JobUtil.count(box, stk -> stk.is(Items.COBBLESTONE)), JobUtil.count(box, stk -> stk.is(Items.STONE)), JobUtil.count(box, stk -> stk.is(Items.STONE_BRICKS)), JobUtil.count(box, stk -> stk.is(Items.COAL) || stk.is(Items.CHARCOAL)), PlanSupplyOrder.shortages(d.wanted).entrySet().stream().limit(8).map(e -> BuiltInRegistries.ITEM.getKey(e.getKey()) + "x" + e.getValue() + "/Kiste" + JobUtil.count(box, stk -> stk.is(e.getKey()))).toList());
+							PlanStall stall = observePlanStall(PLAN_STALLS.get(stallKey), stallSignature, c.now());
+							PLAN_STALLS.put(stallKey, stall);
+							if (stall.elapsedAt(c.now()) >= STALLED_PLAN_PALETTE_FALLBACK_TICKS) {
+								LOGGER.info("Villagers: Repurposed: Bauplan {} steht seit {} beobachteten Arbeitsticks still, pruefe Ersatzpalette (Variante {}, Stämme in Kiste {}, Planbesitzer {}, aktueller Arbeiter '{}' ({}), Tätigkeit '{}', Ofen nötig={}, Bruchstein nötig={}, Kiste Bruchstein/Stein/Ziegel/Kohle={}/{}/{}/{}, fehlt: {})", d.planType, stall.elapsedAt(c.now()), d.planVariant, JobUtil.count(box, stk -> stk.is(net.minecraft.tags.ItemTags.LOGS)), d.planBuilder().map(id -> c.level().getEntity(id) instanceof Villager pv ? (pv.getName().getString() + " @ " + pv.blockPosition().toShortString()) : "nicht geladen/tot").orElse("keiner"), c.mem().name, c.v().blockPosition().toShortString(), c.st().activity, de.villagerplus.job.PlanStoneSupply.needsFurnace(c.level(), d, box), de.villagerplus.job.PlanStoneSupply.needsCobble(c.level(), d, box), JobUtil.count(box, stk -> stk.is(Items.COBBLESTONE)), JobUtil.count(box, stk -> stk.is(Items.STONE)), JobUtil.count(box, stk -> stk.is(Items.STONE_BRICKS)), JobUtil.count(box, stk -> stk.is(Items.COAL) || stk.is(Items.CHARCOAL)), PlanSupplyOrder.shortages(d.wanted).entrySet().stream().limit(8).map(e -> BuiltInRegistries.ITEM.getKey(e.getKey()) + "x" + e.getValue() + "/Kiste" + JobUtil.count(box, stk -> stk.is(e.getKey()))).toList());
 								List<Step> diagSteps = STEPS.getOrDefault(stallKey, List.of());
 								LOGGER.info("Villagers: Repurposed: Plandiagnose {}: Quelle={}, Variante={}, Stem='{}', Schritte={}, bezahlt ab Cursor={}, Wunschliste={}", d.planType,
 									d.planSource.isPresent(), d.planVariant, de.villagerplus.village.VillageAdmin.woodStem(ref), diagSteps.size(),
@@ -5658,7 +5657,21 @@ public final class Builder {
 	/** A plan without material progress for this long swaps unobtainable palette blocks for local ones without a caravan. */
 	private static final long STALLED_PLAN_PALETTE_FALLBACK_TICKS = 3000L;
 	/** Per plan origin: the open demand signature and the game tick since which it has not changed. */
-	private record PlanStall(String signature, long since) { }
+	/** A working supplier is sampled at least every few hundred ticks; longer gaps are routine, weather or unload time. */
+	private static final long MAX_STALL_OBSERVATION_GAP = 400L;
+
+	record PlanStall(String signature, long observedAt, long activeTicks) {
+		PlanStall(String signature, long now) { this(signature, now, 0L); }
+		long elapsedAt(long now) {
+			long gap = now - observedAt;
+			return activeTicks + (gap >= 0L && gap <= MAX_STALL_OBSERVATION_GAP ? gap : 0L);
+		}
+	}
+
+	static PlanStall observePlanStall(PlanStall previous, String signature, long now) {
+		if (previous == null || !previous.signature().equals(signature) || now < previous.observedAt()) return new PlanStall(signature, now);
+		return new PlanStall(signature, now, previous.elapsedAt(now));
+	}
 	private static final java.util.Map<Long, PlanStall> PLAN_STALLS = new java.util.HashMap<>();
 	private static final int HOUSE_SITE_CANDIDATE_BUDGET = 96;
 	private static final long HOUSE_SITE_RETRY_TICKS = 20L;

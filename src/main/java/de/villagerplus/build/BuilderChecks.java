@@ -26,6 +26,21 @@ public final class BuilderChecks {
 		int checks = ArchitectRoleMarkerChecks.run();
 		checks += FarmPlanSizingChecks.run();
 		checks += PenBlueprintChecks.run();
+		var stallClock = Builder.observePlanStall(null, "roof|spruce_stairs#20", 1000L);
+		stallClock = Builder.observePlanStall(stallClock, "roof|spruce_stairs#20", 1040L);
+		check(stallClock.elapsedAt(1040L) == 40L, "consecutive supplier work advances the stalled-plan clock"); checks++;
+		stallClock = Builder.observePlanStall(stallClock, "roof|spruce_stairs#20", 20_000L);
+		check(stallClock.elapsedAt(20_000L) == 40L,
+			"overnight or unloaded gaps do not trigger a palette fallback on the first morning attempt"); checks++;
+		for (long now = 20_040L; now <= 22_920L; now += 40L) stallClock = Builder.observePlanStall(stallClock, "roof|spruce_stairs#20", now);
+		check(stallClock.elapsedAt(22_920L) == 2960L,
+			"a continuous work window still accumulates actual supplier time below the fallback threshold"); checks++;
+		stallClock = Builder.observePlanStall(stallClock, "roof|spruce_stairs#20", 22_960L);
+		check(stallClock.elapsedAt(22_960L) == 3000L,
+			"the palette fallback remains eligible after three thousand observed work ticks"); checks++;
+		stallClock = Builder.observePlanStall(stallClock, "roof|spruce_stairs#19", 23_000L);
+		check(stallClock.elapsedAt(23_000L) == 0L,
+			"a real change in the construction cursor or shortage resets the stalled-plan clock"); checks++;
 		check(!Builder.shouldDepositPlanStone(1) && !Builder.shouldDepositPlanStone(11)
 			&& Builder.shouldDepositPlanStone(12) && Builder.shouldDepositPlanStone(32),
 			"a quarry worker keeps small cobblestone batches until the planned delivery buffer is reached"); checks++;
