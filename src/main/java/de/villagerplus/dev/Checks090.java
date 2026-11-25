@@ -397,6 +397,14 @@ public final class Checks090 {
    int count=de.villagerplus.build.StationShedChecks.run(level,new BlockPos(28200,201,28200));
    source.sendSuccess(()->Component.literal("VP090 stationshed PASS "+count+" checks"),false);return count;
   }
+  if(mode.equals("workblocks")) {
+   int count=de.villagerplus.job.WorkBlockChecks.run(level,new BlockPos(32600,201,32600));
+   source.sendSuccess(()->Component.literal("VP090 workblocks PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("chestscan")) {
+   int count=de.villagerplus.village.ChestScanOwnershipChecks.run(level,new BlockPos(32800,201,32800));
+   source.sendSuccess(()->Component.literal("VP090 chestscan PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("craftrecipes")) {
    int count=de.villagerplus.job.CraftRecipeChecks.run(level,new BlockPos(29000,201,29000));
    source.sendSuccess(()->Component.literal("VP090 craftrecipes PASS "+count+" checks"),false);return count;

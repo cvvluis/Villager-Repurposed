@@ -54,6 +54,8 @@ public class JobState {
 		}
 		return h;
 	}
+	/** B01: next tick a profession may retry replacing its missing work block (not persisted). */
+	public long workBlockIdleUntil;
 	public BlockPos target;
 	/** Runtime-only target while a farmer walks to a safe wild-grass seed source. */
 	public BlockPos forageTarget;
