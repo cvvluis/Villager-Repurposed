@@ -289,10 +289,16 @@ public final class RailTransport {
             cart.setDeltaMovement(direction.scale(Math.min(SPEED, length) / length));
             return;
         }
-        cart.setDeltaMovement(Vec3.ZERO);
         // No remote loading: a manually displaced or derailed cart retains its inventory untouched.
         BlockPos dock = trip.toOther() ? trip.homeRail() : trip.otherRail();
-        if (!rail.equals(dock) || horizontalDistance(cart, dock) >= .3 || now % 20 != 0) return;
+        if (!rail.equals(dock) || horizontalDistance(cart, dock) >= .3) {
+            // A cart that was bumped off its berth (villagers and players push minecarts) would otherwise wait forever.
+            // Creep it back along connected track; no fuel, no loading, no chunk access beyond loaded rails.
+            redock(level, cart, rail, dock, now);
+            return;
+        }
+        cart.setDeltaMovement(Vec3.ZERO);
+        if (now % 20 != 0) return;
         VillageRef local = trip.toOther() ? home : other, target = trip.toOther() ? other : home;
         if (cart instanceof Minecart passengerCart) { passengerDock(level, passengerCart, trip, local, now); return; }
         if (!(cart instanceof MinecartChest freight)) return;
@@ -316,6 +322,21 @@ public final class RailTransport {
             Trip fueled = fundLeg(level, local, trip, path);
             if (fueled != null) { cart.setAttached(TRIP, fueled.depart()); NAV.remove(cart.getUUID()); }
         }
+    }
+
+    private static void redock(ServerLevel level, AbstractMinecart cart, BlockPos rail, BlockPos dock, long now) {
+        if (now % 4 != 0) return;
+        Vec3 target;
+        if (rail.equals(dock)) target = Vec3.atBottomCenterOf(dock);
+        else {
+            List<BlockPos> path = connectedPath(level, rail, Set.of(dock));
+            if (path.size() < 2) { cart.setDeltaMovement(Vec3.ZERO); return; }
+            target = Vec3.atBottomCenterOf(path.get(1));
+        }
+        Vec3 direction = new Vec3(target.x - cart.getX(), 0, target.z - cart.getZ());
+        double length = direction.horizontalDistance();
+        if (length <= .02) { cart.setDeltaMovement(Vec3.ZERO); return; }
+        cart.setDeltaMovement(direction.scale(Math.min(.08, length) / length));
     }
 
     /** Buys enough real charcoal at the loaded departure depot to cover this whole physical leg. */
