@@ -35,7 +35,7 @@ import net.minecraft.world.phys.AABB;
  */
 public final class CaravanJourneyChecks {
 	private static final BlockPos AT = new BlockPos(33000, 280, 33000);
-	private static final int GAP = 56;
+	private static final int GAP = 90;
 	private static final Path MARKER = Path.of("vp-caravanjourney.properties");
 	private static final Map<ServerLevel, Run> RUNS = new IdentityHashMap<>();
 
@@ -93,13 +93,19 @@ public final class CaravanJourneyChecks {
 		}
 		if (run.step == 2) {
 			// Production spawn: the same method the village scheduler calls.
+			var routes = Network.loadedReciprocalCaravanRoutes(level, run.home);
+			System.out.println("CARAVAN JOURNEY routes=" + routes + " links=" + Network.of(run.home.bellEntity()).links()
+				+ " peerLinks=" + Network.of(run.peer.bellEntity()).links() + " chest=" + run.home.chestPos(level) + "/" + run.peer.chestPos(level));
+			StringBuilder nulls = new StringBuilder();
+			for (int i = 0; i < run.lane.size(); i++) if (RoadRoute.walkablePavedFeet(level, run.lane.get(i)) == null) nulls.append(i).append(':').append(run.lane.get(i).toShortString()).append(' ');
+			System.out.println("CARAVAN JOURNEY lane=" + run.lane.size() + " nonWalkable=" + nulls);
 			boolean spawned = Caravan.spawn(level, run.home);
 			if (!spawned) {
 				if (now - run.started > 600) throw new IllegalStateException("Caravan journey 1: production spawn kept refusing a linked-route caravan");
 				run.home.data().extra.nextCaravan = 0;
 				return -1;
 			}
-			var members = level.getEntitiesOfClass(CaravanTraderEntity.class, new AABB(AT).inflate(160));
+			var members = level.getEntitiesOfClass(CaravanTraderEntity.class, new AABB(run.home.bell()).inflate(160));
 			if (members.size() != 1) throw new IllegalStateException("Caravan journey 1: expected one trader, found " + members.size());
 			run.trader = members.getFirst().getUUID();
 			Caravan.State state = Caravan.activeStateForChecks(run.trader);
@@ -114,12 +120,14 @@ public final class CaravanJourneyChecks {
 		}
 		var trader = level.getEntity(run.trader);
 		if (trader == null || !trader.isAlive()) throw new IllegalStateException("Caravan journey 1: trader vanished: " + run.diag(level));
-		if (now - run.started > 4000) throw new IllegalStateException("Caravan journey 1: not on the road half-way: " + run.diag(level));
+		if (now - run.started > 800) throw new IllegalStateException("Caravan journey 1: not on the road half-way: " + run.diag(level));
 		Caravan.State state = Caravan.activeStateForChecks(run.trader);
 		if (state == null) throw new IllegalStateException("Caravan journey 1: caravan state lost: " + run.diag(level));
 		run.sample(trader, now);
+		if (now % 200 == 0) System.out.println("CARAVAN JOURNEY tick " + now + " " + run.diag(level) + " tpos=" + trader.position());
+		if (now % 400 == 200) System.out.println("CARAVAN JOURNEY probe " + probe(level, state, trader));
 		double along = run.peer.bell().getX() - trader.getX(); // trader starts near the peer and walks west to the home depot
-		if (state.roadKey == null || along < GAP * 0.35 || along > GAP * 0.65) return -1;
+		if (state.roadKey == null || along < 42 || along > 60 || run.onRoadSamples < 30) return -1;
 		check(run.onRoadSamples >= 20 && run.maxLateral <= 4.5,
 			"before half-way the trader stayed within " + run.maxLateral + " blocks of the paved lane over " + run.onRoadSamples + " samples"); run.checks++;
 		check(state.roadCursor >= 0 && state.roadCursor < run.roadLength, "the caravan holds a road cursor on the canonical route (" + state.roadCursor + ")"); run.checks++;
@@ -168,8 +176,11 @@ public final class CaravanJourneyChecks {
 			for (int side = -1; side <= 1; side++) {
 				BlockPos paving = point.offset(alongX ? 0 : side, -1, alongX ? side : 0);
 				level.setBlock(paving, Blocks.GRAVEL.defaultBlockState(), 2);
-				level.setBlock(paving.above(), Blocks.AIR.defaultBlockState(), 2);
-				level.setBlock(paving.above(2), Blocks.AIR.defaultBlockState(), 2);
+				for (int up = 1; up <= 2; up++) {
+					BlockPos clear = paving.above(up);
+					if (!level.getBlockState(clear).is(Blocks.BELL) && !level.getBlockState(clear).is(Blocks.CHEST))
+						level.setBlock(clear, Blocks.AIR.defaultBlockState(), 2);
+				}
 			}
 			run.lane.add(point.immutable());
 		}
@@ -179,6 +190,8 @@ public final class CaravanJourneyChecks {
 		var depot = run.home.chest(level);
 		depot.setItem(5, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.WHEAT, 64));
 		depot.setChanged();
+		run.home = reload(level, Long.toString(homeBell.asLong()));
+		run.peer = reload(level, Long.toString(peerBell.asLong()));
 		run.home.data().extra.nextCaravan = 0;
 	}
 
@@ -233,7 +246,7 @@ public final class CaravanJourneyChecks {
 				var homeLink = Network.of(run.home.bellEntity()).links();
 				check(gone || trader.position().distanceTo(net.minecraft.world.phys.Vec3.atCenterOf(run.peer.bell())) < 60,
 					"the caravan departs back toward its origin and is cleaned up"); run.checks++;
-				check(level.getEntitiesOfClass(Donkey.class, new AABB(AT).inflate(200), d -> d.entityTags().contains("vp_caravan")).isEmpty(),
+				check(level.getEntitiesOfClass(Donkey.class, new AABB(run.home.bell()).inflate(200), d -> d.entityTags().contains("vp_caravan")).isEmpty(),
 					"no caravan donkey stays tagged to the finished visit"); run.checks++;
 				System.out.println("CARAVAN JOURNEY 2 links peer=" + link + " home=" + homeLink);
 				int result = run.checks;
@@ -245,8 +258,29 @@ public final class CaravanJourneyChecks {
 		return -1;
 	}
 
+	private static String probe(ServerLevel level, Caravan.State state, Entity trader) {
+		try {
+			var method = Caravan.class.getDeclaredMethod("safePackDonkeyApproaches", ServerLevel.class, Caravan.State.class, Donkey.class,
+				net.minecraft.world.entity.npc.villager.AbstractVillager.class);
+			method.setAccessible(true);
+			StringBuilder out = new StringBuilder("camp=" + state.camp + " ");
+			for (UUID id : state.llamas) if (level.getEntity(id) instanceof Donkey donkey) {
+				@SuppressWarnings("unchecked")
+				List<BlockPos> goals = (List<BlockPos>) method.invoke(null, level, state, donkey, trader);
+				out.append("goals=").append(goals.size());
+				if (!goals.isEmpty()) {
+					var path = donkey.getNavigation().createPath(goals.getFirst(), 1);
+					out.append(" first=").append(goals.getFirst().toShortString()).append(" path=").append(path == null ? "null" : "nodes" + path.getNodeCount() + " reach=" + path.canReach())
+						.append(" reason=").append(path == null ? "-" : Caravan.donkeyPathFailureReason(level, donkey, path, goals.getFirst()));
+				}
+				out.append("; ");
+			}
+			return out.toString();
+		} catch (ReflectiveOperationException e) { return e.toString(); }
+	}
+
 	private static void wipe(ServerLevel level, Run run) {
-		for (Entity entity : level.getEntitiesOfClass(Entity.class, new AABB(AT).inflate(200),
+		for (Entity entity : level.getEntitiesOfClass(Entity.class, new AABB(run.home.bell()).inflate(200),
 			e -> e.entityTags().contains("vp_caravan") || e.entityTags().contains("vp090_fixture"))) entity.discard();
 		for (ChunkPos chunk : run.chunks) level.setChunkForced(chunk.x(), chunk.z(), false);
 		try { Files.deleteIfExists(MARKER); } catch (IOException ignored) { }
@@ -258,7 +292,8 @@ public final class CaravanJourneyChecks {
 		BlockPos pos = BlockPos.of(Long.parseLong(bell));
 		level.getChunkAt(pos);
 		if (!(level.getBlockEntity(pos) instanceof BellBlockEntity entity) || entity.getAttached(VillagerPlus.VILLAGE) == null)
-			throw new IllegalStateException("Caravan journey: village bell missing after restart at " + pos.toShortString());
+			throw new IllegalStateException("Caravan journey: village bell missing at " + pos.toShortString() + " be=" + level.getBlockEntity(pos)
+				+ " state=" + level.getBlockState(pos) + " attached=" + (level.getBlockEntity(pos) == null ? null : level.getBlockEntity(pos).getAttached(VillagerPlus.VILLAGE)));
 		return new VillageRef(pos, entity.getAttached(VillagerPlus.VILLAGE), entity);
 	}
 
@@ -303,12 +338,26 @@ public final class CaravanJourneyChecks {
 			}
 		}
 
+		String donkeys(ServerLevel level, Caravan.State state) {
+			UUID trader = this.trader;
+			StringBuilder out = new StringBuilder(" members[");
+			for (UUID id : state.llamas) {
+				Entity e = level.getEntity(id);
+				if (e == null) { out.append("missing "); continue; }
+				out.append(e.getType().toShortString()).append('@').append(e.blockPosition().toShortString()).append(" d2=").append((int) e.distanceToSqr(level.getEntity(trader)));
+				if (e instanceof net.minecraft.world.entity.Mob mob) out.append(" navDone=").append(mob.getNavigation().isDone()).append(" leash=").append(mob.getLeashHolder() != null);
+				out.append("; ");
+			}
+			return out.append(']').toString();
+		}
+
 		String diag(ServerLevel level) {
 			var trader = this.trader == null ? null : level.getEntity(this.trader);
 			Caravan.State state = this.trader == null ? null : Caravan.activeStateForChecks(this.trader);
 			return "trader=" + (trader == null ? "none" : trader.blockPosition().toShortString() + (trader.isAlive() ? "" : " dead"))
 				+ " state=" + (state == null ? "none" : "traded=" + state.traded + " leaveAt=" + state.leaveAt + " roadKey=" + state.roadKey
 					+ " cursor=" + state.roadCursor + " waiting=" + state.waitingForDonkeys + " campBuilt=" + state.campBuilt)
+				+ (state == null ? "" : donkeys(level, state))
 				+ " maxLateral=" + maxLateral + " samples=" + onRoadSamples;
 		}
 	}
