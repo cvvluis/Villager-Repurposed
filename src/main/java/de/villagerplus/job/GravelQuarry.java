@@ -72,7 +72,15 @@ public final class GravelQuarry {
 		return null;
 	}
 
+	/** Gravel batch requested while a paid overland road is under construction (one lane block per unit). */
+	static final int ROAD_CONSTRUCTION_BATCH = 8;
+
 	private record Demand(int target, boolean active, boolean stationPlan) { }
+
+	/** Gravel target for a road task: a repair needs one block, new construction a bounded batch. */
+	static int roadGravelTarget(boolean constructing) {
+		return constructing ? ROAD_CONSTRUCTION_BATCH : 1;
+	}
 
 	private static Demand demand(Ctx c) {
 		VillageData data = c.village().data();
@@ -81,13 +89,13 @@ public final class GravelQuarry {
 		int target = planTarget;
 		var state = c.st();
 		var task = state.roadRepair;
-		if (task != null && task.removal() == null && task.paving().is(Blocks.GRAVEL)) target = Math.max(target, 1);
+		if (task != null && task.removal() == null && task.paving().is(Blocks.GRAVEL)) target = Math.max(target, roadGravelTarget(state.roadBuilding));
 		if (target == 0 && task == null && !state.roadBuilding && c.now() >= state.roadScanAt) {
 			state.roadScanAt = c.now() + 200;
 			task = Roads.nextRepair(c.level(), c.village());
 			if (task != null) {
 				state.roadRepair = task;
-				if (task.removal() == null && task.paving().is(Blocks.GRAVEL)) target = 1;
+				if (task.removal() == null && task.paving().is(Blocks.GRAVEL)) target = roadGravelTarget(false);
 			}
 		}
 		if (target == 0 && state.roadRepair == null && !state.roadBuilding && c.now() >= state.roadBuildScanAt) {
@@ -96,7 +104,7 @@ public final class GravelQuarry {
 			if (task != null) {
 				state.roadRepair = task;
 				state.roadBuilding = true;
-				if (task.removal() == null && task.paving().is(Blocks.GRAVEL)) target = 1;
+				if (task.removal() == null && task.paving().is(Blocks.GRAVEL)) target = roadGravelTarget(true);
 			}
 		}
 		return new Demand(Math.min(4096, target), target > 0, planTarget > 0);

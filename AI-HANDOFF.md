@@ -781,3 +781,8 @@ Map/bars/tabs (text output), expeditions including injured and loot, storage she
 - New `job/WorkBlocks` (hooked before the profession job in `JobManager`): a resident of a vanilla profession without JOB_SITE memory procures, crafts and places its work block through `Workstation.ensure`. New group `workblocks` (67 checks). New group `chestscan` (`village/ChestScanOwnershipChecks`, 21 checks) for private chests vs. all shared scans. B02 untouched (excavation/visual phases still unverified).
 - Checks run: see commit/PR message for group counts and `./gradlew clean build`. Fixtures only; no client, no natural run, no full pack.
 - Next concrete step: natural observation of a lost work block being replaced; hook-level container-access proof for B05; visual B02 phase check.
+## Cloud session 25.11.2026 – J-loops (branch claude/j-loops)
+- Changed: new overland road construction requests a bounded gravel batch (8) from the mason (`GravelQuarry.roadGravelTarget`); a repair still requests 1. `roadwork` gained a quarry -> public depot -> road builder balance check (removed gravel blocks == placed + stock + cargo + flint).
+- Checks actually run (dev server, fixtures only): `roadwork` 40, `gravelcycle` 21, `roads` 149, `railwork` 18 PASS; `./gradlew clean build` PASS (JDK 25 via tools/cloud/setup-env.sh).
+- Not done: J01 (natural blockers no usable seed / no fence kit), J05, rail gravel ballast, natural runs. No status upgrade for J01/J05/J06/J08.
+- Next concrete step: prove gravel reaching an active road/rail project in a natural run; address the J01 seed/fence-kit blockers.
