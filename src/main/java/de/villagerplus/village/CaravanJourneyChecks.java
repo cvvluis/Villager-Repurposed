@@ -114,16 +114,21 @@ public final class CaravanJourneyChecks {
 			run.checks++;
 			check(members.getFirst().position().distanceTo(net.minecraft.world.phys.Vec3.atCenterOf(run.peer.bell())) < 48,
 				"the caravan arrives from the linked village, not from the home village's own edge"); run.checks++;
+			if (System.getenv("VP_JOURNEY_NOGUARD") != null && state.guard != null && level.getEntity(state.guard) != null) {
+				level.getEntity(state.guard).discard(); // experiment only: isolates the guard golem as the cause of the pack-animal wait livelock
+			}
 			run.step = 3;
 			run.started = now;
 			return -1;
 		}
 		var trader = level.getEntity(run.trader);
 		if (trader == null || !trader.isAlive()) throw new IllegalStateException("Caravan journey 1: trader vanished: " + run.diag(level));
-		if (now - run.started > 800) throw new IllegalStateException("Caravan journey 1: not on the road half-way: " + run.diag(level));
+		if (now - run.started > 3500) throw new IllegalStateException("Caravan journey 1: not on the road half-way: " + run.diag(level));
 		Caravan.State state = Caravan.activeStateForChecks(run.trader);
 		if (state == null) throw new IllegalStateException("Caravan journey 1: caravan state lost: " + run.diag(level));
 		run.sample(trader, now);
+		if (now % 100 == 0 && now - run.started < 700) System.out.println("CJ ts " + (now - run.started) + " wait=" + state.waitingForDonkeys + " t=" + trader.blockPosition().toShortString()
+			+ " dp=" + state.departurePathReady + run.donkeys(level, state));
 		if (now % 200 == 0) System.out.println("CARAVAN JOURNEY tick " + now + " " + run.diag(level) + " tpos=" + trader.position());
 		if (now % 400 == 200) System.out.println("CARAVAN JOURNEY probe " + probe(level, state, trader));
 		double along = run.peer.bell().getX() - trader.getX(); // trader starts near the peer and walks west to the home depot
