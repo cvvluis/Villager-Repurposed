@@ -124,6 +124,14 @@ public final class WorkshopSupplyChecks {
 				"incomplete recipe inputs stay untouched when the public warehouse cannot fund a complete batch");
 			passed++;
 
+			// Perf guard: the lager fetch must use the indexed per-result lookup, never a scan of every loaded recipe
+			// (that scan snapshotted the whole combined lager per recipe and its cost grew with the lager content).
+			long scansBeforeFetch = de.villagerplus.village.RecipeIndex.scans();
+			for (int repeat = 0; repeat < 20; repeat++) fetchRecipeInputs(context, ref, communal, Items.CRAFTING_TABLE);
+			long fetchScans = de.villagerplus.village.RecipeIndex.scans() - scansBeforeFetch;
+			check(fetchScans == 0, "20 lager recipe fetches do not scan the full recipe list (" + fetchScans + " scans)");
+			passed++;
+
 			checkCargoOwnerSelection(level, ref, context);
 			passed += 2;
 			return passed;

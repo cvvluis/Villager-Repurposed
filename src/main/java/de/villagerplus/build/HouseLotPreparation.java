@@ -80,6 +80,15 @@ public final class HouseLotPreparation {
 	}
 
 	private static Scan inspect(ServerLevel level, List<BlockPos> positions, int maxObstacles, BlockPos lotMin, BlockPos lotMax) {
+		de.villagerplus.world.LoadedPoi.beginScan();
+		try {
+			return inspectScan(level, positions, maxObstacles, lotMin, lotMax);
+		} finally {
+			de.villagerplus.world.LoadedPoi.endScan();
+		}
+	}
+
+	private static Scan inspectScan(ServerLevel level, List<BlockPos> positions, int maxObstacles, BlockPos lotMin, BlockPos lotMax) {
 		if (level == null || positions == null || maxObstacles < 0 || positions.size() > MAX_INSPECT_VOLUME) {
 			return new Scan(Status.BLOCKED, null, 0);
 		}
@@ -440,7 +449,7 @@ public final class HouseLotPreparation {
 	}
 
 	private static boolean hasPoiAt(ServerLevel level, BlockPos pos) {
-		return level.getPoiManager().getInRange(poi -> true, pos, 0, PoiManager.Occupancy.ANY).findAny().isPresent();
+		return de.villagerplus.world.LoadedPoi.hasAt(level, pos);
 	}
 
 	private static ItemStack carriedTool(Container inventory, BlockState state) {

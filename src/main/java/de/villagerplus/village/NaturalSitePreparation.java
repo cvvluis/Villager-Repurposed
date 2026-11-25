@@ -265,6 +265,15 @@ public final class NaturalSitePreparation {
 
 	/** Inspect an inclusive, fixed volume without loading chunks or changing blocks. */
 	public static Scan inspect(ServerLevel level, BlockPos min, BlockPos max, int maxObstacles) {
+		de.villagerplus.world.LoadedPoi.beginScan();
+		try {
+			return inspectScan(level, min, max, maxObstacles);
+		} finally {
+			de.villagerplus.world.LoadedPoi.endScan();
+		}
+	}
+
+	private static Scan inspectScan(ServerLevel level, BlockPos min, BlockPos max, int maxObstacles) {
 		if (level == null || min == null || max == null || maxObstacles < 0
 			|| min.getX() > max.getX() || min.getY() > max.getY() || min.getZ() > max.getZ()) {
 			return new Scan(Status.BLOCKED, null, 0);
@@ -482,7 +491,7 @@ public final class NaturalSitePreparation {
 	}
 
 	private static boolean hasPoiAt(ServerLevel level, BlockPos pos) {
-		return level.getPoiManager().getInRange(poi -> true, pos, 0, PoiManager.Occupancy.ANY).findAny().isPresent();
+		return de.villagerplus.world.LoadedPoi.hasAt(level, pos);
 	}
 
 	private static TreeSpan treeAt(List<TreeSpan> trees, BlockPos pos) {
