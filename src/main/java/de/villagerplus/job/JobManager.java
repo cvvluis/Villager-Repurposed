@@ -563,7 +563,8 @@ public final class JobManager {
 		if (!busy) {
 			// Preserve this phase's first-choice profession work, then let an assigned resident join a
 			// prepared building before falling through to the other profession phase.
-			boolean priorityJobWorked = first ? job.primary(ctx) : job.secondary(ctx);
+			boolean ownWorkBlock = !badWeather && WorkBlocks.ensure(ctx);
+			boolean priorityJobWorked = ownWorkBlock || (first ? job.primary(ctx) : job.secondary(ctx));
 			busy = priorityJobWorked;
 			if (job != MASON && job != PORTER
 				&& de.villagerplus.build.Builder.shouldOfferConstructionSupport(priorityJobWorked,

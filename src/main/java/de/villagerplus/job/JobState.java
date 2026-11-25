@@ -18,6 +18,8 @@ public class JobState {
 	public long cooldownUntil;
 	/** Pro Teilaufgabe (0 = primaer, 1 = sekundaer): bis dahin wurde nichts zu tun gefunden. */
 	public final long[] idleUntil = new long[2];
+	/** B01: next tick a profession may retry replacing its missing work block (not persisted). */
+	public long workBlockIdleUntil;
 	public BlockPos target;
 	/** Runtime-only target while a farmer walks to a safe wild-grass seed source. */
 	public BlockPos forageTarget;
