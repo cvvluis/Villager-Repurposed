@@ -292,9 +292,23 @@ public final class NaturalSitePreparationChecks {
 			}
 			check(Builder.inspectHouseClearance(level, ref, origin, variant, false).status() == NaturalSitePreparation.Status.BLOCKED,
 				"a HOME point of interest prevents residential-lot clearing at its occupied position"); checks++;
+			de.villagerplus.world.LoadedPoi.beginScan();
+			try {
+				check(de.villagerplus.world.LoadedPoi.hasAt(level, poiPos) && !de.villagerplus.world.LoadedPoi.hasAt(level, poiPos.above(3)),
+					"a scan scope finds exactly the injected POI position from the per-chunk set"); checks++;
+			} finally {
+				de.villagerplus.world.LoadedPoi.endScan();
+			}
 			if (injectedPoi) {
 				poiManager.remove(poiPos);
 				injectedPoi = false;
+			}
+			de.villagerplus.world.LoadedPoi.beginScan();
+			try {
+				check(!de.villagerplus.world.LoadedPoi.hasAt(level, poiPos),
+					"a new scan scope does not keep a removed POI from the previous scope"); checks++;
+			} finally {
+				de.villagerplus.world.LoadedPoi.endScan();
 			}
 
 			resetSite(level, origin, 8, 12);

@@ -52,4 +52,41 @@ public final class LoadedPoi {
 		}
 		return out;
 	}
+
+	private static int scanDepth;
+	private static final java.util.Map<Long, java.util.Set<Long>> CHUNK_POIS = new java.util.HashMap<>();
+
+	/**
+	 * Opens a read-only scan scope. Inside it {@link #hasAt} answers from per-chunk POI position sets built once for the
+	 * scope; the world must not change POIs until {@link #endScan()}. Scopes nest; the cache is dropped with the last one.
+	 */
+	public static void beginScan() {
+		if (scanDepth++ == 0) CHUNK_POIS.clear();
+	}
+
+	public static void endScan() {
+		if (scanDepth > 0 && --scanDepth == 0) CHUNK_POIS.clear();
+	}
+
+	/**
+	 * Whether any POI record (any type, any occupancy) sits exactly at {@code pos}. Block-by-block lot scans used to
+	 * issue one POI-manager range query per block; inside a scan scope the POI positions of a loaded chunk are
+	 * collected once and reused. Outside a scope, or in a chunk that is not loaded, the exact per-position query runs.
+	 */
+	public static boolean hasAt(ServerLevel level, BlockPos pos) {
+		int chunkX = SectionPos.blockToSectionCoord(pos.getX());
+		int chunkZ = SectionPos.blockToSectionCoord(pos.getZ());
+		if (scanDepth == 0 || level.getChunkSource().getChunkNow(chunkX, chunkZ) == null) {
+			return level.getPoiManager().getInRange(poi -> true, pos, 0, PoiManager.Occupancy.ANY).findAny().isPresent();
+		}
+		java.util.Set<Long> positions = CHUNK_POIS.computeIfAbsent(ChunkPos.pack(chunkX, chunkZ), key -> {
+			java.util.Set<Long> found = new java.util.HashSet<>();
+			try (Stream<PoiRecord> stream = level.getPoiManager().getInChunk(poi -> true, new ChunkPos(chunkX, chunkZ),
+				PoiManager.Occupancy.ANY)) {
+				stream.forEach(record -> found.add(record.getPos().asLong()));
+			}
+			return found;
+		});
+		return positions.contains(pos.asLong());
+	}
 }
