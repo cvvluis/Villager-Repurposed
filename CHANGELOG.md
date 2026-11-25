@@ -34,6 +34,10 @@ See RELEASE_NOTES_0.11.2.md.
 
 - **Development mining checks.** Cold remote fixture chunks have up to 1,200 ticks to become entity-ticking, matching the rail preparation budget. The former 200-tick deadline expired before terrain generation finished in this environment; all mining assertions and readiness gates remain unchanged.
 
+- **Mine terrace repairs use real stock without draining the active plan.** When the current gallery section has a one-block floor gap, miners request just the cobblestone needed to repair that lane from the communal chest, preserving recorded building demand. One natural copied world advanced from mine index 28 to 34 after the repair material arrived; this did not finish the toolshed or reach iron.
+- **Anvil projects keep their exact iron demand visible to miners.** Active anvil requirements now account for the vanilla recipe (three iron blocks and four ingots) and iron blocks already in communal stock, even when copper or coal makes the aggregate metal balance look sufficient. A placed anvil elsewhere does not clear an active project's need for an anvil item.
+- **Stalled miners choose reachable return pads.** A free, safe waiting spot near a mine is only selected when vanilla navigation finds a path to it. In one copied natural continuation, the mine advanced from index 34 to 35 over 10 × 2,400 ticks; another miner still repeated its surface approach, so regular mine cadence remains unproven.
+
 ## 0.11.1
 
 See RELEASE_NOTES_0.11.1.md.

@@ -19,6 +19,9 @@ Builders can craft from delivered site materials, and reserved freight survives 
 - Wooden shape demand includes its timber inputs, shape crafting uses batches, and unclaimed log loads are handed in. Refused stacks no longer block other goods in mixed deposits.
 - Mining fixture preparation allows cold terrain generation to finish before running the unchanged entity-ticking assertions.
 - Development fixtures exercise the Village Taverns barrel marker and report installed EMF/ETF versions.
+- Miners can withdraw the real cobblestone needed for a one-block floor repair while the active build plan's stock remains reserved. A single natural copied-world continuation advanced six sections after the fill arrived; this is not evidence that mine cadence is reliable.
+- Active anvil projects expose their exact vanilla iron recipe shortage to metal miners, including a direct project-item need even if an anvil exists elsewhere near the depot. The fixture group proves this demand path, not natural extraction or toolshed completion.
+- Mine recovery only selects a free portal waiting pad when vanilla navigation can reach it. One copied natural run advanced the cursor by one section after 10 × 2,400 ticks, while another miner remained in the overland loop; reliable visible progress remains unproven.
 
 ## Verification and limits
 

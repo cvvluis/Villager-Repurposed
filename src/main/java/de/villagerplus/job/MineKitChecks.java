@@ -4,6 +4,8 @@ import de.villagerplus.VillagerMemory;
 import de.villagerplus.VillagerPlus;
 import de.villagerplus.village.VillageData;
 import de.villagerplus.village.VillageRef;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -15,6 +17,7 @@ import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Blocks;
 
 /**
  * Fixture checks for the mine kit rule: a paved walkway strip never stops the digging (a village without oak planks must not
@@ -27,6 +30,10 @@ public final class MineKitChecks {
 	public static int run(ServerLevel level, VillageRef ref, BlockPos bell) {
 		Villager worker = null;
 		int checks = 0;
+		VillageData data = ref.data();
+		String oldPlanType = data.planType;
+		Optional<BlockPos> oldPlanOrigin = data.planOrigin;
+		List<String> oldWanted = new ArrayList<>(data.wanted);
 		Mining.resetKitWaitForTest();
 		try {
 			BlockPos entrance = bell.offset(30, 0, 0);
@@ -62,6 +69,44 @@ public final class MineKitChecks {
 				var status = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now), ref, mine);
 				check(status == Mining.SupplyStatus.READY && count(worker.getInventory(), Items.OAK_PLANKS) == 0 && isEmpty(chest),
 					"section " + index + " needs no structure: digging starts at once without a walkway plank, got " + status); checks++;
+			}
+
+			// A previously dug gallery may expose a small support gap in the next section. Keep the real paid repair block
+			// with the miner before the long walk in, including for miners who otherwise work without supports or torches.
+			mine.index = 28;
+			worker.getInventory().clearContent();
+			chest.clearContent();
+			add(chest, Items.COBBLESTONE, 1);
+			BlockPos terraceBase = new BlockPos(entrance.getX() + mine.index, mine.targetY, entrance.getZ());
+			BlockPos terraceFloor = terraceBase.relative(Direction.SOUTH, 1).below();
+			level.getChunk(terraceFloor);
+			var oldFloor = level.getBlockState(terraceFloor);
+			var oldSupport = level.getBlockState(terraceFloor.below());
+			level.setBlock(terraceFloor.below(), Blocks.STONE.defaultBlockState(), 3);
+			level.setBlock(terraceFloor, Blocks.AIR.defaultBlockState(), 3);
+			try {
+				data.planType = "granary";
+				data.planOrigin = Optional.of(bell.offset(0, 0, 20));
+				data.wanted.clear();
+				data.wanted.add("minecraft:cobblestone#1");
+				var reservedKit = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now + 1L), ref, mine);
+				check(PlanStoneSupply.availableCobble(data, chest) == 0 && count(chest, Items.COBBLESTONE) == 1
+					&& count(worker.getInventory(), Items.COBBLESTONE) == 0,
+					"terrace repair preserves cobblestone reserved for an active construction request (" + reservedKit + ")"); checks++;
+				data.planType = "";
+				data.planOrigin = Optional.empty();
+				data.wanted.clear();
+				var terraceKit = Mining.kitStatus(new Ctx(level, worker, state, memory, ref, now + 40L), ref, mine);
+				boolean terraceRepaired = terraceKit == Mining.SupplyStatus.BUSY
+					&& count(worker.getInventory(), Items.COBBLESTONE) == 1 && count(chest, Items.COBBLESTONE) == 0
+					&& Mining.patchFloor(new Ctx(level, worker, state, memory, ref, now + 41L), terraceFloor);
+				check(terraceRepaired && level.getBlockState(terraceFloor).is(Blocks.COBBLESTONE)
+					&& count(worker.getInventory(), Items.COBBLESTONE) == 0,
+					"a worker physically takes one unreserved public cobblestone and pays it to repair a detected gallery floor gap ("
+						+ terraceKit + ", inventory " + count(worker.getInventory(), Items.COBBLESTONE) + ")"); checks++;
+			} finally {
+				level.setBlock(terraceFloor, oldFloor, 3);
+				level.setBlock(terraceFloor.below(), oldSupport, 3);
 			}
 
 			// 2. A support section with an empty depot waits; the wait is per section and its fallback runs no restock trip.
@@ -184,6 +229,10 @@ public final class MineKitChecks {
 		} finally {
 			if (worker != null) worker.discard();
 			ref.data().mine = Optional.empty();
+			data.planType = oldPlanType;
+			data.planOrigin = oldPlanOrigin;
+			data.wanted.clear();
+			data.wanted.addAll(oldWanted);
 			Mining.resetKitWaitForTest();
 		}
 	}

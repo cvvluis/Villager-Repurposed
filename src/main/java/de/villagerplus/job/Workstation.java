@@ -1,11 +1,14 @@
 package de.villagerplus.job;
 
 import de.villagerplus.village.RecipeIndex;
+import de.villagerplus.village.VillageData;
+import de.villagerplus.village.VillageRef;
 
 import de.villagerplus.VillagerPlus;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -108,6 +111,36 @@ public final class Workstation {
 	 */
 	private static final java.util.Map<Long, java.util.Map.Entry<java.util.UUID, Long>> ANVIL_CLAIMS = new java.util.HashMap<>();
 	private static final long ANVIL_CLAIM_TICKS = 1200L;
+	private record AnvilNeedCache(long signature, long validUntil, int shortage) { }
+	private static final java.util.Map<String, AnvilNeedCache> ANVIL_NEED_CACHE = new java.util.HashMap<>();
+
+	/** Exact public ingot shortage for the real three-block/four-ingot anvil recipe, without loading chunks. */
+	static int anvilIronShortage(ServerLevel level, VillageRef ref, VillageData data, Container chest) {
+		if (level == null || ref == null || chest == null) return 0;
+		int anvils = JobUtil.count(chest, stack -> stack.is(Items.ANVIL));
+		int blocks = JobUtil.count(chest, stack -> stack.is(Items.IRON_BLOCK));
+		int ingots = JobUtil.count(chest, stack -> stack.is(Items.IRON_INGOT));
+		int planDemand = data == null ? 0 : PlanStoneSupply.wanted(data, Items.ANVIL);
+		if (data != null) {
+			int projectDemand = 0;
+			for (VillageData.BuildProject project : data.buildProjects) {
+				if (!project.active() || project.cleanupOnly()) continue;
+				projectDemand += PlanStoneSupply.wantedIn(project.wanted(), "minecraft:anvil");
+			}
+			planDemand = Math.max(planDemand, projectDemand);
+		}
+		long signature = (((long) anvils) << 48) ^ (((long) blocks) << 32) ^ (((long) ingots) << 16) ^ planDemand;
+		String key = level.dimension().identifier() + ":" + ref.bell().asLong();
+		AnvilNeedCache cached = ANVIL_NEED_CACHE.get(key);
+		if (cached != null && cached.signature() == signature && level.getGameTime() < cached.validUntil()) return cached.shortage();
+		BlockPos chestPos = ref.chestPos(level);
+		int missingAnvils = Math.max(0, planDemand - anvils);
+		if (planDemand == 0 && chestPos != null && find(level, chestPos, Blocks.ANVIL, 8) == null && anvils == 0) missingAnvils = 1;
+		int recipeIngots = Math.max(0, missingAnvils * 31 - blocks * 9);
+		int shortage = chestPos == null ? 0 : Math.max(0, recipeIngots - ingots);
+		ANVIL_NEED_CACHE.put(key, new AnvilNeedCache(signature, level.getGameTime() + 100L, shortage));
+		return shortage;
+	}
 
 	/** Only one resident per village fetches or crafts the shared anvil; the others keep their own work. */
 	private static boolean claimAnvilWork(Ctx c) {

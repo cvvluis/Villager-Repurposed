@@ -94,19 +94,36 @@ public final class SmithAnvilChecks {
 			chest.setItem(0, new ItemStack(Items.IRON_BLOCK, 3));
 			chest.setItem(1, new ItemStack(Items.IRON_INGOT, 3));
 			List<ItemStack> shortage = snapshot(chest);
+			boolean metalDemand = Workstation.anvilIronShortage(level, ref, ref.data(), chest) == 1
+				&& Mining.needed(level, ref, ref.data(), chest, Mining.Need.METAL);
 			boolean noShortageMutation = !Workstation.ensure(ctx, Blocks.ANVIL) && same(chest, shortage)
 				&& JobUtil.count(chest, stack -> stack.is(Items.ANVIL)) == 0;
-			check(noShortageMutation, "B01 missing ingot keeps every real anvil ingredient in the communal depot");
+			check(metalDemand && noShortageMutation,
+				"B01 anvil demand keeps metal mining active until its exact recipe shortage is supplied, without changing depot stock");
 
 			chest.clearContent();
 			chest.setItem(0, new ItemStack(Items.IRON_BLOCK, 3));
 			chest.setItem(1, new ItemStack(Items.IRON_INGOT, 4));
+			boolean exactIngredients = Workstation.anvilIronShortage(level, ref, ref.data(), chest) == 0;
 			for (BlockPos site : sites) level.setBlock(site, Blocks.STONE.defaultBlockState(), 3);
 			List<ItemStack> blocked = snapshot(chest);
 			check(!Workstation.ensure(new Ctx(level, smith, state, memory, ref, level.getGameTime() + 1), Blocks.ANVIL)
-				&& same(chest, blocked) && JobUtil.count(chest, stack -> stack.is(Items.ANVIL)) == 0,
+				&& exactIngredients && same(chest, blocked) && JobUtil.count(chest, stack -> stack.is(Items.ANVIL)) == 0,
 				"B01 blocked placement area leaves all three iron blocks and four ingots untouched");
 			for (BlockPos site : sites) level.setBlock(site, Blocks.AIR.defaultBlockState(), 3);
+
+			// An active project that asks for an anvil remains a real mining demand even if a different anvil is already
+			// placed near the depot. The project still needs the item in communal stock for its own construction step.
+			chest.clearContent();
+			chest.setItem(0, new ItemStack(Items.IRON_INGOT, 11));
+			ref.data().wanted.add("minecraft:anvil#1");
+			level.setBlock(sites.get(0), Blocks.ANVIL.defaultBlockState(), 3);
+			boolean plannedAnvilShortage = Workstation.anvilIronShortage(level, ref, ref.data(), chest) == 20
+				&& Mining.needed(level, ref, ref.data(), chest, Mining.Need.METAL);
+			ref.data().wanted.remove("minecraft:anvil#1");
+			level.setBlock(sites.get(0), Blocks.AIR.defaultBlockState(), 3);
+			check(plannedAnvilShortage,
+				"B01 active anvil project keeps exact iron mining demand even when another village anvil is already placed");
 
 			// A completely occupied depot cannot accept the output. The crafting transaction must not take any input.
 			chest.clearContent();

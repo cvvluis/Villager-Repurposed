@@ -84,6 +84,23 @@ public final class PlanStoneSupply {
 		return Math.max(0, STOCK_FLOOR - JobUtil.count(stock, de.villagerplus.build.CobbleLike::stone));
 	}
 
+	/** Cobblestone in public stock beyond the currently recorded plan/project demand. */
+	static int availableCobble(VillageData data, Container stock) {
+		if (data == null || stock == null) return 0;
+		long planDemand = data.hasPlan() ? wanted(data, Items.COBBLESTONE)
+			+ (wanted(data, Items.COBBLESTONE_STAIRS) * 3L + 1) / 2
+			+ (wanted(data, Items.COBBLESTONE_SLAB) + 1L) / 2 : 0L;
+		long projectDemand = 0;
+		for (VillageData.BuildProject project : data.buildProjects) {
+			if (!project.active() || project.cleanupOnly()) continue;
+			projectDemand += wantedIn(project.wanted(), "minecraft:cobblestone");
+			projectDemand += (wantedIn(project.wanted(), "minecraft:cobblestone_stairs") * 3L + 1) / 2;
+			projectDemand += (wantedIn(project.wanted(), "minecraft:cobblestone_slab") + 1L) / 2;
+		}
+		long reserved = Math.max(planDemand, projectDemand);
+		return (int) Math.max(0L, JobUtil.count(stock, stack -> stack.is(Items.COBBLESTONE)) - reserved);
+	}
+
 	/** Cobblestone the plan asks for (directly, or as stairs and slabs to craft) beyond what the public chest holds. */
 	static int cobbleShortage(VillageData data, Container stock) {
 		if (data == null || stock == null || !data.hasPlan()) return 0;

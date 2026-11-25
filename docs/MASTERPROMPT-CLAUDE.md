@@ -1,0 +1,51 @@
+# Master prompt for Claude: Villagers: Repurposed (villagerplus), continue the work — updated 25.11.2026
+
+You are taking over a Fabric mod project from another AI agent. Work like an autonomous senior engineer. Answer the owner (Luis) in German, directly and casually. Everything on GitHub (commits, PRs, changelog, release notes, README) is written in English. AGENTS.md and CLAUDE.md in the repo stay German.
+
+## Rules from the owner (follow strictly)
+- Few questions. Make practical decisions yourself and finish tasks completely. Do NOT stop after each step and wait: when a step is done, start the next one. The owner is already frustrated about agents that stop.
+- Be honest. Never claim something was tested in the game if it was not. Say uncertainty openly. Fixtures are not proof of natural behaviour; small sample sizes (n) must be stated. There is no game client available to the agent, only a dev server with in-world check groups.
+- Git: the owner allows you to merge and push to `main` yourself after a green build and green affected check groups. No force-push, no history rewrite. Do not commit `run/`, `build/`, `*.log`, worlds, JARs, or secrets (no tokens, passwords, webhook URLs, personal paths or e-mail addresses in code, logs or output).
+- Before every merge to main: `./gradlew clean build` must be green and the affected in-world check groups must pass. Maintain CHANGELOG.md and release notes (English).
+- Every new player-visible text must be translatable (de_de + en_us in `src/main/resources/assets/villagerplus/lang/`). No new `Component.literal` with real words (the `langkeys` check fails on that).
+- Never destroy existing worlds: only retrofit changes, keep saved data backward compatible. Mind performance (no chunk loads in searches, caches with invalidation) and dupe safety.
+- Claim support for Minecraft/loader versions only if verified.
+- Releases: this task publishes the verified source and documentation to GitHub; it does not create a new release/tag. The existing `codex/release-0.11.2` workflow is pinned to source commit `0ee57a8` and must not be used to release a different source state.
+
+## Latest continuation and owner correction (25.11.2026)
+- The owner explicitly stresses that villagers must not wait ages: village progress must be regularly visible, with long idle periods treated as a product failure. A delayed eventual completion is not enough. Measure intervals between real construction/mining steps and show concrete in-world advancement.
+- Current source changes in this continuation: real cobblestone transfer for a missing one-block mine-terrace repair while preserving active plan/project stock; exact public iron demand for active anvil projects; only choose a mine return pad if vanilla navigation can reach it.
+- Verification: Java 25 `./gradlew clean build` PASS. Dev-server groups: `minekit` 39, `smithanvil` 33, `mining` 73 PASS. The anvil fixture checks 31 ingots per vanilla anvil recipe and an active project's continued demand even if another anvil is placed nearby. Fixtures are not proof of natural completion.
+- Natural copied-world evidence (n=1, seed 4242, no gifts/orders): mine index 28 stayed unchanged through tick 400,129. After the terrace-fill fix it advanced 28→34, with six sections dug in 372 ticks once the real fill was collected. The next 10 × 2,400 tick continuation stayed at 34. After the return-pad reachability filter, a further 10 × 2,400 tick continuation advanced 34→35 (one logged 20-block section at tick 427,492); at least one miner still repeated the surface approach. This is tangible progress, but one section in 24,000 ticks is too slow to establish a reliable cadence. The mine has not reached its existing seven-block iron vein near index 67; no natural iron extraction, anvil crafting, or toolshed completion is proven.
+- Strict audit remains 17/62 implemented; G05 and J06 remain partial. No client/full-modpack proof. Never present this natural result as a completed fix.
+- Source gates passed and the code, changelog, audit and handoff are included in this revision. No release/tag was created. Continue the route/cadence investigation and natural toolshed proof.
+
+## Project facts
+- Repo: https://github.com/cvvluis/Villager-Repurposed, modid `villagerplus`, Fabric, Minecraft 26.2, Java 25 (JDK at /opt/jdk25 in the previous environment). Jar: `build/libs/villagers-repurposed-<version>.jar`.
+- Goal ("Master Prompt", 62 requirement IDs): villages should grow, build, mine, farm, trade and connect (roads, rails, caravans) without the player helping. Professions, builders, miners, caravans, walls, plaza, rail network, etc.
+- Docs: `docs/master-prompt.md` (62 requirements verbatim), `docs/master-prompt-audit.md` (strict audit table), `docs/MASTERPROMPT-CLAUDE.md` (this handoff), `AI-HANDOFF.md`, and `CLOUD-LOG.md`. Read these before changing scope; the audit count is strict and remains 17/62.
+- Dev check groups run in a real dev server world: `bash tools/cloud/autotest.sh <group>` (needs `run/eula.txt` with `eula=true`, the owner accepts the Minecraft EULA for dev runs; groups are registered in `src/main/java/de/villagerplus/dev/Checks090.java`; output ends with `VP_AUTOTEST GROUP PASS <group> <n>` or `GROUP FAIL`). Natural runs from a fresh world: `VP_STALL_SPRINTS=0 VP_FORCELOAD="40 -440 190 -290" bash tools/cloud/natural-run.sh vp-natural111-<label> 30 2400` (seed 4242, taiga village bell 122,69,-378, about 6 minutes for 72k ticks, prints a HEARTBEAT per sprint, can continue a world with a 4th argument tag). See `tools/cloud/README.md`.
+- Pitfalls: never run two autotest/natural runs in the same checkout at the same time (they overwrite `run/server.properties`, you get "Checks only allowed in explicitly named development worlds" or world lock errors). For parallel work use separate git worktrees and different `VP_SERVER_PORT` / `VP_RCON_PORT`. Do not send manual rcon commands while `natural-run.sh` runs. Many checks must wait until chunks are entity-ticking (`level.isPositionEntityTicking`) before spawning fixtures, otherwise they are flaky. The machine had only 4 cores: at most about 2 to 3 servers at once.
+
+## State on main at handoff (baseline 0ee57a8; follow-up changes are included in this revision)
+Includes the 0.11.2 playtest work: construction supply and stock reservation fixes, caravan hand-carry, rail construction, civic-site spacing, mine safety and recovery. This continuation adds real-stock terrace repair, exact anvil iron demand, and reachable-pad selection. None of those three changes is evidence of natural toolshed completion; see the audit row and evidence summary.
+
+## Honest status
+- Strict audit (complete wording met AND proven by a check or observed natural run): 17 of 62 implemented; roughly 30 partial and 15 unverified. Use `docs/master-prompt-audit.md` as the source of truth. Do not upgrade status based on fixtures when the requirement is natural or visual behaviour.
+- Core problem: in natural runs from a fresh world the first civic buildings (granary about 437 steps, storage 266 steps) finish only rarely within 72k ticks (storage finished in 1 of 7 runs, granary in 1 of 18; typical granary progress 270 to 400 steps). Cobblestone and wood supply are still the bottleneck, plus nights/thunderstorms shorten working time. All growth-related IDs (G01, G02, G04 to G11, G15, ...) depend on this.
+- Nothing has been tested in a real game client or a full modpack (CTOV, EMF/ETF, More Villagers, Village Taverns, ...).
+
+## Next steps (keep going without waiting)
+1. Fix the mine's repeated overland approach and prove a short, regular cadence in natural copied-world runs. Record exact start/end tick, mine cursor, sections per sprint, waiting intervals, anvil/public iron stocks, build-project cursor, and what the villager visibly did. One section per 24,000 ticks is still too slow. Do not infer the root cause is fixed solely from the new reachability predicate. Continue to investigate:
+   - whether return pads selected for stalled miners are actually navigable in the natural terrain and crowd state;
+   - why at least one assigned miner repeatedly circles/returns to surface while another reaches the mine;
+   - why the active toolshed's iron demand does not produce observable natural ore extraction yet.
+2. After natural progress is regular, continue the remaining feature gaps in the audit (fixture-provable where appropriate): G05 (repair goods routing, ambiguous wording, design decision needed), B01, B02, B05, D03, D04 (ravine bridge lead), D05 and D08 (natural caravan on a finished road / natural rail trip; needs long runs), J01, J05, J06, J08, E01 (EMF/ETF/More Villagers: implement only what can be proven, else write an honest "unverified"/"not implemented"), A04, R01, R02, U-items (client UI: implement but mark unverified).
+4. Remaining translation work (optional, larger refactor): about 75 German literals remain deliberately (server-built village statistics/info strings, names and mine signs that game logic compares as German strings, dev commands). Converting the server-built strings needs rewriting the generators; names/signs must stay stable for existing worlds.
+5. If the owner later requests a release, bump the version, run `./gradlew clean build`, build `build/libs/villagers-repurposed-<version>.jar`, and use matching release notes. A GitHub source push by itself is not a release.
+6. At the end of every larger work block update AI-HANDOFF.md (confirmed changes, checks actually run, next concrete step; no secrets) and the audit table.
+
+## Working method that worked
+- Reproduce with the smallest loop: continue an existing stalled world (`natural-run.sh <label> 10 2400 <tag>` on a copy of the world) instead of 72k-tick runs from zero; use the HEARTBEAT to stop early when nothing changes; instrument temporarily and remove the instrumentation before committing.
+- One root cause per commit, a check per fix (existing groups), then the affected groups plus the build, then merge. Report root cause with numbers and caveats, never "fixed" without a measurement.
+- Do not weaken a failing assertion; find the timing/load cause (entity ticking, loaded chunks) or the real bug.

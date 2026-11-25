@@ -85,13 +85,13 @@ public final class Mining {
 	private static final Palette MINE_ENTRANCE_SITE_PALETTE = new Palette(Blocks.SPRUCE_PLANKS, Blocks.SPRUCE_PLANKS,
 		Blocks.SPRUCE_LOG, Blocks.COBBLESTONE, Blocks.SPRUCE_PLANKS, Blocks.SPRUCE_STAIRS, Blocks.SPRUCE_SLAB,
 		Blocks.GLASS_PANE, Blocks.SPRUCE_PLANKS, Blocks.SPRUCE_DOOR, Blocks.SPRUCE_FENCE);
-	private record MineSupplies(int fences, int framePlanks, int walkwayPlanks, int torches) {
-		boolean empty() { return fences == 0 && framePlanks == 0 && walkwayPlanks == 0 && torches == 0; }
+	private record MineSupplies(int fences, int framePlanks, int walkwayPlanks, int torches, int terraceCobble) {
+		boolean empty() { return fences == 0 && framePlanks == 0 && walkwayPlanks == 0 && torches == 0 && terraceCobble == 0; }
 		/** Only what the gallery needs to stand and be lit: the paved walkway strip is cosmetic and never stops the digging. */
-		MineSupplies structural() { return new MineSupplies(fences, framePlanks, 0, torches); }
+		MineSupplies structural() { return new MineSupplies(fences, framePlanks, 0, torches, terraceCobble); }
 		MineSupplies plus(MineSupplies other) {
 			return new MineSupplies(fences + other.fences, framePlanks + other.framePlanks,
-				walkwayPlanks + other.walkwayPlanks, torches + other.torches);
+				walkwayPlanks + other.walkwayPlanks, torches + other.torches, terraceCobble + other.terraceCobble);
 		}
 	}
 	static record MineFrameMaterials(Block fence, Item fenceItem, Block planks, Item plankItem) { }
@@ -160,7 +160,8 @@ public final class Mining {
 	/** Kein festes Limit: gebaut wird, was im Vergleich zu Essen, Holz und dem Rest knapp ist (siehe {@code Balance}). */
 	public static boolean needed(ServerLevel level, VillageRef ref, VillageData d, Container box, Need need) {
 		if (need == Need.METAL) {
-			return de.villagerplus.village.Balance.wants(level, ref, de.villagerplus.village.Balance.Kind.METAL);
+			return Workstation.anvilIronShortage(level, ref, d, box) > 0
+				|| de.villagerplus.village.Balance.wants(level, ref, de.villagerplus.village.Balance.Kind.METAL);
 		}
 		if (PlanStoneSupply.needsCobble(level, d, box)) return true;
 		// Any active plan that waits on cobblestone counts, not only the one shown in the primary plan view.
@@ -437,7 +438,9 @@ public final class Mining {
 			return true;
 		}
 		// Hand mining happens where no wood exists for supports and torches: it works the stone face without a kit.
-		SupplyStatus supplies = usesKit(byHand, kitForHands) ? kitStatus(c, ref, m) : SupplyStatus.READY;
+		boolean needsTerraceFill = terraceRepairCobbleRequired(c.level(), m) > terraceFillCount(c.v().getInventory());
+		SupplyStatus supplies = usesKit(byHand, kitForHands) || needsTerraceFill
+			? kitStatus(c, ref, m) : SupplyStatus.READY;
 		if (supplies == SupplyStatus.WAITING) {
 			st.mineCheckAt = c.now() + 200;
 			return false;
@@ -1962,6 +1965,7 @@ public final class Mining {
 		int cells = cells(mine, mine.index);
 		Direction side = Direction.from2DDataValue(mine.dir).getClockWise();
 		int walkwayPlanks = mineGalleryPlankCells(level, mine, base).size();
+		int terraceCobble = terraceRepairCobbleRequired(level, mine);
 		if (supportSection(mine.index)) {
 			int fences = 0;
 			int framePlanks = 0;
@@ -1976,15 +1980,35 @@ public final class Mining {
 				BlockPos beam = base.relative(side, lane).above(cells);
 				if (de.villagerplus.world.LoadedColumns.ready(level, beam) && !level.getBlockState(beam).is(materials.planks())) framePlanks++;
 			}
-			return new MineSupplies(fences, framePlanks, walkwayPlanks, 0);
+			return new MineSupplies(fences, framePlanks, walkwayPlanks, 0, terraceCobble);
 		}
 		if (lightSection(mine.index)) {
 			int sign = Math.floorMod(mine.index / LIGHT_SPACING, 2) == 0 ? -1 : 1;
 			BlockPos torch = base.relative(side, sign * SUPPORT_RADIUS);
 			return new MineSupplies(0, 0, walkwayPlanks,
-				de.villagerplus.world.LoadedColumns.ready(level, torch) && !isMineTorch(level.getBlockState(torch)) ? 1 : 0);
+				de.villagerplus.world.LoadedColumns.ready(level, torch) && !isMineTorch(level.getBlockState(torch)) ? 1 : 0,
+				terraceCobble);
 		}
-		return new MineSupplies(0, 0, walkwayPlanks, 0);
+		return new MineSupplies(0, 0, walkwayPlanks, 0, terraceCobble);
+	}
+
+	/** Real cobblestone needed to make the active section's one-block gallery-floor repairs before anyone walks onto them. */
+	private static int terraceRepairCobbleRequired(ServerLevel level, VillageData.Mine mine) {
+		BlockPos base = bottom(mine, mine.index);
+		Direction side = Direction.from2DDataValue(mine.dir).getClockWise();
+		int required = 0;
+		for (int lane = -TUNNEL_HALF_WIDTH; lane <= TUNNEL_HALF_WIDTH; lane++) {
+			BlockPos floor = base.relative(side, lane).below();
+			if (terraceFloorLoaded(level, floor) && oneBlockTerraceGap(level, floor)) required++;
+		}
+		return required;
+	}
+
+	private static int terraceFillCount(Container inventory) {
+		return JobUtil.count(inventory, stack -> {
+			for (Item material : TERRACE_FILL) if (stack.is(material)) return true;
+			return false;
+		});
 	}
 
 	private static MineSupplies missingMineSupplies(Container inventory, MineSupplies required, MineFrameMaterials materials) {
@@ -1998,7 +2022,8 @@ public final class Mining {
 			Math.max(0, required.fences() - fenceCount),
 			missingFramePlanks,
 			Math.max(0, required.walkwayPlanks() - availableForWalkway),
-			Math.max(0, required.torches() - JobUtil.count(inventory, stack -> stack.is(Items.TORCH))));
+			Math.max(0, required.torches() - JobUtil.count(inventory, stack -> stack.is(Items.TORCH))),
+			Math.max(0, required.terraceCobble() - terraceFillCount(inventory)));
 	}
 
 	private static List<ItemStack> mineSupplyStacks(MineSupplies supplies, MineFrameMaterials materials) {
@@ -2007,6 +2032,7 @@ public final class Mining {
 		if (supplies.framePlanks() > 0) counts.merge(materials.plankItem(), supplies.framePlanks(), Integer::sum);
 		if (supplies.walkwayPlanks() > 0) counts.merge(Items.OAK_PLANKS, supplies.walkwayPlanks(), Integer::sum);
 		if (supplies.torches() > 0) counts.merge(Items.TORCH, supplies.torches(), Integer::sum);
+		if (supplies.terraceCobble() > 0) counts.merge(Items.COBBLESTONE, supplies.terraceCobble(), Integer::sum);
 		List<ItemStack> stacks = new ArrayList<>(counts.size());
 		counts.forEach((item, count) -> stacks.add(new ItemStack(item, count)));
 		return stacks;
@@ -2157,7 +2183,14 @@ public final class Mining {
 			return SupplyStatus.WAITING;
 		}
 		// Nothing to fetch and nothing to craft from: do not walk to the depot (up to 60 blocks and back) for a kit that is not there.
-		lastKitDepotEmpty = kitDepotEmpty(chest);
+		lastKitDepotEmpty = kitDepotEmpty(chest)
+			&& (missing.structural().terraceCobble() == 0 || JobUtil.count(chest, stack -> stack.is(Items.COBBLESTONE)) == 0);
+		boolean terraceCobbleReserved = missing.structural().terraceCobble() > 0
+			&& PlanStoneSupply.availableCobble(ref.data(), chest) < missing.structural().terraceCobble();
+		if (terraceCobbleReserved) {
+			c.setActivity("wartet auf Stollen-Bruchstein außerhalb des Bauvorrats");
+			return SupplyStatus.WAITING;
+		}
 		if (lastKitDepotEmpty) {
 			c.setActivity("wartet auf Stützen- und Fackelmaterial im Dorflager");
 			return SupplyStatus.WAITING;
@@ -2231,7 +2264,8 @@ public final class Mining {
 		for (ItemStack stack : stacksOf(grab)) JobUtil.give(c.level(), c.v(), stack);
 		ref.dirty();
 		Anim.hold(c, missing.fences() > 0 ? materials.fenceItem()
-			: missing.framePlanks() > 0 ? materials.plankItem() : Items.TORCH);
+			: missing.framePlanks() > 0 ? materials.plankItem()
+			: missing.terraceCobble() > 0 ? Items.COBBLESTONE : Items.TORCH);
 		c.st().cooldownUntil = c.now() + 10;
 		c.setActivity("nimmt echte Stollenstützen und Fackeln mit");
 		return SupplyStatus.BUSY;
@@ -2260,6 +2294,7 @@ public final class Mining {
 		BlockPos chestPos = ref.chestPos(c.level());
 		Container chest = ref.chest(c.level());
 		if (missing.structural().empty() || chestPos == null || chest == null) return SupplyStatus.READY;
+		if (missing.terraceCobble() > 0 && PlanStoneSupply.availableCobble(ref.data(), chest) < missing.terraceCobble()) return SupplyStatus.READY;
 		boolean stocked = hasMineSupplies(chest, missing.structural(), materials);
 		boolean atChest = c.v().blockPosition().closerThan(chestPos, 4.5);
 		if (!stocked && !atChest) return SupplyStatus.READY;
@@ -2330,7 +2365,8 @@ public final class Mining {
 			&& JobUtil.count(chest, stack -> stack.is(materials.plankItem())) >= requestedMatchingPlanks
 			&& (materials.plankItem() == Items.OAK_PLANKS
 				|| JobUtil.count(chest, stack -> stack.is(Items.OAK_PLANKS)) >= supplies.walkwayPlanks())
-			&& JobUtil.count(chest, stack -> stack.is(Items.TORCH)) >= supplies.torches();
+			&& JobUtil.count(chest, stack -> stack.is(Items.TORCH)) >= supplies.torches()
+			&& JobUtil.count(chest, stack -> stack.is(Items.COBBLESTONE)) >= supplies.terraceCobble();
 	}
 
 	static boolean mineOutputForKitRoom(ItemStack stack) {
@@ -3325,7 +3361,13 @@ public final class Mining {
 			int slot = (preferred + offset) % WAITING_STAND_COUNT;
 			if (!mineWaitingStandAvailable(c, mine, slot, routeWorkers, nearby)) continue;
 			BlockPos stand = mineWaitingStand(c.level(), mine, slot);
-			if (stand != null && arrivalStandable(c.level(), stand)) return stand;
+			if (stand != null && arrivalStandable(c.level(), stand)) {
+				// A clear floor beside the portal may still sit on the far side of a cliff or a blocked village wall.
+				// Sending a stalled miner to such a pad just starts the same failed long walk again. Only use a pad
+				// vanilla navigation can actually reach from the worker's current position.
+				var path = c.v().getNavigation().createPath(stand, 1);
+				if (path != null && path.canReach()) return stand;
+			}
 		}
 		return null;
 	}
