@@ -70,6 +70,12 @@ public final class BuilderChecks {
 			Builder.clearSpecialSiteSearchFailure(waitingVillage);
 			Builder.clearSpecialSiteSearchFailure(otherVillage);
 		}
+		check(Builder.shouldPreemptStalledHouse(Blueprints.HOUSE, Blueprints.TOOLSHED, false, 12000L, true)
+			&& !Builder.shouldPreemptStalledHouse(Blueprints.HOUSE, Blueprints.TOOLSHED, false, 11999L, true)
+			&& !Builder.shouldPreemptStalledHouse(Blueprints.HOUSE, Blueprints.TOOLSHED, true, 50000L, true)
+			&& !Builder.shouldPreemptStalledHouse(Blueprints.HOUSE, Blueprints.TOOLSHED, false, 50000L, false)
+			&& !Builder.shouldPreemptStalledHouse(Blueprints.HOUSE, null, false, 50000L, true),
+			"a house stalled on material for 12000 ticks yields the plan slot to a pending milestone"); checks++;
 		check(!Builder.shouldPreemptForSpecial(Blueprints.HOUSE, Blueprints.GRANARY)
 			&& Builder.shouldPreemptForSpecial(Blueprints.DECOR, Blueprints.GRANARY)
 			&& !Builder.shouldPreemptForSpecial(Blueprints.HOUSE, null),

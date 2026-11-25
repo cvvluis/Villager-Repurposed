@@ -557,7 +557,7 @@ public final class PlanStoneSupply {
 		return (int) Math.min(Integer.MAX_VALUE, sum);
 	}
 
-	static int wanted(VillageData data, Item item) {
+	public static int wanted(VillageData data, Item item) {
 		String id = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item).toString();
 		return wanted(data, id);
 	}

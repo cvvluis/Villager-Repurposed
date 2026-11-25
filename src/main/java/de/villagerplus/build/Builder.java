@@ -1165,7 +1165,11 @@ public final class Builder {
 			}
 			if (!helper && mason) {
 				String special = pendingSpecial;
-				if (shouldPreemptForSpecial(d.planType, special)) {
+				if (shouldPreemptForSpecial(d.planType, special)
+					|| shouldPreemptStalledHouse(d.planType, special, d.hasBuildProjectType(special == null ? "" : special),
+						c.now() - d.planProgress, !d.wanted.isEmpty())) {
+					// The milestone gets a fresh search window before houses may jump the queue again.
+					if (!shouldPreemptForSpecial(d.planType, special)) clearSpecialSiteSearchFailure(ref);
 					abort(d, ref, c.now());
 					return false;
 				}
@@ -1930,6 +1934,14 @@ public final class Builder {
 		return special != null && !special.equals(planType) && Blueprints.DECOR.equals(planType);
 	}
 
+	/** A house that has waited for material without any progress must not block the only plan slot of a pending milestone. */
+	static final long STALLED_HOUSE_PREEMPT_TICKS = 12000L;
+
+	static boolean shouldPreemptStalledHouse(String planType, String special, boolean specialUnderway, long idleTicks, boolean waitingForMaterial) {
+		return Blueprints.HOUSE.equals(planType) && special != null && !specialUnderway && waitingForMaterial
+			&& idleTicks >= STALLED_HOUSE_PREEMPT_TICKS;
+	}
+
 	static boolean shouldHoldForSpecial(boolean mason, boolean specialMissing) {
 		return mason && specialMissing;
 	}
@@ -2564,6 +2576,14 @@ public final class Builder {
 			boolean mining = de.villagerplus.job.Mining.tick(c, de.villagerplus.job.Mining.Need.STONE);
 			de.villagerplus.dev.G02SupplyTrace.stage(c, mining ? "supply-mining-active" : "supply-mining-no-progress", c.st().activity);
 			return mining;
+		}
+		// The plan asks for an anvil that only public iron can fund: the plan owner (a miner in practice) fetches the ore
+		// himself instead of waiting for the smith, who may never reach the mine (toolshed otherwise stalls for good).
+		if (de.villagerplus.job.Mining.needed(c.level(), ref, ref.data(), box, de.villagerplus.job.Mining.Need.METAL)
+			&& de.villagerplus.job.PlanStoneSupply.wanted(ref.data(), Items.ANVIL) > JobUtil.count(box, st0 -> st0.is(Items.ANVIL))) {
+			boolean ironMining = de.villagerplus.job.Mining.tick(c, de.villagerplus.job.Mining.Need.METAL);
+			de.villagerplus.dev.G02SupplyTrace.stage(c, ironMining ? "supply-iron-mining-active" : "supply-iron-mining-no-progress", c.st().activity);
+			if (ironMining) return true;
 		}
 		if (materialWait.isPresent()) {
 			stoneTrace(c, "Ende supplyMissing: Wartegrund=" + materialWait.get() + ", Ofen noetig=" + de.villagerplus.job.PlanStoneSupply.needsFurnace(c.level(), ref.data(), stoneStock)
@@ -6793,6 +6813,9 @@ public final class Builder {
 				return;
 			}
 		}
+		// A finished side project (shed, house) must not leave a stale "site search failing" clock behind that lets the next
+		// house jump the open milestone before it got a single fresh search pass.
+		clearSpecialSiteSearchFailure(ref);
 		LOGGER.info("Villagers: Repurposed: Bauplan {} fertiggestellt bei {} (Tick {}, Schritt {}/{})",
 			d.planType, origin.toShortString(), c.now(), d.planStep, STEPS.getOrDefault(origin.asLong(), List.of()).size());
 		ConstructionSite construction = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.CONSTRUCTION, null);
