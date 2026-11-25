@@ -123,7 +123,7 @@ public final class StockPolicy {
 			case "stick", "flint", "brick", "nether_brick", "book", "iron_ingot", "iron_nugget",
 				"copper_ingot", "copper_nugget", "gold_ingot", "gold_nugget", "coal", "charcoal",
 				"redstone", "quartz", "string", "leather", "feather", "tripwire_hook", "rail", "powered_rail", "activator_rail", "detector_rail",
-				"minecart", "chest_minecart", "hopper_minecart", "furnace_minecart", "redstone_block" -> Category.MATERIAL;
+				"minecart", "chest_minecart", "hopper_minecart", "furnace_minecart", "redstone_block", "lever" -> Category.MATERIAL;
 			default -> Category.OTHER;
 		};
 	}

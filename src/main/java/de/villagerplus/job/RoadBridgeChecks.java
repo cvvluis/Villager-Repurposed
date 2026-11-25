@@ -84,6 +84,79 @@ public final class RoadBridgeChecks {
   } finally {v.discard();}
  }
 
+ /**
+  * D04 ravine lead: a dry gorge (four columns wide, seven air cells deep, stone floor) on a three-lane route is bridged by the
+  * physical, paid road worker from the persisted gorge profile (piers from the ravine floor, deck at bank height). Fixture proof
+  * only, not a natural run.
+  */
+ public static int runRavine(ServerLevel level,BlockPos at) {
+  var ref=Checks090.fixtureForEquipment(level,at);
+  BlockPos fixtureDepot=ref.chestPos(level);
+  level.removeBlockEntity(fixtureDepot);level.setBlock(fixtureDepot,Blocks.AIR.defaultBlockState(),3);
+  BlockPos isolatedDepot=at.south(8);level.removeBlockEntity(isolatedDepot);
+  level.setBlock(isolatedDepot,Blocks.AIR.defaultBlockState(),3);
+  level.setBlock(isolatedDepot.below(),Blocks.STONE.defaultBlockState(),3);
+  level.setBlock(isolatedDepot,Blocks.CHEST.defaultBlockState(),3);
+  ref.data().chest=java.util.Optional.of(isolatedDepot);ref.dirty();
+  var box=ref.chest(level);box.clearContent();
+  BlockPos other=at.east(80);String key=Network.dim(level)+other.asLong();
+  Network.save(ref.bellEntity(),new TradeNetwork(List.of(),List.of(new TradeNetwork.Link(Network.dim(level),other,"Ravine check",30,true,8,0)),Map.of(),0,0));
+  ref.bellEntity().setAttached(VillagerPlus.ROADS,Map.of(key,12L,key+":start",12L));
+  final int gapFrom=12,gapTo=15,depth=8;
+  for(int x=1;x<=80;x++)for(int side=-2;side<=2;side++) {
+   BlockPos p=at.offset(x,-1,side);level.getChunkAt(p);
+   level.setBlock(p.below(),Blocks.STONE.defaultBlockState(),3);
+   level.setBlock(p,Blocks.GRASS_BLOCK.defaultBlockState(),3);
+   level.setBlock(p.above(),Blocks.AIR.defaultBlockState(),3);level.setBlock(p.above(2),Blocks.AIR.defaultBlockState(),3);
+  }
+  BlockPos deckBase=at.offset(0,-1,0);
+  for(int x=gapFrom;x<=gapTo;x++)for(int side=-1;side<=1;side++) {
+   BlockPos top=deckBase.offset(x,0,side);
+   for(int d=0;d<depth;d++)level.setBlock(top.below(d),Blocks.AIR.defaultBlockState(),3);
+   level.setBlock(top.below(depth),Blocks.STONE.defaultBlockState(),3);
+  }
+  Map<String,Long> savedRoads=new java.util.HashMap<>(ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of()));
+  Roads.syncRouteGeometry(level,ref.bell(),other,savedRoads,key,null,null);
+  ref.bellEntity().setAttached(VillagerPlus.ROADS,Map.copyOf(savedRoads));ref.dirty();
+  var v=EntityTypes.VILLAGER.spawn(level,at.south(2),EntitySpawnReason.COMMAND);v.setNoAi(true);v.setInvulnerable(true);v.addTag("vp090_fixture");
+  var mem=v.getAttachedOrCreate(VillagerPlus.MEMORY);var st=new JobState();long now=level.getGameTime()+1000;int checks=0;
+  try {
+   Ctx c=new Ctx(level,v,st,mem,ref,now);
+   check(!RoadBuilderJob.construct(c)&&level.getBlockState(deckBase.offset(gapFrom,0,0)).isAir(),"ravine: no bridge material creates no free support");checks++;
+   int cells=(gapTo-gapFrom+1)*3,logs=cells*(depth-1),planks=cells;
+   box.setItem(0,new ItemStack(Items.SPRUCE_LOG,64));box.setItem(1,new ItemStack(Items.SPRUCE_LOG,logs-64));
+   box.setItem(2,new ItemStack(Items.SPRUCE_PLANKS,planks));
+   int placed=0;
+   for(int step=0;step<cells*depth+20;step++) {
+    st.roadBuildScanAt=0;BlockPos depot=ref.chestPos(level);v.teleportTo(depot.getX()+.5,depot.getY(),depot.getZ()+1.5);
+    if(!RoadBuilderJob.construct(c)||v.getInventory().isEmpty())break;
+    var task=st.roadRepair;
+    if(task==null||!task.bridge())throw new IllegalStateException("Road bridge: ravine: unexpected non-bridge task at step "+step);
+    RoadBuilderJob.construct(c);
+    check(!level.getBlockState(task.ground()).equals(task.paving()),"ravine: carried bridge block is not placed remotely");
+    BlockPos stand=task.worksite();v.teleportTo(stand.getX()+.5,stand.getY(),stand.getZ()+.5);
+    check(RoadBuilderJob.construct(c)&&v.getInventory().isEmpty()&&level.getBlockState(task.ground()).equals(task.paving()),"ravine: arrival places and consumes one bridge block");
+    placed++;
+    st=new JobState();c=new Ctx(level,v,st,mem,ref,now);
+   }
+   check(placed==logs+planks,"ravine: exactly "+(logs+planks)+" paid blocks were placed (placed="+placed+")");checks++;
+   check(box.isEmpty(),"ravine: all supplied logs and planks are consumed, none appear from nothing");checks++;
+   for(int x=gapFrom;x<=gapTo;x++)for(int side=-1;side<=1;side++) {
+    BlockPos top=deckBase.offset(x,0,side);
+    boolean ok=level.getBlockState(top).is(Blocks.SPRUCE_PLANKS)&&level.getBlockState(top.below(depth)).is(Blocks.STONE);
+    for(int d=1;d<depth&&ok;d++)ok=level.getBlockState(top.below(d)).is(Blocks.SPRUCE_LOG);
+    check(ok,"ravine: deck at bank height on a log pier down to the ravine floor at "+x+","+side);
+   }
+   checks+=(gapTo-gapFrom+1)*3;
+   long cursor=ref.bellEntity().getAttached(VillagerPlus.ROADS).getOrDefault(key,-1L);
+   check(cursor>gapTo,"ravine: route cursor advanced past the bridge (cursor="+cursor+")");checks++;
+   for(int x=gapFrom;x<=gapTo;x++)for(int side:new int[]{-2,2}) {
+    check(level.getBlockState(deckBase.offset(x,0,side)).is(Blocks.GRASS_BLOCK),"ravine: flanks outside the three lanes stay untouched");checks++;
+   }
+   return checks;
+  } finally {v.discard();}
+ }
+
  public static int verify(ServerLevel level,BlockPos at) {
   level.getChunkAt(at);var be=level.getBlockEntity(at);check(be!=null,"saved bridge fixture bell loads");
   String key=Network.dim(level)+at.east(80).asLong();var state=be.getAttached(VillagerPlus.ROADS);
