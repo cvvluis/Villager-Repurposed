@@ -4,6 +4,8 @@ Versions below target Fabric, Minecraft 26.2 and Java 25. The artifact is named 
 
 ## 0.11.2 (playtest)
 
+- **Fixes a crash when entering a world (0.11.2 playtest jar).** `Social.tick` called into `SocialChecks`, which the release jar strips, so a villager chat search threw `NoClassDefFoundError: de/villagerplus/job/SocialChecks` and took the world down. The jar now keeps `SocialChecks`, and the build runs `tools/check-jar-refs.py` (task `verifyJarRefs`, part of `build`) which fails when a production class references a class the jar does not contain.
+
 See RELEASE_NOTES_0.11.2.md.
 
 - **Repair goods now prefer the tool chamber and never get stranded; public storage no longer truncates oversized stacks (G04/G05).** Non-damageable public-material items that the loaded item rules accept as an equipment repair ingredient and that are not construction or smelting stock (for example leather) are routed to the toolshed when one is registered. Ingots and nuggets stay ordinary public material because builders, smiths and the anvil recipe also consume them, and the anvil repair already reads every public container. Without a registered chamber, or when it is full, repair goods fall back to public storage; equipment still stays with the carrier. `StockPolicy.insertInto` now inserts in stack-size pieces so a hand-built stack such as two milk buckets can no longer lose an item. Checks in group `stockpolicy` (59 -> 64) cover granary routing of cooked/raw food, meat, crops, eggs, milk, mushrooms and ingredients, the chamber filter, and the missing-chamber fallback. Fixture proof only.

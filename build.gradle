@@ -75,7 +75,9 @@ tasks.named('jar', Jar).configure {
 				|| name.startsWith('de/villagerplus/dev/AutoTest$'))
 		}
 		if (name.endsWith('Checks.class')) {
-			return !name.equals('de/villagerplus/village/G01VillageSpacingChecks.class')
+			// Production code calls into these two "Checks" classes (rules live there), so the jar must keep them.
+			return !(name.equals('de/villagerplus/village/G01VillageSpacingChecks.class')
+				|| name.equals('de/villagerplus/job/SocialChecks.class'))
 		}
 		return false
 	}
@@ -94,3 +96,22 @@ if (project.hasProperty('quickplay')) {
 		}
 	}
 }
+
+// Fails the build when a production class in the release jar references a class the jar strips (*Checks, dev):
+// that is a NoClassDefFoundError at runtime (it crashed a world on entry in 0.11.2). Skipped when no Python is installed.
+tasks.register('verifyJarRefs') {
+	dependsOn tasks.named('jar')
+	doLast {
+		def jarFile = tasks.named('jar').get().archiveFile.get().asFile
+		def script = file('tools/check-jar-refs.py')
+		def python = ['python3', 'python', 'py'].find { exe ->
+			try { return new ProcessBuilder(exe, '--version').redirectErrorStream(true).start().waitFor() == 0 } catch (Exception ignored) { return false }
+		}
+		if (python == null) { logger.warn('verifyJarRefs skipped: no Python on PATH'); return }
+		def proc = new ProcessBuilder(python, script.absolutePath, jarFile.absolutePath).redirectErrorStream(true).start()
+		def output = proc.inputStream.text
+		if (proc.waitFor() != 0) throw new GradleException('Release jar references classes it does not contain:\n' + output)
+		logger.lifecycle(output.trim())
+	}
+}
+tasks.named('build') { dependsOn tasks.named('verifyJarRefs') }
