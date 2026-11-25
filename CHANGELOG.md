@@ -6,6 +6,8 @@ Versions below target Fabric, Minecraft 26.2 and Java 25. The artifact is named 
 
 See RELEASE_NOTES_0.11.2.md.
 
+- **Road gravel is requested in batches and the quarry-to-road loop is balance-checked.** New overland road construction now asks the mason for a bounded gravel batch (8) instead of one block per scan; a single damaged road cell still requests exactly one. The `roadwork` group proves the chain on a fixture: real natural gravel is quarried into the public depot, the road builder withdraws and places it, and every removed gravel block is accounted for as stock, cargo, flint or placed surface.
+
 - **Supply helpers resume existing work before changing jobs.** Unclaimed stone/log loads needed by a plan get an early physical hand-in offer. Existing tree cursors resume before unrelated profession tasks, without selecting a second tree; full inventories and unloaded tree targets yield safely. Active mining work and marked construction freight remain reserved. The ordinary wood/stone helper paths also reject marked cargo, and public routine deposits and evening private storage preserve another project's reserved load. Early tree continuation requires civic demand, returns to the root before pending removal, and yields to live road tasks so fetched post material stays reserved.
 
 - **Useful mine loads can return before the stock buffer is full.** A load that can fund a live direct cobblestone request takes the existing physical return route. The mine reserve stays intact; variants count only for a proven prepared above-ground substitutable window. Foundations, unknown plans and marked freight stay protected.

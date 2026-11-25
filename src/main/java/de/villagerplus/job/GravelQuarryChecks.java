@@ -52,6 +52,9 @@ public final class GravelQuarryChecks {
 			for (Direction direction : Direction.Plane.HORIZONTAL) level.setBlock(origin.offset(8, 0, 0).relative(direction), Blocks.COBBLESTONE.defaultBlockState(), 3);
 			check(GravelQuarry.naturalSource(level, origin), "exposed natural gravel is a valid source"); checks++;
 			check(!GravelQuarry.naturalSource(level, origin.offset(8, 0, 0)), "road gravel framed by cobblestone is protected"); checks++;
+			check(GravelQuarry.roadGravelTarget(false) == 1 && GravelQuarry.roadGravelTarget(true) == GravelQuarry.ROAD_CONSTRUCTION_BATCH
+				&& GravelQuarry.ROAD_CONSTRUCTION_BATCH > 1,
+				"road construction requests a bounded gravel batch while a repair requests one block"); checks++;
 			check(GravelQuarry.requestedGravel(java.util.List.of("minecraft:stone#2", "minecraft:gravel#17")) == 17
 				&& GravelQuarry.requestedGravel(java.util.List.of("minecraft:gravel#bad")) == 0,
 				"only a parseable village gravel request creates material demand"); checks++;

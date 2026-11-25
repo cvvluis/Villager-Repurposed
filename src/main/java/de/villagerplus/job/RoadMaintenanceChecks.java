@@ -100,10 +100,78 @@ public final class RoadMaintenanceChecks {
    level.getBlockEntity(depot).removeAttached(VillagerPlus.OWNER);
    level.setBlock(damaged.below(),Blocks.AIR.defaultBlockState(),3);st.roadScanAt=0;
    check(!RoadBuilderJob.maintain(c)&&box.getItem(0).getCount()==7&&level.getBlockState(damaged).is(Blocks.GRASS_BLOCK),"unsupported ground cannot receive falling gravel");checks++;
+   checks+=gravelLoopChecks(level,at,groundY,ref,damaged,box,v,now+5);
    checks+=bridgeRepairChecks(level,at,groundY,ref,other,key,box,v,mem,now+10);
    return checks;
   } finally {v.discard();var be=level.getBlockEntity(ref.chestPos(level));if(be!=null)be.removeAttached(VillagerPlus.OWNER);}
  }
+
+
+ /**
+  * J06/J08 loop: road damage creates gravel demand, a mason quarries real natural gravel into the public depot,
+  * the road builder withdraws it and places it. Every removed gravel block must be accounted for as stock,
+  * cargo, flint (the vanilla 10% drop) or placed road surface; nothing is created or lost.
+  */
+ private static int gravelLoopChecks(ServerLevel level,BlockPos at,int groundY,VillageRef ref,BlockPos damaged,
+                                     Container box,net.minecraft.world.entity.npc.villager.Villager builder,long now) {
+  int checks=0;
+  level.setBlock(damaged.below(),Blocks.STONE.defaultBlockState(),3);
+  level.setBlock(damaged,Blocks.GRASS_BLOCK.defaultBlockState(),3);
+  box.clearContent();
+  builder.getInventory().clearContent();
+  BlockPos[] sources=new BlockPos[6];
+  for(int i=0;i<sources.length;i++) {
+   BlockPos src=new BlockPos(at.getX()+9+i,groundY,at.getZ()+3);sources[i]=src;
+   level.getChunkAt(src);
+   level.setBlock(src.below(),Blocks.STONE.defaultBlockState(),3);
+   level.setBlock(src,Blocks.GRAVEL.defaultBlockState(),3);
+   level.setBlock(src.above(),Blocks.AIR.defaultBlockState(),3);level.setBlock(src.above(2),Blocks.AIR.defaultBlockState(),3);
+  }
+  var mason=EntityTypes.VILLAGER.spawn(level,sources[0].above().north(),EntitySpawnReason.COMMAND);
+  mason.setNoAi(true);mason.setInvulnerable(true);mason.addTag("vp090_fixture");
+  try {
+   mason.getInventory().addItem(new ItemStack(Items.IRON_SHOVEL));
+   JobState mst=new JobState();var mmem=mason.getAttachedOrCreate(VillagerPlus.MEMORY);
+   BlockPos depot=ref.chestPos(level);
+   for(int i=0;i<400&&(gravelOf(box)==0||gravelOf(mason.getInventory())>0);i++) {
+    Ctx work=new Ctx(level,mason,mst,mmem,ref,now+i*6L);
+    if(JobUtil.count(mason.getInventory(),s->s.is(Items.GRAVEL))>0) {
+     BlockPos stand=JobUtil.sharedStandSpot(work,depot,4.0);
+     if(stand!=null)mason.teleportTo(stand.getX()+.5,stand.getY(),stand.getZ()+.5);
+    }
+    new MasonJob().primary(work);
+   }
+   int removed=0;for(BlockPos src:sources)if(!level.getBlockState(src).is(Blocks.GRAVEL))removed++;
+   int flint=flintOf(mason.getInventory())+flintOf(box);
+   check(removed>=1&&gravelOf(box)+gravelOf(mason.getInventory())+flint==removed,
+    "J06 ledger: every quarried gravel block is stock or flint, none lost or duplicated");checks++;
+   check(removed<=3&&gravelOf(box)<=GravelQuarry.roadGravelTarget(false)+0,
+    "J06 demand: a single damaged road cell requests one gravel block, not the construction batch");checks++;
+   check(gravelOf(box)==1&&level.getBlockState(damaged).is(Blocks.GRASS_BLOCK),
+    "J06 supply: gravel reaches the public depot while the road cell is still unrepaired");checks++;
+   JobState bst=new JobState();bst.roadScanAt=0;Ctx bc=new Ctx(level,builder,bst,builder.getAttachedOrCreate(VillagerPlus.MEMORY),ref,now+4000);
+   builder.teleportTo(depot.getX()+.5,depot.getY(),depot.getZ()+1.5);
+   RoadBuilderJob.maintain(bc);
+   builder.teleportTo(damaged.getX()+.5,damaged.getY()+1,damaged.getZ()+1.5);
+   RoadBuilderJob.maintain(bc);
+   check(level.getBlockState(damaged).is(Blocks.GRAVEL)&&gravelOf(box)==0&&gravelOf(builder.getInventory())==0,
+    "J08 consume: the builder withdraws the quarried gravel and places it as road surface");checks++;
+   int placed=level.getBlockState(damaged).is(Blocks.GRAVEL)?1:0;
+   check(removed==placed+gravelOf(box)+gravelOf(builder.getInventory())+gravelOf(mason.getInventory())+flint,
+    "J06->J08 balance: quarried blocks == placed + stock + cargo + flint");checks++;
+   check(GravelQuarry.roadGravelTarget(true)==GravelQuarry.ROAD_CONSTRUCTION_BATCH&&GravelQuarry.roadGravelTarget(false)==1,
+    "road construction asks for a bounded gravel batch, a repair for one block");checks++;
+  } finally {
+   mason.discard();
+   box.clearContent();builder.getInventory().clearContent();
+   box.setItem(0,new ItemStack(Items.GRAVEL,7));
+   for(BlockPos src:sources){level.setBlock(src,Blocks.AIR.defaultBlockState(),3);level.setBlock(src.below(),Blocks.STONE.defaultBlockState(),3);}
+   level.setBlock(damaged,Blocks.GRASS_BLOCK.defaultBlockState(),3);level.setBlock(damaged.below(),Blocks.AIR.defaultBlockState(),3);
+  }
+  return checks;
+ }
+ private static int gravelOf(Container c){return JobUtil.count(c,s->s.is(Items.GRAVEL));}
+ private static int flintOf(Container c){return JobUtil.count(c,s->s.is(Items.FLINT));}
 
  private static int bridgeRepairChecks(ServerLevel level,BlockPos at,int groundY,VillageRef ref,BlockPos other,String key,
                                        Container box,net.minecraft.world.entity.npc.villager.Villager villager,
