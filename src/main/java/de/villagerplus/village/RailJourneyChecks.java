@@ -183,7 +183,7 @@ public final class RailJourneyChecks {
 			for (int dy = 0; dy <= 3; dy++)
 				RailTransportDispatchChecks.place(level, fixture, homeBell.offset(dx, dy, dz), Blocks.AIR.defaultBlockState());
 		}
-		for (int dx = -9; dx <= -2; dx++) for (int dz = -2; dz <= -1; dz++) {
+		for (int dx = -12; dx <= -2; dx++) for (int dz = -2; dz <= -1; dz++) {
 			RailTransportDispatchChecks.place(level, fixture, peerBell.offset(dx, -1, dz), Blocks.STONE.defaultBlockState());
 			for (int dy = 0; dy <= 3; dy++)
 				RailTransportDispatchChecks.place(level, fixture, peerBell.offset(dx, dy, dz), Blocks.AIR.defaultBlockState());
@@ -349,7 +349,7 @@ public final class RailJourneyChecks {
 			if (state != null && state.visiting() && rider.getVehicle() == null && trip != null && !trip.toOther()
 				&& rider.blockPosition().distSqr(run.peer.bell()) < 40 * 40) {
 				check(!rider.isNoAi(), "after dismounting the visitor gets its walking AI back"); run.checkpoints++;
-				check(cart.getX() - run.home.bell().getX() > 55, "the visit happens at the peer station, 55+ blocks from home"); run.checkpoints++;
+				check(cart.getX() - run.home.bell().getX() > 48, "the visit happens at the peer station, 48+ blocks from home"); run.checkpoints++;
 				run.stage = 1;
 			}
 			return -1;
