@@ -177,6 +177,9 @@ public final class Social {
 				if (!SocialChecks.meetingSpotsHaveClearance(candidate, nearbyVillagerPositions, reserved)) continue;
 				if (pathProbes++ >= SocialChecks.MEETING_PATH_PROBE_BUDGET) return null;
 				if (!canReach(initiator, initiatorStand) || !canReach(recipient, recipientStand)) continue;
+				// A meeting spot beside a resident who is stuck in a pit or on a deck (one-way drop) would pull the partner down there too.
+				if (level instanceof net.minecraft.server.level.ServerLevel serverLevel
+					&& (!TrapGuard.standWalksBack(serverLevel, initiatorStand) || !TrapGuard.standWalksBack(serverLevel, recipientStand))) continue;
 				return candidate;
 			}
 		}

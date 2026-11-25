@@ -31,6 +31,7 @@ public final class StrandRescueChecks {
 		Villager worker = null;
 		int checks = 0;
 		JobUtil.clearLongRoutes();
+		TrapGuard.enabled = false;
 		try {
 			level.getChunk(origin);
 			level.getChunk(origin.offset(24, 0, 0));
@@ -118,6 +119,18 @@ public final class StrandRescueChecks {
 			require(!JobManager.rescueStranded(ctx(level, worker, state, memory, ref, T0 + 5_800L)) && atPit(worker, pit)
 				&& !JobUtil.routeStrandSuspected(id, pit, T0 + 5_810L),
 				"a worker that can still walk home is left alone and its failure record is dropped"); checks++;
+
+			// L2: with the ramp the pit is walkable: neither the stand check nor the idle watch touches it, however long it stays.
+			TrapGuard.enabled = true;
+			TrapGuard.clear();
+			JobUtil.clearRouteFailures(id);
+			placeAt(worker, pit);
+			require(TrapGuard.standWalksBack(level, pit), "with the ramp a pit-floor stand walks back"); checks++;
+			boolean touched = false;
+			for (long dt = 0L; dt <= 1_600L; dt += 200L) touched |= JobManager.rescueStranded(ctx(level, worker, state, memory, ref, T0 + 200_000L + dt));
+			require(!touched && atPit(worker, pit), "a resident that can walk back is never taken for trapped"); checks++;
+
+			TrapGuard.enabled = false;
 
 			// F2: a resident on a fence post (collision height 1.5). Where real navigation finds a complete way down (measured: 10 nodes on
 			// a flat platform) the resident is left alone; walled in on every side it is brought back. Navigation, not only the block model, decides.
@@ -257,9 +270,39 @@ public final class StrandRescueChecks {
 			JobUtil.notePerchNudge(id, loopSpot, T0 + 91_700L);
 			JobUtil.notePerchNudge(id, loopSpot, T0 + 93_400L);
 			require(!JobUtil.perchLoopSuspected(id, T0 + 93_410L), "step-offs more than 1500 ticks apart are separate incidents, not a loop"); checks++;
+			long t1 = T0 + 250_000L;
+			// Remove the ramp again: the pit is a one-way drop for the idle-trap checks.
+			for (int dy = -3; dy <= -1; dy++) level.setBlock(origin.offset(14, dy, 0), stone, 3);
+			for (int dy = -2; dy <= -1; dy++) level.setBlock(origin.offset(13, dy, 0), stone, 3);
+			level.setBlock(origin.offset(12, -1, 0), stone, 3);
+			JobUtil.clearLongRoutes();
+			// L: idle trap. A resident who chats, eats or idles in the pit requests no route, so the failed-route watch never fires. The
+			// walk-back model and vanilla navigation both fail for it: after the grace it is brought back whatever it is doing; sooner it is not.
+			TrapGuard.enabled = true;
+			TrapGuard.clear();
+			JobUtil.clearRouteFailures(id);
+			placeAt(worker, pit);
+			state.activity = "plaudert mit Test";
+			require(!TrapGuard.standWalksBack(level, pit) && TrapGuard.standWalksBack(level, origin.east(2)),
+				"a stand on the pit floor cannot walk back to the street, one beside the street can"); checks++;
+			require(!JobManager.rescueStranded(ctx(level, worker, state, memory, ref, t1)) && atPit(worker, pit),
+				"the first walk-back failure only starts the clock"); checks++;
+			require(!JobManager.rescueStranded(ctx(level, worker, state, memory, ref, t1 + 200L)) && atPit(worker, pit),
+				"a chatting resident in the pit is not rescued before the grace"); checks++;
+			state.miningUntil = t1 + 2_000L;
+			require(!JobManager.rescueStranded(ctx(level, worker, state, memory, ref, t1 + 400L)) && atPit(worker, pit),
+				"a worker inside its mining window is exempt from the idle-trap rescue"); checks++;
+			state.miningUntil = 0L;
+			require(JobManager.rescueStranded(ctx(level, worker, state, memory, ref, t1 + 800L))
+				&& Math.abs(worker.getX() - origin.getX()) <= 6 && worker.getY() >= origin.getY() - 1,
+				"a resident idling in the pit without any route request is returned to the street after the grace"); checks++;
+			TrapGuard.enabled = false;
+
 			return checks;
 		} finally {
 			JobUtil.clearLongRoutes();
+			TrapGuard.enabled = true;
+			TrapGuard.clear();
 			if (worker != null) worker.discard();
 			before.keySet().forEach(level::removeBlockEntity);
 			before.forEach((p, s) -> level.setBlock(p, s, 3));

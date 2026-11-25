@@ -170,7 +170,7 @@ public final class Routine {
    }
    if (search.destination != null && c.now() - search.pathCheckedAt >= GATHER_PATH_RECHECK_TICKS
     && JobManager.reserveWeatherPathBudget(c.level(), c.now(), 1) > 0) {
-    if (!JobManager.safeReachableStand(c, search.destination)) {
+    if (!JobManager.safeReachableStand(c, search.destination) || !TrapGuard.standWalksBack(c.level(), search.destination)) {
      rejectGatherDestination(c, search);
     } else {
      search.pathCheckedAt = c.now();
@@ -210,7 +210,7 @@ public final class Routine {
    }
    if (JobManager.reserveWeatherPathBudget(c.level(), c.now(), 1) == 0) break;
    checked++;
-   if (!JobManager.safeReachableStand(c, candidate)) {
+   if (!JobManager.safeReachableStand(c, candidate) || !TrapGuard.standWalksBack(c.level(), candidate)) {
     search.cursor++;
     continue;
    }

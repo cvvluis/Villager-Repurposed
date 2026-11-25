@@ -788,7 +788,7 @@ public final class Sites {
 			for (Direction direction : Direction.Plane.HORIZONTAL) {
 				int x = current.getX() + direction.getStepX();
 				int z = current.getZ() + direction.getStepZ();
-				BlockPos next = walkStep(level, x, current.getY(), z);
+				BlockPos next = walkStep(level, x, current.getY(), z, floorTop(level, current));
 				if (next == null || distance.containsKey(next.asLong())) continue;
 				distance.put(next.asLong(), currentDistance + 1);
 				queue.addLast(next);
@@ -797,8 +797,15 @@ public final class Sites {
 		return false;
 	}
 
+	/** Absolute height of the walking surface under a feet cell (a bottom slab is half a block lower than a full block). */
+	private static double floorTop(ServerLevel level, BlockPos feet) {
+		BlockPos floor = feet.below();
+		var shape = level.getBlockState(floor).getCollisionShape(level, floor);
+		return shape.isEmpty() ? feet.getY() : floor.getY() + shape.max(net.minecraft.core.Direction.Axis.Y);
+	}
+
 	/** Feet cell a walker at height {@code y} reaches in column x/z (up one, down three), or null. */
-	private static BlockPos walkStep(ServerLevel level, int x, int y, int z) {
+	private static BlockPos walkStep(ServerLevel level, int x, int y, int z, double fromTop) {
 		for (int ny = y + WALK_BACK_MAX_RISE; ny >= y - WALK_BACK_MAX_DROP; ny--) {
 			BlockPos feet = new BlockPos(x, ny, z);
 			if (!walkThrough(level, feet) || !walkThrough(level, feet.above())) {
@@ -811,7 +818,11 @@ public final class Sites {
 			BlockState ground = level.getBlockState(floor);
 			if (ground.getFluidState().isEmpty() && (ground.isFaceSturdy(level, floor, Direction.UP) || ground.is(Blocks.DIRT_PATH)
 				|| ground.is(Blocks.FARMLAND) || ground.is(net.minecraft.tags.BlockTags.SLABS)
-				|| ground.is(net.minecraft.tags.BlockTags.STAIRS))) return feet;
+				|| ground.is(net.minecraft.tags.BlockTags.STAIRS))) {
+				// Step height is one block: a half-block deck cannot climb onto a full-block rim one cell higher (1.5 blocks).
+				if (ny > y && floorTop(level, feet) - fromTop > 1.0 + 1.0e-6) continue;
+				return feet;
+			}
 		}
 		return null;
 	}
