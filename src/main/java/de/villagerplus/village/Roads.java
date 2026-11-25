@@ -421,7 +421,10 @@ public final class Roads {
      int x=route.getX()+(alongX?0:side),z=route.getZ()+(alongX?side:0);
      if(!de.villagerplus.world.LoadedColumns.ready(level, new BlockPos(x,ref.bell().getY(),z))){blocked=true;unavailableChunk=true;break;}
      BlockPos p=new BlockPos(x,de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z)-1,z);
-     var clearing=RoadClearing.column(level,ref,x,z,state,key+":clear:"+cursor+":"+side);
+     String bridgeKey=key+":bridge:"+cursor+":"+side;
+     // A lane whose paid bridge is already committed is not scanned for trees: the first dry-ravine pier log is the column top
+     // and used to look like a short natural trunk, which blocked the very bridge that was being built.
+     var clearing=state.containsKey(bridgeKey)?new RoadClearing.Column(p,null):RoadClearing.column(level,ref,x,z,state,key+":clear:"+cursor+":"+side);
      if(clearing==null){blocked=true;unavailableChunk=!columnChunksLoaded(level,x,z);break;}
      p=clearing.ground();
      grounds[lane]=p;
@@ -429,7 +432,6 @@ public final class Roads {
       low=Math.min(low,p.getY());high=Math.max(high,p.getY());
       if(pending==null)pending=clearing.next();continue;
      }
-     String bridgeKey=key+":bridge:"+cursor+":"+side;
      if(state.containsKey(bridgeKey)||level.getBlockState(p).is(Blocks.WATER)||level.getBlockState(p).is(Blocks.SPRUCE_PLANKS)) {
       if(state.containsKey(bridgeKey))p=new BlockPos(x,state.get(bridgeKey).intValue(),z);
       var plan=RoadBridge.plan(level,p,ref.bell(),link.bell());

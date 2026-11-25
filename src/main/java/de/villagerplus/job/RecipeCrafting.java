@@ -495,6 +495,18 @@ public final class RecipeCrafting {
 			CraftingInput input = CraftingInput.of(width, height, grid);
 			if (recipe.matches(input, level)) return input;
 		}
+		// Shapeless recipes with 5, 7 or 8 ingredients (rabbit stew, honey bottle, netherite ingot) have no slot-map rectangle of at
+		// most 3x3. Their recipe class ignores geometry, so offer the stacks in a padded 3x3 grid and let the recipe decide.
+		if (slotMap.size() < 9) {
+			List<ItemStack> grid = new ArrayList<>(java.util.Collections.nCopies(9, ItemStack.EMPTY));
+			int next = 0;
+			for (int slot = 0; slot < slotMap.size(); slot++) {
+				int ingredient = slotMap.getInt(slot);
+				if (ingredient != PlacementInfo.EMPTY_SLOT) grid.set(next++, chosen.get(ingredient));
+			}
+			CraftingInput padded = CraftingInput.of(3, 3, grid);
+			if (recipe.matches(padded, level)) return padded;
+		}
 		return null;
 	}
 

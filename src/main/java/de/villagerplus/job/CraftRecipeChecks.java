@@ -56,6 +56,40 @@ public final class CraftRecipeChecks {
 				new ItemStack(Items.WOOL.white(), 3), new ItemStack(Items.OAK_PLANKS, 3));
 			checks++;
 
+			// R01: lever (loaded shaped recipe) and a leftover-container recipe (cake returns its milk buckets) end to end.
+			checkLoadedRecipe(level, "minecraft:lever", Items.LEVER, new ItemStack(Items.STICK), new ItemStack(Items.COBBLESTONE));
+			checks++;
+			box.clearContent();
+			box.setItem(0, new ItemStack(Items.STICK, 1));
+			box.setItem(1, new ItemStack(Items.COBBLESTONE, 1));
+			box.setChanged();
+			Ctx leverCtx = new Ctx(level, villager, new JobState(),
+				villager.getAttachedOrCreate(VillagerPlus.MEMORY), ref, level.getGameTime() + 1050);
+			boolean leverCrafted = RecipeCrafting.craft(leverCtx, box, null, stack -> stack.is(Items.LEVER), 1);
+			check(leverCrafted && JobUtil.count(box, stack -> stack.is(Items.LEVER)) == 1
+				&& JobUtil.count(box, stack -> stack.is(Items.STICK)) == 0
+				&& JobUtil.count(box, stack -> stack.is(Items.COBBLESTONE)) == 0,
+				"a lever is crafted from one stick and one cobblestone through the loaded recipe path");
+			checks++;
+			SimpleContainer pantry = new SimpleContainer(27);
+			for (int i = 0; i < 3; i++) pantry.setItem(i + 10, new ItemStack(Items.MILK_BUCKET, 1));
+			pantry.setItem(1, new ItemStack(Items.SUGAR, 2));
+			pantry.setItem(2, new ItemStack(Items.EGG, 1));
+			pantry.setItem(3, new ItemStack(Items.WHEAT, 3));
+			var cake = level.recipeAccess().getRecipes().stream()
+				.filter(entry -> entry.id().identifier().toString().equals("minecraft:cake"))
+				.map(entry -> (CraftingRecipe) entry.value()).findFirst()
+				.orElseThrow(() -> new IllegalStateException("CRAFT RECIPE CHECKS: loaded recipe is missing: minecraft:cake"));
+			var cakeInput = RecipeCrafting.inputFor(cake, pantry, level);
+			boolean cakeCommitted = cakeInput != null && RecipeCrafting.commit(pantry, cakeInput, cake.assemble(cakeInput),
+				cake.getRemainingItems(cakeInput));
+			check(cakeCommitted && JobUtil.count(pantry, stack -> stack.is(Items.CAKE)) == 1
+				&& JobUtil.count(pantry, stack -> stack.is(Items.BUCKET)) == 3
+				&& JobUtil.count(pantry, stack -> stack.is(Items.MILK_BUCKET)) == 0,
+				"cake returns its three empty buckets as leftover containers instead of destroying them");
+			checks++;
+			checks += sweepAllCraftingRecipes(level);
+
 			// The legacy recipe deliberately says flint, while the loaded recipe uses two planks.
 			box.clearContent();
 			box.setItem(0, new ItemStack(Items.OAK_PLANKS, 2));
@@ -188,6 +222,66 @@ public final class CraftRecipeChecks {
 		var input = RecipeCrafting.inputFor(recipe, stock, level);
 		check(input != null && recipe.matches(input, level) && recipe.assemble(input).is(expectedOutput),
 			"loaded recipe " + id + " assembles from its real Vanilla ingredients");
+	}
+
+	/**
+	 * R01 sweep over every loaded shaped/shapeless crafting recipe: stock exactly one real item per ingredient slot and require
+	 * that the job path (placement info, ingredient assignment, geometry search) finds a matching grid that assembles a
+	 * non-empty result and computes its leftover list. Dynamic special recipes (dyeing, banners, fireworks ...) need
+	 * component-specific inputs the placement contract cannot express; they are counted, not asserted.
+	 */
+	private static int sweepAllCraftingRecipes(ServerLevel level) {
+		List<ItemStack> candidates = new ArrayList<>();
+		for (Item item : net.minecraft.core.registries.BuiltInRegistries.ITEM) {
+			if (item != Items.AIR) candidates.add(new ItemStack(item));
+		}
+		int swept = 0, skippedNoItem = 0, skippedUnplaceable = 0, special = 0, specialFailed = 0, withRemainder = 0;
+		List<String> failures = new ArrayList<>();
+		for (var holder : level.recipeAccess().getRecipes()) {
+			if (!(holder.value() instanceof CraftingRecipe recipe)) continue;
+			boolean plain = RecipeCrafting.preview(recipe) != null;
+			var placement = recipe.placementInfo();
+			var required = placement.ingredients();
+			if (placement.isImpossibleToPlace() || required.isEmpty() || required.size() > 9) {
+				skippedUnplaceable++;
+				continue;
+			}
+			SimpleContainer stock = new SimpleContainer(54);
+			boolean complete = true;
+			for (var ingredient : required) {
+				ItemStack pick = null;
+				for (ItemStack candidate : candidates) {
+					if (ingredient.test(candidate)) { pick = candidate; break; }
+				}
+				if (pick == null) { complete = false; break; }
+				stock.addItem(pick.copyWithCount(1));
+			}
+			if (!complete) { skippedNoItem++; continue; }
+			var input = RecipeCrafting.inputFor(recipe, stock, level);
+			ItemStack result = null;
+			boolean ok = false;
+			try {
+				ok = input != null && recipe.matches(input, level) && !(result = recipe.assemble(input)).isEmpty()
+					&& recipe.getRemainingItems(input) != null;
+			} catch (RuntimeException ignored) {
+				ok = false;
+			}
+			if (plain) {
+				swept++;
+				if (ok && recipe.getRemainingItems(input).stream().anyMatch(stack -> !stack.isEmpty())) withRemainder++;
+				if (!ok) failures.add(holder.id().identifier().toString());
+			} else {
+				special++;
+				if (!ok) specialFailed++;
+			}
+		}
+		System.out.println("CRAFT RECIPE SWEEP plain=" + swept + " special=" + special + " specialUnmatched=" + specialFailed
+			+ " noItemForIngredient=" + skippedNoItem + " unplaceable=" + skippedUnplaceable + " withLeftoverContainers=" + withRemainder
+			+ " failures=" + failures);
+		check(swept >= 800 && failures.isEmpty(),
+			"every loaded shaped/shapeless crafting recipe (" + swept + " swept) is placeable from real items; failures=" + failures);
+		check(withRemainder >= 3, "the sweep found recipes with leftover containers (" + withRemainder + ")");
+		return 2;
 	}
 
 	private static void check(boolean condition, String message) {
