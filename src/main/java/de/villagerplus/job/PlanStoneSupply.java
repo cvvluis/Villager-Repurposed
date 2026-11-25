@@ -214,7 +214,7 @@ public final class PlanStoneSupply {
 	public static boolean supplyMiningPickaxe(Ctx c, Container stock, boolean force) {
 		if (c == null || c.village() == null || stock == null || (!force && !needsCobble(c.level(), c.village().data(), stock))
 			|| !Mining.pickaxe(c.v().getInventory()).isEmpty()) return false;
-		StoredPickaxe stored = storedTool(c.level(), c.village());
+		StoredTool stored = storedTool(c.level(), c.village());
 		if (stored != null) {
 			c.setActivity("holt eine Spitzhacke aus der Werkzeugkammer für den Bauplan");
 			if (!JobUtil.approachLong(c, stored.origin(), 8.0)) return true;
@@ -264,6 +264,63 @@ public final class PlanStoneSupply {
 		return crafted;
 	}
 
+	/** Public-stock shovel crafting is retried only when its ingredients changed (same idea as {@link #PICKAXE_CRAFT_PROBES}). */
+	private static final java.util.Map<Long, PickaxeCraftProbe> SHOVEL_CRAFT_PROBES = new java.util.HashMap<>();
+
+	/**
+	 * A resident who has to level natural earth for a house lot needs a real shovel in his own inventory. Shovels only ever came out
+	 * of the toolshed, which no natural village had finished: a house plan then waited on "wartet auf eine Schaufel" for the rest of
+	 * the run (natural run, seed 4242: the first house stayed at step 0 from tick 24,200 to the end at 303,000). Like the plan
+	 * pickaxe, he now takes a stored shovel from the toolshed when there is one and otherwise crafts a plain wooden or stone shovel
+	 * from real public stock (planks or cobblestone plus sticks). Returns true while busy fetching or crafting.
+	 */
+	public static boolean supplyPlanShovel(Ctx c, Container stock) {
+		if (c == null || c.village() == null || stock == null
+			|| JobUtil.count(c.v().getInventory(), stack -> stack.is(ItemTags.SHOVELS) && usableTool(stack)) > 0) return false;
+		StoredTool stored = storedTool(c.level(), c.village(), stack -> stack.is(ItemTags.SHOVELS) && usableTool(stack));
+		if (stored != null) {
+			c.setActivity("holt eine Schaufel aus der Werkzeugkammer für den Hausbauplatz");
+			if (!JobUtil.approachLong(c, stored.origin(), 8.0)) return true;
+			ItemStack available = stored.container().getItem(stored.slot());
+			if (!available.is(ItemTags.SHOVELS) || !usableTool(available)) return false;
+			SimpleContainer preview = copy(c.v().getInventory());
+			if (!HopperBlockEntity.addItem(null, preview, available.copyWithCount(1), null).isEmpty()) return false;
+			ItemStack paid = stored.container().removeItem(stored.slot(), 1);
+			if (paid.isEmpty()) return false;
+			stored.container().setChanged();
+			ItemStack left = HopperBlockEntity.addItem(null, c.v().getInventory(), paid, null);
+			if (!left.isEmpty()) {
+				HopperBlockEntity.addItem(null, stored.container(), left, null);
+				return false;
+			}
+			c.st().cooldownUntil = c.now() + 40;
+			c.mem().jobsDone++;
+			Anim.hold(c, paid.getItem());
+			return true;
+		}
+		long bell = c.village().bell().asLong();
+		long signature = pickaxeIngredientSignature(stock, c.v().getInventory());
+		PickaxeCraftProbe cached = SHOVEL_CRAFT_PROBES.get(bell);
+		if (cached != null && cached.signature() == signature && c.now() < cached.validUntil() && !cached.craftable()) return false;
+		boolean crafted = craftPlanShovel(c.level(), stock, c.v().getInventory());
+		SHOVEL_CRAFT_PROBES.put(bell, new PickaxeCraftProbe(signature, c.now() + PICKAXE_PROBE_TTL, crafted));
+		if (!crafted) return false;
+		c.setActivity("fertigt eine Schaufel aus Dorfmaterial für den Hausbauplatz");
+		c.st().cooldownUntil = c.now() + 80;
+		c.mem().jobsDone++;
+		ItemStack made = c.v().getInventory().getItem(0);
+		for (int slot = 0; slot < c.v().getInventory().getContainerSize(); slot++) {
+			ItemStack held = c.v().getInventory().getItem(slot);
+			if (held.is(ItemTags.SHOVELS)) { made = held; break; }
+		}
+		Anim.hold(c, made.isEmpty() ? Items.WOODEN_SHOVEL : made.getItem());
+		return true;
+	}
+
+	private static boolean usableTool(ItemStack stack) {
+		return !stack.isEmpty() && (!stack.isDamageableItem() || stack.getDamageValue() < stack.getMaxDamage());
+	}
+
 	/** Counts sticks, planks, and cobblestone in village stock plus the worker inventory — the pickaxe chain's real inputs. */
 	private static long pickaxeIngredientSignature(final Container stock, final Container inventory) {
 		Container available = new CompoundContainer(inventory, stock);
@@ -276,12 +333,22 @@ public final class PlanStoneSupply {
 
 	/** A real loaded wooden/stone pickaxe recipe, paid from the worker's carried items and public village stock. */
 	static boolean craftPlanPickaxe(ServerLevel level, Container stock, Container inventory) {
+		return craftPlanTool(level, stock, inventory, ItemTags.PICKAXES, Items.WOODEN_PICKAXE, Items.STONE_PICKAXE);
+	}
+
+	/** A real loaded wooden/stone shovel recipe, paid from the worker's carried items and public village stock. */
+	static boolean craftPlanShovel(ServerLevel level, Container stock, Container inventory) {
+		return craftPlanTool(level, stock, inventory, ItemTags.SHOVELS, Items.WOODEN_SHOVEL, Items.STONE_SHOVEL);
+	}
+
+	private static boolean craftPlanTool(ServerLevel level, Container stock, Container inventory,
+			net.minecraft.tags.TagKey<Item> family, Item wooden, Item stone) {
 		if (level == null || stock == null || inventory == null) return false;
 		Container available = new CompoundContainer(inventory, stock);
-		// Last resort: no sticks anywhere but planks in stock -> craft sticks first, the pickaxe follows on the next call.
+		// Last resort: no sticks anywhere but planks in stock -> craft sticks first, the tool follows on the next call.
 		boolean noSticks = JobUtil.count(available, stack -> stack.is(Items.STICK)) < 2;
-		for (Item target : noSticks ? new Item[] {Items.WOODEN_PICKAXE, Items.STONE_PICKAXE, Items.STICK}
-				: new Item[] {Items.WOODEN_PICKAXE, Items.STONE_PICKAXE}) {
+		for (Item target : noSticks ? new Item[] {wooden, stone, Items.STICK}
+				: new Item[] {wooden, stone}) {
 			boolean stickStep = target == Items.STICK;
 			for (var holder : RecipeIndex.crafting()) {
 				CraftingRecipe recipe = holder.value();
@@ -289,7 +356,7 @@ public final class PlanStoneSupply {
 				if (input == null) continue;
 				ItemStack output = recipe.assemble(input);
 				if (!output.is(target)) continue;
-				if (!stickStep && (!output.is(ItemTags.PICKAXES) || output.getCount() != 1 || !output.isDamageableItem())) continue;
+				if (!stickStep && (!output.is(family) || output.getCount() != 1 || !output.isDamageableItem())) continue;
 				List<ItemStack> costs = costs(input);
 				List<ItemStack> missing = missing(inventory, costs);
 				SimpleContainer preview = copy(inventory);
@@ -317,7 +384,7 @@ public final class PlanStoneSupply {
 				int sticksBefore = JobUtil.count(inventory, stack -> stack.is(Items.STICK));
 				boolean crafted = RecipeCrafting.commit(inventory, input, output, remainders);
 				if (crafted && stickStep) {
-					// Sticks are public village stock, so whichever worker comes next can finish the pickaxe.
+					// Sticks are public village stock, so whichever worker comes next can finish the tool.
 					// Only the sticks just crafted move; the worker's own sticks stay in the inventory.
 					int crafted0 = Math.max(0, JobUtil.count(inventory, stack -> stack.is(Items.STICK)) - sticksBefore);
 					int made = crafted0 == 0 ? 0 : JobUtil.take(inventory, stack -> stack.is(Items.STICK), crafted0);
@@ -332,14 +399,18 @@ public final class PlanStoneSupply {
 		return false;
 	}
 
-	private record StoredPickaxe(Container container, int slot, BlockPos origin) { }
+	private record StoredTool(Container container, int slot, BlockPos origin) { }
 
-	private static StoredPickaxe storedTool(ServerLevel level, VillageRef ref) {
+	private static StoredTool storedTool(ServerLevel level, VillageRef ref) {
+		return storedTool(level, ref, PlanStoneSupply::usablePickaxe);
+	}
+
+	private static StoredTool storedTool(ServerLevel level, VillageRef ref, java.util.function.Predicate<ItemStack> wanted) {
 		BlockPos origin = Specials.get(ref, Blueprints.TOOLSHED);
 		if (origin == null || !de.villagerplus.world.LoadedColumns.ready(level, origin)) return null;
 		for (Container container : Specials.containers(level, ref, Blueprints.TOOLSHED)) {
 			for (int slot = 0; slot < container.getContainerSize(); slot++) {
-				if (usablePickaxe(container.getItem(slot))) return new StoredPickaxe(container, slot, origin);
+				if (wanted.test(container.getItem(slot))) return new StoredTool(container, slot, origin);
 			}
 		}
 		return null;

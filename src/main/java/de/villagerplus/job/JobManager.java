@@ -1009,7 +1009,12 @@ public final class JobManager {
 		// Route-less strand: repeated unreachable long routes (<= 4 nodes) from one spot. The bounded walk-back search on the
 		// real blocks decides; a worker that can walk home is on a legitimate task (or merely has an unreachable goal).
 		boolean routeStuck = false;
-		if (!far && !deep && !expedition && JobUtil.routeStrandSuspected(c.v().getUUID(), c.v().blockPosition(), c.now())) {
+		// A resident who keeps climbing back onto the same fence post after being set down (three step-offs in a row from one spot)
+		// walks home fine while he stands on the ground, so the checks below never see him stuck: bring him back right away.
+		if (!far && !deep && !expedition && JobUtil.perchLoopSuspected(c.v().getUUID(), c.now())) {
+			arrival = de.villagerplus.build.Builder.villageReturn(c.level(), ref.bell());
+			routeStuck = arrival != null;
+		} else if (!far && !deep && !expedition && JobUtil.routeStrandSuspected(c.v().getUUID(), c.v().blockPosition(), c.now())) {
 			arrival = de.villagerplus.build.Builder.villageReturn(c.level(), ref.bell());
 			boolean modelWalksHome = arrival != null && de.villagerplus.village.Sites.walksBackTo(c.level(), c.v().blockPosition(), arrival);
 			// The block model is only a model: a resident perched on a fence post (collision height 1.5) "walks home" in it, while vanilla

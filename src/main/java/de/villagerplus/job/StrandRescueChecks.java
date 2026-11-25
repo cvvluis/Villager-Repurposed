@@ -231,6 +231,32 @@ public final class StrandRescueChecks {
 			require(!de.villagerplus.block.ModBlocks.DORFTAFEL_GROSS.defaultBlockState()
 					.isPathfindable(net.minecraft.world.level.pathfinder.PathComputationType.LAND),
 				"the village board is a thin panel but land paths must go around it (vanilla would route through it)"); checks++;
+			// K: a resident who climbs back onto the same fence post after every step-off (natural run: nine to nineteen set-downs in a row,
+			// about 2500 ticks each time) walks home fine while he stands on the ground, so the route checks never rescue him. Three step-offs
+			// in a row from one spot do, whatever the walk-back model says; two do not, nor do step-offs far apart in time.
+			JobUtil.clearLongRoutes();
+			JobUtil.clearRouteFailures(id);
+			placeAt(worker, origin.offset(9, 0, 5));
+			BlockPos loopSpot = worker.blockPosition();
+			JobUtil.notePerchNudge(id, loopSpot, T0 + 80_000L);
+			JobUtil.notePerchNudge(id, loopSpot, T0 + 80_300L);
+			require(!JobUtil.perchLoopSuspected(id, T0 + 80_310L)
+				&& !JobManager.rescueStranded(ctx(level, worker, state, memory, ref, T0 + 80_310L)) && worker.blockPosition().equals(loopSpot),
+				"two step-offs from a perch are not a loop yet"); checks++;
+			JobUtil.notePerchNudge(id, loopSpot.east(2), T0 + 80_600L);
+			require(JobUtil.perchLoopSuspected(id, T0 + 80_610L), "the third step-off within 1500 ticks near one spot is a perch loop"); checks++;
+			state.miningUntil = T0 + 82_000L;
+			require(!JobManager.rescueStranded(ctx(level, worker, state, memory, ref, T0 + 80_610L)) && worker.blockPosition().equals(loopSpot),
+				"a worker inside its mining window is exempt from the perch-loop rescue"); checks++;
+			state.miningUntil = 0L;
+			require(JobManager.rescueStranded(ctx(level, worker, state, memory, ref, T0 + 80_610L))
+				&& worker.blockPosition().distManhattan(loopSpot) > 6,
+				"a resident caught in a perch loop is brought back to the street although he can walk home from the ground"); checks++;
+			require(!JobUtil.perchLoopSuspected(id, T0 + 80_620L), "the rescue clears the perch-loop record"); checks++;
+			JobUtil.notePerchNudge(id, loopSpot, T0 + 90_000L);
+			JobUtil.notePerchNudge(id, loopSpot, T0 + 91_700L);
+			JobUtil.notePerchNudge(id, loopSpot, T0 + 93_400L);
+			require(!JobUtil.perchLoopSuspected(id, T0 + 93_410L), "step-offs more than 1500 ticks apart are separate incidents, not a loop"); checks++;
 			return checks;
 		} finally {
 			JobUtil.clearLongRoutes();

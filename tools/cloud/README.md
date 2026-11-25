@@ -7,7 +7,8 @@ Diese Skripte starten den Mod-Dev-Server (`./gradlew runServer`) ohne Windows-We
 |---|---|
 | `setup-env.sh` | JDK 25 nach `/opt/jdk25`, `~/.gradle/gradle.properties`, Rechte. Kurz halten (Setup-Skripte sollten in etwa 5 Minuten fertig sein). |
 | `autotest.sh <gruppe>` | Eine Prüfgruppe oder ein Bündel (`housesearch`, `builderchecks`, `mining` …) im Dev-Server ausführen und die Ergebniszeilen drucken. Läuft in der Welt `vp-featurebundle59-final4-live` (die Gruppen akzeptieren nur Weltnamen aus einer Liste in `dev/Checks090.java`). |
-| `natural-run.sh <label> [sprints] [ticks] [tag]` | Natürlicher CTOV-Lauf (Seed 4242, ohne Fixtures, serverseitige `tick sprint`) mit Zusammenfassung. |
+| `natural-run.sh <label> [sprints] [ticks] [tag]` | Natürlicher CTOV-Lauf (Seed 4242, ohne Fixtures, serverseitige `tick sprint`) mit Zusammenfassung. `VP_STATUS_DUMP=1` schreibt zusätzlich je Sprint den `villagerplus status` mit Spielzeit nach `<log>.status`. |
+| `cadence.py [--until=<tick>] <log> [...]` | Takt-Auswertung eines natürlichen Laufs: Minenabschnitte je Tag, Leerlauf zwischen echten Schritten (nur Arbeitsphasen, ohne Nacht/Pausen/Gewitter), längste Lücken und was die Dorfbewohner darin taten. |
 | `server.properties.template` | Vorlage der Dev-Server-Einstellungen (RCON-Passwort ist ein lokaler Testwert). |
 
 ## Voraussetzungen

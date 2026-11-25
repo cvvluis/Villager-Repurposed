@@ -21,6 +21,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.tags.ItemTags;
 
 /** Checks the loaded recipes and real inventory transaction without supplying the final output. */
 public final class PlanStoneSupplyChecks {
@@ -144,7 +145,22 @@ public final class PlanStoneSupplyChecks {
     && JobUtil.count(shortStock, stack -> stack.is(Items.OAK_PLANKS)) == 2
     && JobUtil.count(shortStock, stack -> stack.is(Items.STICK)) == 2 && noTool.isEmpty(),
     "insufficient recipe inputs remain untouched and do not create a free pickaxe");
-  return 2;
+  // Shovel for house-lot clearing without a toolshed: the same real recipe path as the plan pickaxe.
+  SimpleContainer shovelStock = new SimpleContainer(4);
+  shovelStock.setItem(0, new ItemStack(Items.SPRUCE_PLANKS, 1));
+  shovelStock.setItem(1, new ItemStack(Items.STICK, 2));
+  SimpleContainer shovelInventory = new SimpleContainer(8);
+  check(PlanStoneSupply.craftPlanShovel(level, shovelStock, shovelInventory)
+    && JobUtil.count(shovelInventory, stack -> stack.is(Items.WOODEN_SHOVEL)) == 1
+    && JobUtil.count(shovelStock, stack -> stack.is(Items.SPRUCE_PLANKS) || stack.is(Items.STICK)) == 0,
+    "loaded wooden-shovel recipe consumes one real plank and two sticks from public stock");
+  SimpleContainer noShovelStock = new SimpleContainer(2);
+  noShovelStock.setItem(0, new ItemStack(Items.DIRT, 5));
+  SimpleContainer noShovel = new SimpleContainer(8);
+  check(!PlanStoneSupply.craftPlanShovel(level, noShovelStock, noShovel)
+    && JobUtil.count(noShovelStock, stack -> stack.is(Items.DIRT)) == 5 && noShovel.isEmpty(),
+    "without planks or cobblestone no free shovel appears");
+  return 4;
  }
 
  private static int storedPickaxeCheck(ServerLevel level) {
@@ -189,7 +205,26 @@ public final class PlanStoneSupplyChecks {
    check(data.planStep == 9 && data.wanted.contains("minecraft:stone_bricks#4")
      && data.extra.planMaterialWait.equals(Optional.of("waits for the same active plan")),
      "tool preparation preserves the plan cursor, demand, and saved wait state");
-   return 2;
+   // House lots need a shovel in the worker's own pockets: stored one first, otherwise a plain one from public stock, never twice.
+   toolshed.setItem(0, new ItemStack(Items.IRON_SHOVEL));
+   check(PlanStoneSupply.supplyPlanShovel(context, new SimpleContainer(4))
+     && JobUtil.count(worker.getInventory(), stack -> stack.is(Items.IRON_SHOVEL)) == 1
+     && JobUtil.count(toolshed, stack -> stack.is(Items.IRON_SHOVEL)) == 0,
+     "a house-lot worker withdraws and debits a real shovel from the toolshed");
+   check(!PlanStoneSupply.supplyPlanShovel(context, new SimpleContainer(4)),
+     "a worker who already carries a shovel is not supplied with a second one");
+   worker.getInventory().clearContent();
+   SimpleContainer publicStock = new SimpleContainer(4);
+   publicStock.setItem(0, new ItemStack(Items.SPRUCE_PLANKS, 2));
+   publicStock.setItem(1, new ItemStack(Items.STICK, 4));
+   check(PlanStoneSupply.supplyPlanShovel(context, publicStock)
+     && JobUtil.count(worker.getInventory(), stack -> stack.is(ItemTags.SHOVELS)) == 1
+     && JobUtil.count(publicStock, stack -> stack.is(Items.SPRUCE_PLANKS)) == 1
+     && JobUtil.count(publicStock, stack -> stack.is(Items.STICK)) == 2,
+     "without a toolshed shovel the worker crafts a plain one from real public planks and sticks");
+   check(data.planStep == 9 && data.wanted.contains("minecraft:stone_bricks#4"),
+     "shovel supply leaves the plan cursor and demand alone");
+   return 6;
   } finally {
    if (worker != null) worker.discard();
    restore(level, before);

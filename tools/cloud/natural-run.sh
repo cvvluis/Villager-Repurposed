@@ -87,8 +87,12 @@ for ((i = 0; i < sprints; i++)); do
   [[ "$(grep -c 'Sprint completed' "$log")" -gt "$i" ]] || { echo "sprint $((i + 1)) did not complete" >&2; exit 1; }
   # Heartbeat + early stall stop (VP_STALL_SPRINTS consecutive sprints without any change; 0 = off).
   # Progress fingerprint = sum of "Arbeiten N" over all villagers near the first forceload area + plan start/finish lines.
-  jobs="$("$py" tools/rcon.py "execute positioned ${VP_STATUS_POS:-122 69 -378} run villagerplus status" 2>/dev/null \
-    | grep -o 'Arbeiten [0-9]*' | awk '{s+=$2} END {print s+0}')"
+  status_out="$("$py" tools/rcon.py "execute positioned ${VP_STATUS_POS:-122 69 -378} run villagerplus status" 2>/dev/null || true)"
+  # Optional cadence dump (tools/cloud/cadence.py reads it): one block per sprint with the game time.
+  if [[ -n "${VP_STATUS_DUMP:-}" ]]; then
+    { echo "=== SPRINT $((i + 1)) $("$py" tools/rcon.py 'time query gametime' 2>/dev/null | tr -d '\r\n')"; printf '%s\n' "$status_out"; } >> "$log.status"
+  fi
+  jobs="$(printf '%s\n' "$status_out" | grep -o 'Arbeiten [0-9]*' | awk '{s+=$2} END {print s+0}')"
   plans="$(grep -c -E 'Bauplan [a-z_]+ (gestartet|fertiggestellt)' "$log" || true)"
   fp="$jobs/$plans"
   echo "HEARTBEAT sprint $((i + 1))/$sprints jobs=$jobs plans_events=$plans finished=$(grep -c 'fertiggestellt' "$log" || true)"

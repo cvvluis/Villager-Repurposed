@@ -105,6 +105,7 @@ public final class JobUtil {
 		STRAND_QUIET_UNTIL.clear();
 		PERCH_NUDGE_AT.clear();
 		PERCH_REPEATS.clear();
+		PERCH_LOOPS.clear();
 	}
 
 	/** Records one failed long route; a move of more than 2 blocks since the first failure restarts the count. */
@@ -136,6 +137,7 @@ public final class JobUtil {
 
 	static void markRescued(UUID id, long now) {
 		STRAND_WATCH.remove(id);
+		PERCH_LOOPS.remove(id);
 		STRAND_QUIET_UNTIL.put(id, now + STRAND_QUIET_TICKS);
 	}
 
@@ -245,6 +247,7 @@ public final class JobUtil {
 		if (PERCH_NUDGE_AT.size() > 512) { PERCH_NUDGE_AT.clear(); PERCH_REPEATS.clear(); }
 		PERCH_NUDGE_AT.put(id, c.now());
 		PERCH_REPEATS.put(id, c.now() - last <= 400L ? repeats + 1 : 1);
+		notePerchNudge(id, v.blockPosition(), c.now());
 		Vec3 from = v.position();
 		v.getNavigation().stop();
 		v.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
@@ -254,6 +257,34 @@ public final class JobUtil {
 		org.slf4j.LoggerFactory.getLogger("villagerplus").info("Villagers: Repurposed: {} stand auf einem Zaunpfosten bei {} und wurde auf den Boden bei {} gesetzt",
 			c.mem().name, from, stand);
 		return true;
+	}
+
+	/** A perch step-off counts towards a loop while the next one follows within this many ticks and within {@link #PERCH_LOOP_RADIUS} blocks. */
+	static final long PERCH_LOOP_WINDOW_TICKS = 1500L;
+	static final int PERCH_LOOP_RADIUS = 6;
+	/** Step-offs in a row from one spot after which the resident is brought back to the village street instead of being set down again. */
+	static final int PERCH_LOOP_NUDGES = 3;
+	private record PerchLoop(BlockPos spot, long lastAt, int nudges) { }
+	private static final Map<UUID, PerchLoop> PERCH_LOOPS = new HashMap<>();
+
+	/**
+	 * Records one step-off from a perch. Natural runs (seed 4242): villagers climbed from a barrel onto the fence post beside it, were set
+	 * down, and walked straight back onto it 9 to 19 times in a row (about 2500 ticks each time) because the escalating spacing between
+	 * step-offs never let the strand watch (three failed routes from one spot) see a stuck resident while he stood on the ground.
+	 */
+	static void notePerchNudge(UUID id, BlockPos spot, long now) {
+		if (PERCH_LOOPS.size() > 512) PERCH_LOOPS.clear();
+		PerchLoop previous = PERCH_LOOPS.get(id);
+		boolean continues = previous != null && now >= previous.lastAt() && now - previous.lastAt() <= PERCH_LOOP_WINDOW_TICKS
+			&& Math.abs(previous.spot().getX() - spot.getX()) <= PERCH_LOOP_RADIUS && Math.abs(previous.spot().getZ() - spot.getZ()) <= PERCH_LOOP_RADIUS;
+		PERCH_LOOPS.put(id, new PerchLoop(continues ? previous.spot() : spot.immutable(), now, continues ? previous.nudges() + 1 : 1));
+	}
+
+	/** True when the resident was set down from perches at least {@link #PERCH_LOOP_NUDGES} times in a row from one spot and the last time is recent. */
+	static boolean perchLoopSuspected(UUID id, long now) {
+		PerchLoop loop = PERCH_LOOPS.get(id);
+		if (loop == null || now < STRAND_QUIET_UNTIL.getOrDefault(id, 0L)) return false;
+		return loop.nudges() >= PERCH_LOOP_NUDGES && now >= loop.lastAt() && now - loop.lastAt() <= PERCH_LOOP_WINDOW_TICKS;
 	}
 
 	private static final Map<UUID, Vec3> PIN_CHECK_AT = new HashMap<>();

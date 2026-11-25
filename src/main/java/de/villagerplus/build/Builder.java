@@ -5345,6 +5345,13 @@ public final class Builder {
 					ref.dirty();
 					return true;
 				}
+				if (civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_TOOL
+					&& de.villagerplus.job.PlanStoneSupply.supplyPlanShovel(c, box)) {
+					// No toolshed shovel to wait for: fetch one from the toolshed or craft a plain one from public stock.
+					d.planProgress = c.now();
+					ref.dirty();
+					return true;
+				}
 				if (civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_CHUNK
 					|| civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_ENTITY
 					|| civicPrep.status() == NaturalSitePreparation.Status.WAITING_FOR_TOOL) {
@@ -5401,6 +5408,11 @@ public final class Builder {
 				return false;
 			}
 			if (preparation.status() == NaturalSitePreparation.Status.WAITING_FOR_TOOL) {
+				if (de.villagerplus.job.PlanStoneSupply.supplyPlanShovel(c, box)) {
+					d.planProgress = c.now();
+					ref.dirty();
+					return true;
+				}
 				c.setActivity("wartet auf eine Schaufel für den Hausbauplatz");
 				d.planProgress = c.now();
 				c.st().cooldownUntil = c.now() + 100;
