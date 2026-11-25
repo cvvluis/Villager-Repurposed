@@ -394,6 +394,45 @@ public final class StockPolicyChecks {
 			check(passed, routedFood.isEmpty() && routedTool.isEmpty() && total(granary, Items.BREAD) == 6
 				&& total(toolshed, Items.IRON_PICKAXE) == 2 && total(communal, Items.BREAD) == 0,
 				"village routing sends food and equipment only to their registered specialist depots");
+			// G04/G05 breadth: snapshot the three public stores so these routing checks leave the shared fixture unchanged.
+			java.util.List<ItemStack> savedGranary = snapshotOf(granary), savedToolshed = snapshotOf(toolshed), savedCommunal = snapshotOf(communal);
+			Item[] granaryGoods = {Items.COOKED_BEEF, Items.BEEF, Items.COOKED_CHICKEN, Items.CARROT, Items.WHEAT, Items.EGG,
+				Items.MILK_BUCKET, Items.BROWN_MUSHROOM, Items.SUGAR, Items.APPLE, Items.COOKED_PORKCHOP};
+			boolean granaryAll = true;
+			StringBuilder granaryFailed = new StringBuilder();
+			for (Item good : granaryGoods) {
+				ItemStack foodRest = StockPolicy.insertVillage(level, ref, new ItemStack(good, 2));
+				boolean goodOk = StockPolicy.category(good) == StockPolicy.Category.FOOD
+					&& Specials.depotType(new ItemStack(good)) == de.villagerplus.build.Blueprints.GRANARY
+					&& foodRest.isEmpty() && total(granary, good) >= 2 && total(communal, good) == 0;
+				if (!goodOk) granaryFailed.append(' ').append(good).append("(rest=").append(foodRest.getCount()).append(",cat=").append(StockPolicy.category(good)).append(",depot=").append(Specials.depotType(new ItemStack(good))).append(",granary=").append(total(granary, good)).append(",communal=").append(total(communal, good)).append(",slots=").append(slotsOf(granary, good)).append(')');
+				granaryAll &= goodOk;
+			}
+			check(passed, granaryAll, "G04: cooked and raw food, meat, crops, eggs, milk, mushrooms and ingredients all route to the granary; failed:" + granaryFailed);
+			check(passed, Specials.isRepairGood(new ItemStack(Items.LEATHER)) && !Specials.isRepairGood(new ItemStack(Items.IRON_INGOT))
+				&& !Specials.isRepairGood(new ItemStack(Items.IRON_NUGGET)) && !Specials.isRepairGood(new ItemStack(Items.COBBLESTONE))
+				&& !Specials.isRepairGood(new ItemStack(Items.IRON_PICKAXE))
+				&& Specials.depotType(new ItemStack(Items.LEATHER)) == de.villagerplus.build.Blueprints.TOOLSHED
+				&& Specials.depotType(new ItemStack(Items.IRON_INGOT)) == null,
+				"G05: leather is a repair good for the tool chamber while ingots, nuggets and building stock stay public material");
+			ItemStack leatherRest = StockPolicy.insertVillage(level, ref, new ItemStack(Items.LEATHER, 5));
+			ItemStack ingotRest = StockPolicy.insertVillage(level, ref, new ItemStack(Items.IRON_INGOT, 3));
+			check(passed, leatherRest.isEmpty() && total(toolshed, Items.LEATHER) == 5 && total(communal, Items.LEATHER) == 0
+				&& ingotRest.isEmpty() && total(toolshed, Items.IRON_INGOT) == 0 && total(communal, Items.IRON_INGOT) == 3,
+				"G05: village routing puts repair goods into the tool chamber and iron ingots into public material");
+			ItemStack foodIntoChamber = StockPolicy.insertInto(level, ref, de.villagerplus.build.Blueprints.TOOLSHED, toolshed, new ItemStack(Items.BREAD, 1));
+			ItemStack stoneIntoChamber = StockPolicy.insertInto(level, ref, de.villagerplus.build.Blueprints.TOOLSHED, toolshed, new ItemStack(Items.COBBLESTONE, 1));
+			check(passed, foodIntoChamber.getCount() == 1 && stoneIntoChamber.getCount() == 1,
+				"G05: the tool chamber still refuses food and building stock");
+			Specials.remove(ref, de.villagerplus.build.Blueprints.TOOLSHED);
+			int communalLeatherBefore = total(communal, Items.LEATHER), shedLeatherBefore = total(toolshed, Items.LEATHER);
+			ItemStack leatherNoShed = StockPolicy.insertVillage(level, ref, new ItemStack(Items.LEATHER, 4));
+			ItemStack pickaxeNoShed = StockPolicy.insertVillage(level, ref, new ItemStack(Items.IRON_PICKAXE, 1));
+			check(passed, leatherNoShed.isEmpty() && total(communal, Items.LEATHER) == communalLeatherBefore + 4
+				&& total(toolshed, Items.LEATHER) == shedLeatherBefore && pickaxeNoShed.getCount() == 1,
+				"G05: without a registered tool chamber repair goods fall back to public storage and equipment stays with the caller");
+			Specials.set(ref, de.villagerplus.build.Blueprints.TOOLSHED, toolshedPos);
+			restoreContents(granary, savedGranary); restoreContents(toolshed, savedToolshed); restoreContents(communal, savedCommunal);
 			ItemStack routedFieldSeeds = StockPolicy.insertVillage(level, ref, new ItemStack(Items.WHEAT_SEEDS, 24));
 			Container builderStock = de.villagerplus.village.Lager.combined(level, ref);
 			check(passed, routedFieldSeeds.isEmpty() && builderStock != null
@@ -549,5 +588,22 @@ public final class StockPolicyChecks {
 		box.clearContent();
 		for (int i = 0; i < Math.min(box.getContainerSize(), contents.size()); i++) box.setItem(i, contents.get(i).copy());
 		box.setChanged();
+	}
+
+	private static java.util.List<ItemStack> snapshotOf(Container container) {
+		java.util.List<ItemStack> out = new java.util.ArrayList<>();
+		for (int i = 0; i < container.getContainerSize(); i++) out.add(container.getItem(i).copy());
+		return out;
+	}
+
+	private static void restoreContents(Container container, java.util.List<ItemStack> saved) {
+		for (int i = 0; i < container.getContainerSize(); i++) container.setItem(i, i < saved.size() ? saved.get(i).copy() : ItemStack.EMPTY);
+		container.setChanged();
+	}
+
+	private static String slotsOf(Container container, Item item) {
+		StringBuilder out = new StringBuilder();
+		for (int i = 0; i < container.getContainerSize(); i++) if (container.getItem(i).is(item)) out.append(i).append('x').append(container.getItem(i).getCount()).append(';');
+		return out.toString();
 	}
 }
