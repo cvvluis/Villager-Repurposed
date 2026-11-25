@@ -2,6 +2,10 @@
 
 Versions below target Fabric, Minecraft 26.2 and Java 25. The artifact is named `villagers-repurposed-<version>.jar`.
 
+## 0.11.3
+
+See RELEASE_NOTES_0.11.3.md. Fixes the world-entry crash of 0.11.2 (`NoClassDefFoundError: SocialChecks`), adds the `verifyJarRefs` build check and removes per-tick recipe scans.
+
 ## 0.11.2 (playtest)
 
 - **Fixes a crash when entering a world (0.11.2 playtest jar).** `Social.tick` called into `SocialChecks`, which the release jar strips, so a villager chat search threw `NoClassDefFoundError: de/villagerplus/job/SocialChecks` and took the world down. The jar now keeps `SocialChecks`, and the build runs `tools/check-jar-refs.py` (task `verifyJarRefs`, part of `build`) which fails when a production class references a class the jar does not contain.
