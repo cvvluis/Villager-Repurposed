@@ -767,3 +767,9 @@ Map/bars/tabs (text output), expeditions including injured and loot, storage she
 - A further 10 × 2,400 tick continuation before the project-demand fix stayed at 34. After filtering return pads by actual navigation reachability, another 10 × 2,400 tick continuation advanced 34→35 (one logged 20-block section at tick 427,492). A miner still repeated the overland approach. Do not claim the root cause fully fixed or the cadence reliable: one section in 24,000 ticks remains too slow for the user's stated expectation of regular visible progress.
 - Verification on current code: `./gradlew clean build` PASS; `minekit` 39, `smithanvil` 33, `mining` 73 PASS. The standalone natural continuation is not a fixture, but n=1 and incomplete. No release/tag was created.
 - Audit remains strictly 17/62. J06 and G05 stay partial. Next: diagnose the repeated overland approach and improve mine cadence; observe at least one natural anvil/iron result and the toolshed project progressing. Keep the goal open until visible progress is regular and all master-prompt gaps/statuses are reconciled.
+
+## Cloud session 25.11.2026 – J-loops (branch claude/j-loops)
+- Changed: new overland road construction requests a bounded gravel batch (8) from the mason (`GravelQuarry.roadGravelTarget`); a repair still requests 1. `roadwork` gained a quarry -> public depot -> road builder balance check (removed gravel blocks == placed + stock + cargo + flint).
+- Checks actually run (dev server, fixtures only): `roadwork` 40, `gravelcycle` 21, `roads` 149, `railwork` 18 PASS; `./gradlew clean build` PASS (JDK 25 via tools/cloud/setup-env.sh).
+- Not done: J01 (natural blockers no usable seed / no fence kit), J05, rail gravel ballast, natural runs. No status upgrade for J01/J05/J06/J08.
+- Next concrete step: prove gravel reaching an active road/rail project in a natural run; address the J01 seed/fence-kit blockers.
