@@ -236,9 +236,16 @@ public final class StockPolicy {
 		if (!accepts(depot, offered.getItem())) return offered.copy();
 		int allowed = Math.min(offered.getCount(), deliveryRoom(level, ref, offered.getItem()));
 		if (allowed <= 0) return offered.copy();
-		ItemStack moving = offered.copyWithCount(allowed);
-		ItemStack insertRemainder = net.minecraft.world.level.block.entity.HopperBlockEntity.addItem(null, destination, moving, null);
-		int moved = allowed - insertRemainder.getCount();
+		// Insert in pieces no larger than the item's own stack size: a hand-built oversized stack of an unstackable
+		// item (milk bucket x2) was silently truncated by the container and one item vanished.
+		int moved = 0;
+		int piece = Math.max(1, offered.getMaxStackSize());
+		while (moved < allowed) {
+			int chunk = Math.min(piece, allowed - moved);
+			ItemStack chunkRest = net.minecraft.world.level.block.entity.HopperBlockEntity.addItem(null, destination, offered.copyWithCount(chunk), null);
+			moved += chunk - chunkRest.getCount();
+			if (!chunkRest.isEmpty()) break;
+		}
 		return offered.copyWithCount(offered.getCount() - moved);
 	}
 
@@ -296,9 +303,15 @@ public final class StockPolicy {
 				if (rest.isEmpty()) break;
 				rest = insertInto(level, ref, special, depot, rest);
 			}
-			return rest;
+			// Repair goods are also ordinary public material: a missing or full tool chamber must not strand them.
+			if (rest.isEmpty() || category(offered.getItem()) != Category.MATERIAL) return rest;
+			return insertPublicMaterial(level, ref, rest);
 		}
-		ItemStack rest = offered.copy();
+		return insertPublicMaterial(level, ref, offered.copy());
+	}
+
+	private static ItemStack insertPublicMaterial(ServerLevel level, VillageRef ref, ItemStack offered) {
+		ItemStack rest = offered;
 		Container home = ref.chest(level);
 		if (home != null) rest = insertInto(level, ref, de.villagerplus.build.Blueprints.STORAGE, home, rest);
 		for (Container lager : Lager.containers(level, ref.data())) {
@@ -321,7 +334,7 @@ public final class StockPolicy {
 		Category category = category(item);
 		return switch (depot) {
 			case de.villagerplus.build.Blueprints.GRANARY -> category == Category.FOOD;
-			case de.villagerplus.build.Blueprints.TOOLSHED -> category == Category.TOOLS;
+			case de.villagerplus.build.Blueprints.TOOLSHED -> category == Category.TOOLS || Specials.isRepairGood(new ItemStack(item));
 			case de.villagerplus.build.Blueprints.STORAGE, de.villagerplus.build.Blueprints.STATION ->
 				category == Category.MATERIAL || isRawSmeltingSupply(item);
 			default -> true;

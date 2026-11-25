@@ -57,9 +57,38 @@ public final class Specials {
 		return switch (StockPolicy.category(stack.getItem())) {
 			case FOOD -> Blueprints_GRANARY;
 			case TOOLS -> Blueprints_TOOLSHED;
-			case MATERIAL -> null;
+			case MATERIAL -> isRepairGood(stack) ? Blueprints_TOOLSHED : null;
 			case OTHER -> null;
 		};
+	}
+
+	private static final java.util.Map<net.minecraft.world.item.Item, Boolean> REPAIR_GOODS = new java.util.concurrent.ConcurrentHashMap<>();
+
+	/**
+	 * G05 design decision: "repair goods" are non-damageable public-material items that the loaded item rules accept as a
+	 * repair ingredient of some equipment (for example leather) and that are not general construction or smelting stock.
+	 * Ingots and nuggets (iron/copper/gold) stay ordinary public material because builders, smiths and the anvil recipe
+	 * also consume them, and the anvil repair already reads every public container including the tool chamber.
+	 * These goods prefer the tool chamber; without a chamber or room they fall back to ordinary public storage (never lost).
+	 */
+	public static boolean isRepairGood(net.minecraft.world.item.ItemStack stack) {
+		if (stack.isEmpty() || stack.isDamageableItem() || StockPolicy.category(stack.getItem()) != StockPolicy.Category.MATERIAL) {
+			return false;
+		}
+		return REPAIR_GOODS.computeIfAbsent(stack.getItem(), item -> {
+			net.minecraft.world.item.ItemStack sample = new net.minecraft.world.item.ItemStack(item);
+			if (item instanceof net.minecraft.world.item.BlockItem
+				|| sample.is(net.fabricmc.fabric.api.tag.convention.v2.ConventionalItemTags.INGOTS)
+				|| sample.is(net.fabricmc.fabric.api.tag.convention.v2.ConventionalItemTags.NUGGETS)
+				|| sample.is(net.fabricmc.fabric.api.tag.convention.v2.ConventionalItemTags.STRINGS)) {
+				return false;
+			}
+			for (net.minecraft.world.item.Item gear : net.minecraft.core.registries.BuiltInRegistries.ITEM) {
+				net.minecraft.world.item.ItemStack damaged = new net.minecraft.world.item.ItemStack(gear);
+				if (damaged.isDamageableItem() && damaged.isValidRepairItem(sample)) return true;
+			}
+			return false;
+		});
 	}
 
 	private static final String Blueprints_GRANARY = de.villagerplus.build.Blueprints.GRANARY;
