@@ -822,3 +822,21 @@ Map/bars/tabs (text output), expeditions including injured and loot, storage she
 - Result on a copy of the stuck world: toolshed started at tick 177,968, step 161/279 by ~250k; then blocked by `minecraft:anvil#1` (iron). Mine index 57 (old mine) then a new mine (entrance 95,67,-374) reached section 27 at tick 630k; no iron, anvil or toolshed completion observed. Smith Heinz often cannot reach the mine entrance ("kam 300 Ticks nicht naeher", pit near 115,69,-393).
 - Checks run: builderchecks 324, smithanvil 33, smithsmelting 15, stockpolicy 59, buildhaul 44, planstonesupply 40, stoneeconomy 20, mining 73, firstbuilding 12 all PASS; `./gradlew clean build` see commit report.
 - Next: why mine cadence is ~12 sections per 144k ticks and why miners say "Bedarf verneint (STONE)" while the anvil needs iron; mine approach near 115,69,-393; the iron vein.
+
+## Continuation 25.11.2026 (4) - A/B regression check (main 5cf38a2 vs release 0.11.3 source 0d88b71)
+- Question: is the natural-run observation "Langweg unreachable 54, stranded 21 on main vs 18 / 3 earlier" a regression? Method: `VP_STALL_SPRINTS=0 VP_FORCELOAD="40 -440 190 -290" natural-run.sh <label> 30 2400`, seed 4242, fresh world per run, sequential, same machine; metrics via `tools/cloud/ab-metrics.sh`. n=3 per variant, one world seed, so only large differences mean anything.
+- A = 0d88b71 (a1..a3), B = 5cf38a2 (b1..b3):
+
+| run | plans started (steps) | plans finished | Langweg unreachable | stranded (trap/other) | quarry Rueckweg verworfen | mine sections | idle median/p90/max (working ticks) | ms/tick |
+|---|---|---|---|---|---|---|---|---|
+| a1 | 3 (granary 437, storage 266, house 260) | 0 | 45 | 10 (0/10) | 5 | 16 | 70/2646/5558 | 2.90 |
+| a2 | 3 (granary 437, storage 266, farm 41) | 0 | 64 | 4 (0/4) | 2 | 27 | 135/1440/3294 | 2.54 |
+| a3 | 3 (granary 437, storage 266, house 260) | 0 | 58 | 6 (0/6) | 4 | 18 | 200/2739/4440 | 2.93 |
+| b1 | 3 (granary 433, storage 266, farm 41) | 1 (storage 266/266) | 47 | 19 (18/1) | 2 | 20 | 70/965/2681 | 2.09 |
+| b2 | 2 (granary 437, storage 266) | 0 | 38 | 22 (19/3) | 3 | 24 | 100/1010/7305 | 2.95 |
+| b3 | 2 (granary 433, storage 266) | 0 | 32 | 15 (15/0) | 2 | 22 | 51/1880/9680 | 2.24 |
+
+- Means: Langweg A 55.7 vs B 39.0; stranded A 6.7 vs B 18.7; mine sections A 20.3 vs B 22.0; quarry discards A 3.7 vs B 2.3; idle p90 A 2275 vs B 1285 but idle max A 4430 vs B 6555 (B has the two largest single gaps; spread is large). ms/tick is the mean of the sprint figures and varies with machine load (fast sprints, not a profile).
+- Conclusion: NOT a regression in Langweg or in plans/mining: main is not worse than 0.11.3 on any metric beyond noise except the rescue count. The earlier "18 unreachable" run was an outlier of an older build (both variants here give 32..64). Stranded rises 3x by design: `Falle=true` rescues (TrapGuard) are 15..19 per run in B (0 in A); 8-13 per run happen on the slab-deck pit (x 103..111, z -396..-388), 4-10 elsewhere; A had 4-10 route-watch rescues instead. No bisect of perf-soak / strand-pit / toolshed-chain was done because B was not clearly worse; no code was changed, so no check groups or `./gradlew clean build` were rerun for this change (docs/tools only).
+- Caveats: n=3, one seed, one world layout, timing-dependent; plans finished 1 of 3 (B) vs 0 of 3 (A) is not significant. Open problem: the same residents are rescued repeatedly at the pit (homes/beds inside it; "fruehstueckt zu Hause", "isst zu Abend"): rescue count is a symptom of re-entry, not a cost of the guard alone.
+- Next concrete step: stop re-entry for rescued residents (re-assign bed/home outside the pit or fill/ramp the pit), then rerun n=3 and compare the trap-rescue count.
