@@ -140,8 +140,10 @@ public final class Workshop {
 		Container combined = de.villagerplus.village.Lager.combined(c.level(), ref);
 		if (combined == null) return false;
 
-		for (RecipeHolder<?> holder : RecipeIndex.crafting()) {
-			if (!(holder.value() instanceof CraftingRecipe recipe)) continue;
+		// Indexed lookup (plain recipes with this fixed result plus recipes without a preview). Scanning every loaded
+		// recipe here snapshotted the whole combined lager once per recipe, a cost that grew with the lager content.
+		for (RecipeHolder<CraftingRecipe> holder : RecipeIndex.producing(target)) {
+			CraftingRecipe recipe = holder.value();
 			CraftingInput input = RecipeCrafting.inputFor(recipe, combined, c.level());
 			if (input == null) continue;
 			ItemStack output = recipe.assemble(input);
