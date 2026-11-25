@@ -67,6 +67,10 @@ public final class Workshop {
 		return false;
 	}
 
+	/** Negative-result caches for the all-recipes scans (see {@link ScanThrottle}); 100 ticks max staleness. */
+	private static final ScanThrottle LAGER_FETCH_PROBES = new ScanThrottle(100L);
+	private static final ScanThrottle PREREQUISITE_PROBES = new ScanThrottle(100L);
+
 	/** true = beschaeftigt. */
 	public static boolean tick(Ctx c) {
 		VillageRef ref = c.village();
@@ -127,6 +131,10 @@ public final class Workshop {
 		if (stores.isEmpty()) return false;
 		Container combined = de.villagerplus.village.Lager.combined(c.level(), ref);
 		if (combined == null) return false;
+		// The scan below walks every loaded crafting recipe; repeat it only when chest/lager contents or demand changed.
+		long probeKey = ScanThrottle.key(ref.bell().asLong(), target);
+		long probeSig = ScanThrottle.signature(targetDemand(ref, target), combined, chest);
+		if (LAGER_FETCH_PROBES.known(probeKey, probeSig, c.now())) return false;
 
 		for (RecipeHolder<?> holder : RecipeIndex.crafting()) {
 			if (!(holder.value() instanceof CraftingRecipe recipe)) continue;
@@ -190,6 +198,7 @@ public final class Workshop {
 			c.mem().jobsDone++;
 			return true;
 		}
+		LAGER_FETCH_PROBES.remember(probeKey, probeSig, c.now());
 		return false;
 	}
 
