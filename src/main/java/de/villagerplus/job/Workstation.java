@@ -212,7 +212,7 @@ public final class Workstation {
 	}
 
 	private static boolean craftVanillaAnvil(Ctx c, Container chest, BlockPos table) {
-		for (var holder : RecipeIndex.crafting()) {
+		for (var holder : RecipeIndex.producing(Items.ANVIL)) {
 			if (!(holder.value() instanceof CraftingRecipe recipe)
 				|| !holder.id().identifier().getNamespace().equals("minecraft")
 				|| !holder.id().identifier().getPath().equals("anvil")) continue;
@@ -238,7 +238,7 @@ public final class Workstation {
 	}
 
 	private static boolean craftVanillaIronBlock(Ctx c, Container chest, BlockPos table) {
-		for (var holder : RecipeIndex.crafting()) {
+		for (var holder : RecipeIndex.producing(Items.IRON_BLOCK)) {
 			if (!(holder.value() instanceof CraftingRecipe recipe)
 				|| !holder.id().identifier().getNamespace().equals("minecraft")
 				|| !holder.id().identifier().getPath().equals("iron_block")) continue;
@@ -345,7 +345,7 @@ public final class Workstation {
 	}
 
 	private static boolean craftPlanFurnace(Ctx c, Container chest, BlockPos table) {
-		for (var holder : RecipeIndex.crafting()) {
+		for (var holder : RecipeIndex.producing(Items.FURNACE)) {
 			if (!(holder.value() instanceof CraftingRecipe recipe)) continue;
 			ItemStack preview = RecipeCrafting.preview(recipe);
 			if (preview == null || !preview.is(Items.FURNACE) || preview.getCount() != 1) continue;

@@ -2056,7 +2056,7 @@ public final class Mining {
 
 	private static int largestMineSupplyRecipeBatch(Ctx c, net.minecraft.world.item.Item item) {
 		int largest = 0;
-		for (var holder : RecipeIndex.crafting()) {
+		for (var holder : RecipeIndex.producing(item)) {
 			net.minecraft.world.item.crafting.CraftingRecipe recipe = holder.value();
 			ItemStack preview = RecipeCrafting.preview(recipe);
 			if (preview != null && preview.is(item)) largest = Math.max(largest, preview.getCount());

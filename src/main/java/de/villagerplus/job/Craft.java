@@ -50,10 +50,17 @@ public final class Craft {
 		if (box == null) {
 			return false;
 		}
+		int fingerprint = JobState.fingerprint(box);
 		for (Recipe recipe : recipes) {
 			ItemStack expected = recipe.out().get();
-			if (!expected.isEmpty() && RecipeCrafting.craft(c, box,
-				stack -> ItemStack.isSameItemSameComponents(stack, expected), 64)) return true;
+			String key = "craft:" + recipe.label();
+			if (expected.isEmpty() || c.st().knownNoWork(key, fingerprint, c.now())) continue;
+			if (RecipeCrafting.craft(c, box,
+				stack -> ItemStack.isSameItemSameComponents(stack, expected), 64)) {
+				c.st().forgetNoWork(key);
+				return true;
+			}
+			c.st().rememberNoWork(key, fingerprint, c.now());
 		}
 		Recipe chosen = null;
 		for (Recipe r : recipes) {

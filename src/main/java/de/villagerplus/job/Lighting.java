@@ -299,7 +299,7 @@ public final class Lighting {
 
 	/** Crafts one actual loaded torch recipe, accepting charcoal and sticks as the only source ingredients. */
 	static boolean craftTorchFromCharcoal(ServerLevel level, Container stock) {
-		return craftTorchFromCharcoal(level, stock, RecipeIndex.crafting());
+		return craftTorchFromCharcoal(level, stock, RecipeIndex.producing(Items.TORCH));
 	}
 
 	static boolean craftTorchFromCharcoal(ServerLevel level, Container stock, Iterable<? extends RecipeHolder<?>> recipes) {

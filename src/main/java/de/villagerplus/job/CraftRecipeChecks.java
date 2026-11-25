@@ -106,6 +106,59 @@ public final class CraftRecipeChecks {
 				data.syncPrimaryProjectView();
 			}
 
+			// Perf guard: an idle crafter (nothing craftable) must not scan the recipe list on every tick.
+			box.clearContent();
+			box.setItem(0, new ItemStack(Items.FLINT, 1));
+			box.setChanged();
+			JobState idleState = new JobState();
+			long idleNow = level.getGameTime() + 2000;
+			long scansBefore = de.villagerplus.village.RecipeIndex.scans();
+			for (int tick = 0; tick < 100; tick++) {
+				Ctx idleCtx = new Ctx(level, villager, idleState, villager.getAttachedOrCreate(VillagerPlus.MEMORY), ref, idleNow + tick);
+				if (Craft.run(idleCtx, List.of(legacyStickRecipe))) throw new IllegalStateException("CRAFT RECIPE CHECKS: idle craft must not succeed");
+			}
+			long idleScans = de.villagerplus.village.RecipeIndex.scans() - scansBefore;
+			check(idleScans <= 2, "100 idle Craft.run ticks scan the recipe list at most twice (" + idleScans + ")");
+			checks++;
+			box.setItem(1, new ItemStack(Items.OAK_PLANKS, 2));
+			Ctx wakeCtx = new Ctx(level, villager, idleState, villager.getAttachedOrCreate(VillagerPlus.MEMORY), ref, idleNow + 101);
+			check(Craft.run(wakeCtx, List.of(legacyStickRecipe)) && JobUtil.count(box, stack -> stack.is(Items.STICK)) == 4,
+				"a stock change wakes the idle crafter immediately despite the negative memo");
+			checks++;
+
+			// Perf guard: Workshop.tick with an unsatisfiable plan request stays off the recipe lists between changes.
+			box.clearContent();
+			box.setItem(0, new ItemStack(Items.FLINT, 1));
+			box.setChanged();
+			var perfData = ref.data();
+			var perfSaved = List.copyOf(perfData.buildProjects);
+			try {
+				perfData.buildProjects.clear();
+				perfData.putBuildProject(new de.villagerplus.village.VillageData.BuildProject("granary", at, 0, 0, 0, java.util.Optional.empty(), 1L,
+					java.util.Optional.empty(), 0L, List.of("minecraft:spruce_stairs#12"), de.villagerplus.village.VillageData.ProjectHaul.empty(),
+					java.util.Optional.empty(), java.util.Optional.empty(), java.util.Optional.empty(), false, false));
+				perfData.syncPrimaryProjectView();
+				JobState shopState = new JobState();
+				long shopNow = level.getGameTime() + 3000;
+				scansBefore = de.villagerplus.village.RecipeIndex.scans();
+				for (int tick = 0; tick < 100; tick++) {
+					Ctx shopCtx = new Ctx(level, villager, shopState, villager.getAttachedOrCreate(VillagerPlus.MEMORY), ref, shopNow + tick);
+					Workshop.tick(shopCtx);
+				}
+				long shopScans = de.villagerplus.village.RecipeIndex.scans() - scansBefore;
+				check(shopScans <= 12, "100 idle Workshop.tick calls do not scan the recipe lists per tick (" + shopScans + ")");
+				checks++;
+				box.setItem(1, new ItemStack(Items.SPRUCE_PLANKS, 18));
+				Ctx shopWake = new Ctx(level, villager, shopState, villager.getAttachedOrCreate(VillagerPlus.MEMORY), ref, shopNow + 101);
+				check(Workshop.tick(shopWake) && JobUtil.count(box, stack -> stack.is(Items.SPRUCE_STAIRS)) > 0,
+					"a stock change wakes the idle Workshop immediately despite the negative memo");
+				checks++;
+			} finally {
+				perfData.buildProjects.clear();
+				for (var saved : perfSaved) perfData.putBuildProject(saved);
+				perfData.syncPrimaryProjectView();
+			}
+
 			// With only the stale ingredient present, a normal job recipe must not use a manual fallback.
 			box.clearContent();
 			box.setItem(0, new ItemStack(Items.FLINT, 1));

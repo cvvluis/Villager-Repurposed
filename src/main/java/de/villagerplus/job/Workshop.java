@@ -77,6 +77,18 @@ public final class Workshop {
 			return false;
 		}
 		if (ref.data().wanted.isEmpty()) return SmithSmelting.workPlanStone(c, ref, box);
+		// Whole search below is recipe-heavy and pure in (chest, wanted, plan); skip it while nothing changed.
+		int fingerprint = (JobState.fingerprint(box) * 31 + ref.data().wanted.hashCode()) * 31 + (ref.data().hasPlan() ? 1 : 0);
+		if (c.st().knownNoWork("workshop", fingerprint, c.now())) return false;
+		if (tickSearch(c, ref, chest, box)) {
+			c.st().forgetNoWork("workshop");
+			return true;
+		}
+		c.st().rememberNoWork("workshop", fingerprint, c.now());
+		return false;
+	}
+
+	private static boolean tickSearch(Ctx c, VillageRef ref, BlockPos chest, Container box) {
 		if (fetchFromLager(c, ref, box)) {
 			return true;
 		}

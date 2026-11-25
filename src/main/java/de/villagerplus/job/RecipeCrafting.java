@@ -78,8 +78,8 @@ public final class RecipeCrafting {
 		Map<Item, Integer> reserved, boolean execute) {
 		if (shortage <= 0) return false;
 		Container available = unreserved(stock, reserved);
-		for (RecipeHolder<?> holder : RecipeIndex.crafting()) {
-			if (!(holder.value() instanceof CraftingRecipe recipe)) continue;
+		for (RecipeHolder<CraftingRecipe> holder : RecipeIndex.producing(target)) {
+			CraftingRecipe recipe = holder.value();
 			ItemStack preview = preview(recipe);
 			if (preview == null || !preview.is(target)) continue;
 			long minimum = (long) count(stock, stack -> stack.is(target)) + shortage;
@@ -89,8 +89,8 @@ public final class RecipeCrafting {
 			long batches = ((long) shortage + preview.getCount() - 1) / preview.getCount();
 			for (int ingredientIndex = 0; ingredientIndex < placement.ingredients().size(); ingredientIndex++) {
 				Ingredient ingredient = placement.ingredients().get(ingredientIndex);
-				for (RecipeHolder<?> candidateHolder : RecipeIndex.crafting()) {
-					if (!(candidateHolder.value() instanceof CraftingRecipe candidate)) continue;
+				for (RecipeHolder<CraftingRecipe> candidateHolder : RecipeIndex.producing(ingredient)) {
+					CraftingRecipe candidate = candidateHolder.value();
 					ItemStack intermediate = preview(candidate);
 					if (intermediate == null || intermediate.isEmpty() || intermediate.is(target) || !ingredient.test(intermediate)) continue;
 					int occurrences = 0;
@@ -363,17 +363,16 @@ public final class RecipeCrafting {
 	 * name-based conversions or consuming anything until the actual recipe transaction fits.
 	 */
 	static boolean craftPrerequisite(Ctx c, Container chest, BlockPos workPos, net.minecraft.world.item.Item target) {
-		var recipes = RecipeIndex.crafting();
-		for (RecipeHolder<?> wantedHolder : recipes) {
-			if (!(wantedHolder.value() instanceof CraftingRecipe wantedRecipe)) continue;
+		for (RecipeHolder<CraftingRecipe> wantedHolder : RecipeIndex.producing(target)) {
+			CraftingRecipe wantedRecipe = wantedHolder.value();
 			ItemStack wantedPreview = preview(wantedRecipe);
 			if (wantedPreview == null || !wantedPreview.is(target)) continue;
 			PlacementInfo placement = wantedRecipe.placementInfo();
 			if (placement.isImpossibleToPlace()) continue;
 			BitSet alreadySatisfiable = matchedRecipeSlots(wantedRecipe, chest);
 			for (Ingredient needed : placement.ingredients()) {
-				for (RecipeHolder<?> candidateHolder : recipes) {
-					if (!(candidateHolder.value() instanceof CraftingRecipe candidate)) continue;
+				for (RecipeHolder<CraftingRecipe> candidateHolder : RecipeIndex.producing(needed)) {
+					CraftingRecipe candidate = candidateHolder.value();
 					ItemStack preview = preview(candidate);
 					if (preview != null && (preview.isEmpty() || preview.is(target) || !needed.test(preview))) continue;
 					CraftingInput input = inputFor(candidate, chest, c.level());
@@ -456,10 +455,7 @@ public final class RecipeCrafting {
 
 	/** Vanilla's concrete shaped/shapeless implementations return their fixed result even for an empty input. */
 	static ItemStack preview(CraftingRecipe recipe) {
-		if (recipe.getClass() == ShapedRecipe.class || recipe.getClass() == ShapelessRecipe.class) {
-			return recipe.assemble(CraftingInput.EMPTY);
-		}
-		return null;
+		return RecipeIndex.preview(recipe);
 	}
 
 	/**

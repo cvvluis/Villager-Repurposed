@@ -18,6 +18,42 @@ public class JobState {
 	public long cooldownUntil;
 	/** Pro Teilaufgabe (0 = primaer, 1 = sekundaer): bis dahin wurde nichts zu tun gefunden. */
 	public final long[] idleUntil = new long[2];
+	/**
+	 * Negative memo for recipe-heavy work searches: a search that found nothing for a given input fingerprint is not
+	 * repeated until the fingerprint changes, the recipes reload, or {@link #NO_WORK_TTL} ticks pass.
+	 */
+	private final java.util.HashMap<String, long[]> noWork = new java.util.HashMap<>();
+	public static final long NO_WORK_TTL = 100;
+
+	/** true = the same search already came up empty for this fingerprint recently; skip it. */
+	public boolean knownNoWork(String key, int fingerprint, long now) {
+		long[] memo = noWork.get(key);
+		return memo != null && memo[0] == fingerprint && memo[1] == de.villagerplus.village.RecipeIndex.generation()
+			&& now >= memo[2] - NO_WORK_TTL && now < memo[2];
+	}
+
+	public void rememberNoWork(String key, int fingerprint, long now) {
+		if (noWork.size() > 64) noWork.clear();
+		noWork.put(key, new long[] {fingerprint, de.villagerplus.village.RecipeIndex.generation(), now + NO_WORK_TTL});
+	}
+
+	public void forgetNoWork(String key) {
+		noWork.remove(key);
+	}
+
+	/** Cheap content hash of a container: item, count and components of every non-empty slot. */
+	public static int fingerprint(net.minecraft.world.Container box) {
+		int h = box.getContainerSize();
+		for (int slot = 0; slot < box.getContainerSize(); slot++) {
+			net.minecraft.world.item.ItemStack stack = box.getItem(slot);
+			if (stack.isEmpty()) continue;
+			h = 31 * h + slot;
+			h = 31 * h + stack.getItem().hashCode();
+			h = 31 * h + stack.getCount();
+			h = 31 * h + stack.getComponents().hashCode();
+		}
+		return h;
+	}
 	public BlockPos target;
 	/** Runtime-only target while a farmer walks to a safe wild-grass seed source. */
 	public BlockPos forageTarget;

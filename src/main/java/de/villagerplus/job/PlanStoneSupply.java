@@ -350,7 +350,7 @@ public final class PlanStoneSupply {
 		for (Item target : noSticks ? new Item[] {wooden, stone, Items.STICK}
 				: new Item[] {wooden, stone}) {
 			boolean stickStep = target == Items.STICK;
-			for (var holder : RecipeIndex.crafting()) {
+			for (var holder : RecipeIndex.producing(target)) {
 				CraftingRecipe recipe = holder.value();
 				CraftingInput input = RecipeCrafting.inputFor(recipe, available, level);
 				if (input == null) continue;
@@ -468,7 +468,7 @@ public final class PlanStoneSupply {
 		if (!data.hasPlan() || stock == null || count(stock, Items.STONE_BRICKS) >= brickTarget(data, stock)
 		|| count(stock, Items.STONE) - wanted(data, Items.STONE)
 			- claimedOutput(level, data, Items.STONE) < 4) return false;
-		for (var holder : RecipeIndex.crafting()) {
+		for (var holder : RecipeIndex.producing(Items.STONE_BRICKS)) {
 			CraftingRecipe recipe = holder.value();
 			var input = RecipeCrafting.inputFor(recipe, stock, level);
 			if (input == null || input.size() != 4) continue;
@@ -519,7 +519,7 @@ public final class PlanStoneSupply {
 			SimpleContainer input = new SimpleContainer(4);
 			for (int i = 0; i < 4; i++) input.setItem(i, new ItemStack(Items.STONE));
 			boolean found = false;
-			for (var holder : RecipeIndex.crafting()) {
+			for (var holder : RecipeIndex.producing(Items.STONE_BRICKS)) {
 				CraftingRecipe recipe = holder.value();
 				var grid = RecipeCrafting.inputFor(recipe, input, level);
 				if (grid == null || grid.size() != 4) continue;
