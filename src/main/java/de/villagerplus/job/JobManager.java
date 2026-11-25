@@ -1032,6 +1032,17 @@ public final class JobManager {
 				routeStuck = true;
 			}
 		}
+		// One-way drop (pit, deck, terrace): a resident that chats, eats or idles down there never requests a route, so the failed-route
+		// watch above stays blind. Whatever it is doing, it is brought back once the walk-back model and vanilla navigation both fail.
+		boolean trapped = false;
+		if (!far && !deep && !routeStuck && !expedition) {
+			BlockPos street = arrival != null ? arrival : de.villagerplus.build.Builder.villageReturn(c.level(), ref.bell());
+			if (street != null && TrapGuard.idleTrapped(c, street)) {
+				arrival = street;
+				trapped = true;
+				routeStuck = true;
+			}
+		}
 		if (!far && !deep && !routeStuck) {
 			return false;
 		}
@@ -1040,13 +1051,14 @@ public final class JobManager {
 		net.minecraft.core.BlockPos rescuedFrom = c.v().blockPosition();
 		long deepTicks = deepFor(c.v().getUUID(), c.now());
 		clearDeepWatch(c.v().getUUID());
+		TrapGuard.forget(c.v().getUUID());
 		c.v().getNavigation().stop();
 		c.v().teleportTo(arrival.getX() + 0.5, arrival.getY(), arrival.getZ() + 0.5);
 		c.st().builderRelocations++;
 		c.v().resetFallDistance();
 		c.st().cooldownUntil = c.now() + 40;
 		JobUtil.markRescued(c.v().getUUID(), c.now());
-		LOGGER.info("Villagers: Repurposed: {} war gestrandet und wurde zur Dorfkiste zurueckgeholt (far={}, deep={}, route={}, Expedition={}, Ziel={}, Position={}, Abstand={}, tief seit={} Ticks, Aktivitaet='{}')", c.mem().name, far, deep, routeStuck, expedition, c.st().target == null ? "-" : c.st().target.toShortString(), rescuedFrom.toShortString(), (int) Math.sqrt(distance), deepTicks, c.st().activity);
+		LOGGER.info("Villagers: Repurposed: {} war gestrandet und wurde zur Dorfkiste zurueckgeholt (far={}, deep={}, route={}, Expedition={}, Ziel={}, Position={}, Abstand={}, tief seit={} Ticks, Aktivitaet='{}', Falle={})", c.mem().name, far, deep, routeStuck, expedition, c.st().target == null ? "-" : c.st().target.toShortString(), rescuedFrom.toShortString(), (int) Math.sqrt(distance), deepTicks, c.st().activity, trapped);
 		return true;
 	}
 
@@ -1166,6 +1178,7 @@ public final class JobManager {
 		clearDeepWatches();
 		Routine.clearGatherSearches();
 		JobUtil.clearLongRoutes();
+		TrapGuard.clear();
 	}
 
 	public static void onWorldUnload(ServerLevel level) {

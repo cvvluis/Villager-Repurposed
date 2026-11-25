@@ -32,6 +32,7 @@ public final class DeepStrandChecks {
 		Villager worker = null;
 		int checks = 0;
 		JobUtil.clearLongRoutes();
+		TrapGuard.enabled = false; // these checks test the deep-strand grace on its own
 		JobManager.clearDeepWatches();
 		try {
 			level.getChunk(origin);
@@ -174,6 +175,8 @@ public final class DeepStrandChecks {
 				"a fall long before the deep sighting is no shortcut"); checks++;
 			return checks;
 		} finally {
+			TrapGuard.enabled = true;
+			TrapGuard.clear();
 			JobUtil.clearLongRoutes();
 			JobManager.clearDeepWatches();
 			if (worker != null) worker.discard();
