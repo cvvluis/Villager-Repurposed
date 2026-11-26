@@ -36,6 +36,16 @@ Rescue counts were 14/19/10 versus 36/18/20 on main. The small, timing-sensitive
 
 Next, isolate recipe-input delivery to the paid site workshop as a separate change. Verify that a split batch can arrive without consuming another project's priority stock. Keep measuring completion and the longest working-window gap in fresh worlds before calling first-civic construction reliable.
 
+### Missing workbenches in natural builds
+
+The first stair-input hauling experiment passed `buildhaul` (48) with a paid site workbench present. It finished no civic building in three fresh seed 4242 runs. The final granary/storage cursors were 415/440 and 171/266, 379/437 and 158/266, then 353/437 and 148/266. Mine sections were 34/21/19, unreachable routes 71/56/51, rescues 14/22/17, and mean sprint ms/tick 4.68/4.22/3.01. The experiment stayed isolated.
+
+Read-only inspection found zero recorded workbenches on all 11 active granary/storage sites in those three saves and the three original reference saves. Each of those 11 sites was flagged prepared. The scaffold waiver sets the entire site prepared before `ConstructionSite.prepare` can place a table. Both the existing site workshop and the stair-input experiment require a registered, loaded table. Fix the waiver and test an active saved project before attributing the material stall to haul selection.
+
+On the copied ref3 control, another 4 × 2,400 sprint ticks moved the granary from 282 to 284 and the storage from 141 to 213. Granary still requested 20 cobblestone stairs, with 28 cobblestone in its site stock. This is one copied-world observation with the workbench still absent.
+
+Matched ref3 copies with the published rescue code as the common base advanced from granary/storage 282/141 to 282/220 on the control and 326/248 on the workbench treatment after four sprints. The treatment persisted one actual `minecraft:crafting_table` at each site. The control still had no benches. Neither copy completed a civic building. This establishes the saved-world retrofit in the treatment (`n=1` per variant). Fresh-world cadence and reliability are separate measurements.
+
 ### D05 caravan journey reproduction
 
 - `caravanjourney1` timed out after 3,500 ticks on main (`1613fbf`, fresh allowlisted fixture, seed 8675309). Road cursor 83, zero lane samples, trader waiting for two idle donkeys outside the three-block resume radius.
