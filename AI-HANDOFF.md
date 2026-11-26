@@ -56,9 +56,9 @@ The clean Java 25 build, jar reference check and 26 `constructionsite` checks pa
 | --- | ---: | --- | --- | --- | ---: | --- | ---: |
 | bench1 | 72,888 | 438/438 at tick 54,476 | 220/266 | 800 / 3,000 / 3,200 | 24 | 42 / 16 | 5.03 |
 | bench2 | 72,758 | 441/441 at tick 56,177 | 204/266 | 700 / 6,800 / 1,200 | 25 | 60 / 17 | 4.36 |
-| bench3 | 72,862 | 319/437 | 160/266 | 1,150 / 6,300 / 8,700 | 18 | 48 / 11 | 4.35 |
+| bench3 | 72,862 | 319/437 | 160/266 | 1,150 / 6,300 / 5,100 | 18 | 48 / 11 | 4.35 |
 
-Two of three built a granary by tick 72,000. The prior rescue-only sample completed one storage building by that horizon and one by the end of the sprints. The stalled third run still had both placed benches, four spruce stairs in granary transit, and open demands for stairs/stone and storage glass. Its longest mine gap was 16,237 estimated working ticks. The bench fix removes one cause of missing on-site crafting. Long waits remain and the same-seed sample does not establish reliable natural completion. A guarded stair-input comparison is still separate.
+Build gaps in the table cover granary and storage cursors, including active repairs. Two of three built a granary by tick 72,000. The prior rescue-only sample completed one storage building by that horizon and one by the end of the sprints. The stalled third run still had both placed benches, four spruce stairs in granary transit, and open demands for stairs/stone and storage glass. Its farm's open tail was 8,700 working ticks, and its longest mine gap was 16,237 estimated working ticks. The bench fix removes one cause of missing on-site crafting. Long waits remain and the same-seed sample does not establish reliable natural completion. A guarded stair-input comparison is still separate.
 
 ### D05 caravan journey reproduction
 
