@@ -8,6 +8,12 @@ The 0.11.4 playtest is published from `81cdc04` as a prerelease. The downloaded 
 - A fresh seed 4242 run with 100 forced chunks exceeded the 30-second RCON timeout during initial chunk generation, before any sprint. The driver now allows 120 seconds by default via `VP_RCON_TIMEOUT`. A local delayed-response test verified the configurable timeout and a fresh seed 4242 restart reached tick sprints. Aborted startup attempts are excluded from natural-run counts. Existing worlds were retained.
 - Strict audit stays at 17 implemented / 30 partial / 15 unverified. The natural-build check requires three fresh runs on the same revision and separate reporting of civic completion, mine cadence and stand rescues. No client or full-modpack verification.
 
+### Post-release road and mine checks
+
+- The J06 road fixture seeds an active, validated road-building task. The normal quarry worker supplies an eight-gravel batch with source blocks and flint accounted for, and the normal road builder withdraws and places paid gravel from public stock. The integrated `roadwork` group passed 47 checks after a clean Java 25 build, including the 652-class jar reference check. Road discovery, railway consumption and natural end-to-end cadence remain open.
+- An unchanged continuation of a copied stalled 0.11.4 seed 4242 world (four sprints of 2,400 ticks, n=1) produced nine further mine sections and advanced the granary from 319 to 409 of 437. Storage remained at 160/266 with four full glass blocks wanted. The mine could resume in this copy, while its earlier long gap remains unexplained.
+- A separate fresh mine diagnostic (ten sprints of 2,400 ticks, n=1) produced ten sections by tick 6,748. Working-window samples included 48 stone-help samples with a nonnegative lease and two primary-job samples at lease zero. No sampled primary job interrupted a positive lease. The instrumentation was removed, and the sample does not establish the cause of the longer stalls.
+
 ### Natural reference at 1613fbf
 
 Three fresh CTOV taiga worlds used seed 4242, the same 100 forced chunks and 30 sprints of 2,400 ticks. There was no player, fixture setup or item grant. The final game tick includes ordinary ticks between sprints. Final unfinished cursors and stock came from read-only inspection of the saved worlds.

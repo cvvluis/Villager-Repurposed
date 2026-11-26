@@ -2,6 +2,10 @@
 
 Versions below target Fabric, Minecraft 26.2 and Java 25. The artifact is named `villagers-repurposed-<version>.jar`.
 
+## Unreleased
+
+- **Dev-server coverage for road gravel supply.** An active road task triggers an eight-gravel quarry batch, and the road builder withdraws and places paid gravel from village stock. The check tracks the consumed source blocks and flint.
+
 ## 0.11.4 (playtest)
 
 - **Construction sites keep their workbench when scaffolding is unavailable.** Villagers still pay for and place the table, and can retrofit an active site without restarting the plan. In three fresh seed 4242 dev-server runs, two granaries completed before tick 57,000. The third stalled, so reliable natural completion remains open.
