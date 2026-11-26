@@ -230,9 +230,32 @@ public final class CaravanCampChecks {
     "departure removes every camp block and the armed guard and empties the persisted manifest");
    check(Caravan.buildCampForChecks(level,state,bellPos)&&state.campBuilt&&everyCellPresent(level,layout),
     "the same pad can host the next visit's camp after cleanup");
+
+   var bell=(net.minecraft.world.level.block.entity.BellBlockEntity)level.getBlockEntity(bellPos);
+   long now=level.getGameTime();
+   Caravan.queueOrphanCampCleanup(level,bell);
+   Caravan.processPendingCampCleanup(level,bellPos,now);
+   check(everyCellPresent(level,layout)&&Caravan.persistedCampBlocksForChecks(level,bellPos).size()==layout.size(),
+    "a loaded camp is only queued and waits for the trader's entity to load");
+   Caravan.registerActiveStateForChecks(state);
+   Caravan.processPendingCampCleanup(level,bellPos,now+1000);
+   check(everyCellPresent(level,layout)&&Caravan.persistedCampBlocksForChecks(level,bellPos).size()==layout.size(),
+    "an adopted caravan retains the camp and its persisted cleanup journal");
+   Caravan.removeActiveStateForChecks(owner);
+   Caravan.processPendingCampCleanup(level,bellPos,now+1000);
+   check(layout.keySet().stream().allMatch(pos->level.getBlockState(pos).isAir())
+    &&Caravan.persistedCampBlocksForChecks(level,bellPos).isEmpty(),
+    "deferred cleanup removes a real orphan camp and clears its journal on a later tick");
    Caravan.clearCampForDepartureForChecks(level,state);
-   return 7;
+   check(Caravan.buildCampForChecks(level,state,bellPos),"the orphan cleanup leaves the pad available again");
+   Caravan.queueOrphanCampCleanup(level,bell);
+   level.setBlock(bellPos,Blocks.AIR.defaultBlockState(),3);
+   Caravan.processPendingCampCleanup(level,bellPos,now+1000);
+   check(layout.keySet().stream().allMatch(pos->level.getBlockState(pos).isAir()),
+    "a dismantled bell in a loaded chunk does not strand its queued camp blocks");
+   return 12;
   } finally {
+   Caravan.removeActiveStateForChecks(owner);
    CaravanCampSecurity.removeArmedGuard(level,owner);
    for(BlockPos pos:before.keySet())level.removeBlockEntity(pos);
    for(BlockPos pos:before.keySet())level.setBlock(pos,Blocks.AIR.defaultBlockState(),3);

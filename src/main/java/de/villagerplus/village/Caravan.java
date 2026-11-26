@@ -174,7 +174,9 @@ public final class Caravan {
 	private static final Map<UUID, PendingCaravanAdoption> PENDING_CARAVAN_ADOPTIONS = new HashMap<>();
 	private static final Set<UUID> UNLOADED_CARAVAN_TRADERS = new HashSet<>();
 	/** Bell-keyed camp blocks awaiting cleanup because their chunks are currently unloaded. */
-	private static final Map<net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level>, Map<Long, List<CaravanCampData.CampBlock>>> PENDING_CAMP_CLEANUP = new HashMap<>();
+	private record PendingCampCleanup(List<CaravanCampData.CampBlock> blocks, long notBefore) { }
+	private static final Map<net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level>, Map<Long, PendingCampCleanup>> PENDING_CAMP_CLEANUP = new HashMap<>();
+	private static final long CAMP_LOAD_ADOPTION_GRACE_TICKS = 200L;
 	/** Disposable render-only cargo markers; donkey inventory remains the sole source of truth. */
 	private static final Map<UUID, UUID> CARGO_VISUALS = new HashMap<>();
 	private static final String PORTER_VISUAL_TAG = "vp_caravan_porter_visual";
@@ -228,7 +230,6 @@ public final class Caravan {
 			for (var be : chunk.getBlockEntities().values()) {
 				if (be instanceof net.minecraft.world.level.block.entity.BellBlockEntity bell) queueOrphanCampCleanup(world, bell);
 			}
-			processPendingCampCleanups(world);
 		});
 
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
@@ -803,7 +804,10 @@ public final class Caravan {
 	}
 
 	private static boolean hasPendingAdoptionFor(ServerLevel level, Entity member) {
-		String village = taggedVillage(member);
+		return hasPendingAdoptionFor(level, taggedVillage(member));
+	}
+
+	private static boolean hasPendingAdoptionFor(ServerLevel level, String village) {
 		return PENDING_CARAVAN_ADOPTIONS.values().stream().anyMatch(pending -> pending.dimension().equals(level.dimension())
 			&& (pending.villageTag().isBlank() || pending.villageTag().equals(village)));
 	}
@@ -874,42 +878,42 @@ public final class Caravan {
 	}
 
 	private static void queuePendingCampCleanup(ServerLevel level, BlockPos bell, List<CaravanCampData.CampBlock> records) {
-		Map<Long, List<CaravanCampData.CampBlock>> byBell = PENDING_CAMP_CLEANUP.computeIfAbsent(level.dimension(), key -> new HashMap<>());
+		Map<Long, PendingCampCleanup> byBell = PENDING_CAMP_CLEANUP.computeIfAbsent(level.dimension(), key -> new HashMap<>());
 		if (records.isEmpty()) byBell.remove(bell.asLong());
-		else byBell.put(bell.asLong(), List.copyOf(records));
+		else byBell.put(bell.asLong(), new PendingCampCleanup(List.copyOf(records), level.getGameTime()));
 		if (byBell.isEmpty()) PENDING_CAMP_CLEANUP.remove(level.dimension());
 	}
 
-	private static void queueOrphanCampCleanup(ServerLevel level, net.minecraft.world.level.block.entity.BellBlockEntity bell) {
+	static void queueOrphanCampCleanup(ServerLevel level, net.minecraft.world.level.block.entity.BellBlockEntity bell) {
 		List<CaravanCampData.CampBlock> records = attachedCampBlocks(bell);
 		if (!records.isEmpty() && !activeAt(level, bell.getBlockPos())) {
-			queuePendingCampCleanup(level, bell.getBlockPos(), records);
-			processPendingCampCleanup(level, bell.getBlockPos(), bell);
+			// A chunk load may still be inside its FULL promotion. Marking the bell dirty
+			// here would synchronously request that same chunk and block the server.
+			PENDING_CAMP_CLEANUP.computeIfAbsent(level.dimension(), key -> new HashMap<>())
+				.putIfAbsent(bell.getBlockPos().asLong(),
+					new PendingCampCleanup(List.copyOf(records), level.getGameTime() + CAMP_LOAD_ADOPTION_GRACE_TICKS));
 		}
 	}
 
 	private static void processPendingCampCleanups(ServerLevel level) {
-		Map<Long, List<CaravanCampData.CampBlock>> byBell = PENDING_CAMP_CLEANUP.get(level.dimension());
-		if (byBell == null || byBell.isEmpty()) return;
-		for (var entry : Map.copyOf(byBell).entrySet()) {
-			BlockPos bellPos = BlockPos.of(entry.getKey());
-			if (activeAt(level, bellPos)) continue;
-			var bell = loadedBell(level, bellPos);
-			processPendingCampCleanup(level, bellPos, bell);
+		Map<Long, PendingCampCleanup> byBell = PENDING_CAMP_CLEANUP.get(level.dimension());
+		if (byBell == null) return;
+		for (long bell : List.copyOf(byBell.keySet())) {
+			processPendingCampCleanup(level, BlockPos.of(bell), level.getGameTime());
 		}
 	}
 
-	private static void processPendingCampCleanup(ServerLevel level, BlockPos bellPos, net.minecraft.world.level.block.entity.BellBlockEntity bell) {
-		Map<Long, List<CaravanCampData.CampBlock>> byBell = PENDING_CAMP_CLEANUP.get(level.dimension());
-		if (byBell == null) return;
-		List<CaravanCampData.CampBlock> records = byBell.get(bellPos.asLong());
-		if (records == null || activeAt(level, bellPos)) return;
-		if (bell != null) {
-			List<CaravanCampData.CampBlock> saved = attachedCampBlocks(bell);
-			if (!saved.isEmpty()) records = saved;
-		}
+	static void processPendingCampCleanup(ServerLevel level, BlockPos bellPos, long now) {
+		Map<Long, PendingCampCleanup> byBell = PENDING_CAMP_CLEANUP.get(level.dimension());
+		PendingCampCleanup pending = byBell == null ? null : byBell.get(bellPos.asLong());
+		if (pending == null || now < pending.notBefore() || activeAt(level, bellPos)
+			|| hasPendingAdoptionFor(level, villageTag(bellPos))) return;
+		var bell = loadedBell(level, bellPos);
+		if (bell == null && !de.villagerplus.world.LoadedColumns.ready(level, bellPos)) return;
+		List<CaravanCampData.CampBlock> saved = bell == null ? List.of() : attachedCampBlocks(bell);
+		List<CaravanCampData.CampBlock> records = saved.isEmpty() ? pending.blocks() : saved;
 		List<CaravanCampData.CampBlock> remaining = clearLoadedCampBlocks(level, records);
-		if (bell != null) saveCampBlocks(bell, remaining);
+		if (bell != null && !saved.equals(remaining)) saveCampBlocks(bell, remaining);
 		queuePendingCampCleanup(level, bellPos, remaining);
 	}
 
@@ -2524,8 +2528,8 @@ public final class Caravan {
 
 	private static void tick(ServerLevel level) {
 		if (level.getGameTime() % 20L == 0L) {
-			processPendingCampCleanups(level);
 			processPendingCaravanAdoptions(level);
+			processPendingCampCleanups(level);
 			processPendingCaravanOrphans(level);
 			boolean startupScanPending = ARMED_GUARD_STARTUP_RECONCILE.remove(level.dimension());
 			if (shouldReconcileArmedGuardVisuals(level.getGameTime(), hasActiveGuardCamp(level), startupScanPending)) {
