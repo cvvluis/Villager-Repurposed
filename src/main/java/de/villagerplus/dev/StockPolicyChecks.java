@@ -1,5 +1,6 @@
 package de.villagerplus.dev;
 
+import com.mojang.authlib.GameProfile;
 import com.mojang.serialization.JsonOps;
 import de.villagerplus.VillagerPlus;
 import de.villagerplus.job.Ctx;
@@ -13,10 +14,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -282,7 +287,38 @@ public final class StockPolicyChecks {
 			check(passed, hopperFoodRemainder.getCount() == 1 && total(communal, Items.BREAD) == 0
 				&& playerSlotRejectsFood && containerPredicateAcceptsMaterial && playerSlotAcceptsMaterial
 				&& shiftClickMergeRefused && privateChestUntouched,
-				"vanilla hopper, empty-slot and shift-click merge insertions refuse food at the registered public materials chest while a private chest remains unaffected");
+				"automation and unscoped slot writes refuse food at registered public materials chests while private chests remain unaffected");
+			ServerPlayer contributor = new ServerPlayer(level.getServer(), level,
+				new GameProfile(UUID.randomUUID(), "VillageStockFixture"), ClientInformation.createDefault());
+			var communalMenu = ChestMenu.threeRows(1, contributor.getInventory(), communal);
+			try {
+				communalMenu.setCarried(new ItemStack(Items.BREAD, 4));
+				communalMenu.clicked(mergeSlotIndex, 0, ContainerInput.PICKUP, contributor);
+				check(passed, communalMenu.getCarried().isEmpty() && total(communal, Items.BREAD) == 4,
+					"player chest click places food in the registered village center and consumes exactly the carried stack");
+				contributor.getInventory().setItem(0, new ItemStack(Items.BREAD, 3));
+				int playerSlot = communalMenu.findSlot(contributor.getInventory(), 0).orElseThrow();
+				communalMenu.clicked(playerSlot, 0, ContainerInput.QUICK_MOVE, contributor);
+				check(passed, contributor.getInventory().getItem(0).isEmpty() && total(communal, Items.BREAD) == 7
+					&& communal.getItem(mergeSlotIndex).getCount() == 7,
+					"player shift-click merges food into center stock without losing or duplicating items");
+				ItemStack afterClick = HopperBlockEntity.addItem(null, communal, new ItemStack(Items.BREAD, 2), null);
+				communal.setItem(0, new ItemStack(Items.BREAD));
+				check(passed, afterClick.getCount() == 2 && total(communal, Items.BREAD) == 7,
+					"the player intake allowance ends after the click and cannot permit a later hopper transfer or direct write");
+				communalMenu.setCarried(new ItemStack(Items.EMERALD, 3));
+				communalMenu.clicked(mergeSlotIndex - 1, 0, ContainerInput.PICKUP, contributor);
+				ItemStack emeraldHopperRemainder = HopperBlockEntity.addItem(null, communal, new ItemStack(Items.EMERALD, 2), null);
+				communal.setItem(mergeSlotIndex - 2, new ItemStack(Items.EMERALD, 4));
+				check(passed, StockPolicy.category(Items.EMERALD) == StockPolicy.Category.OTHER
+					&& communalMenu.getCarried().isEmpty() && total(communal, Items.EMERALD) == 3
+					&& emeraldHopperRemainder.getCount() == 2,
+					"a real player chest click accepts an OTHER item, while later hopper and direct writes of that item are refused");
+			} finally {
+				communalMenu.setCarried(ItemStack.EMPTY);
+				communalMenu.removed(contributor);
+				communal.removeItemNoUpdate(mergeSlotIndex);
+			}
 			unregisteredChestTouched = true;
 			level.setBlock(privateDepotPos.below(), Blocks.STONE.defaultBlockState(), 3);
 			level.setBlock(privateDepotPos, Blocks.CHEST.defaultBlockState(), 3);
@@ -503,12 +539,37 @@ public final class StockPolicyChecks {
 				&& !mateHalf.canPlaceItem(0, directFood)
 				&& !new net.minecraft.world.inventory.Slot(mateHalf, 0, 0, 0).mayPlace(directFood)
 				&& rightHalfRemainder.getCount() == directFood.getCount();
+			check(passed, rightRegisteredHalfFiltered,
+				"a double material chest registered by its right half filters hoppers and unscoped slots on both halves");
+			var pairedMenu = ChestMenu.sixRows(2, contributor.getInventory(), mateHalf);
+			try {
+				pairedMenu.setCarried(new ItemStack(Items.BREAD));
+				pairedMenu.clicked(0, 0, ContainerInput.PICKUP, contributor);
+				pairedMenu.setCarried(new ItemStack(Items.IRON_PICKAXE));
+				pairedMenu.clicked(27, 0, ContainerInput.PICKUP, contributor);
+				check(passed, pairedMenu.getCarried().isEmpty() && mateHalf.getItem(0).is(Items.BREAD)
+					&& mateHalf.getItem(27).is(Items.IRON_PICKAXE),
+					"manual intake works on both halves of a double chest even when the right half is the registered center");
+				mateHalf.removeItemNoUpdate(0);
+				mateHalf.removeItemNoUpdate(27);
+				ref.data().chest = beforePairChest;
+				ref.data().extra.lagerChests.add(privatePairMatePos);
+				pairedMenu.setCarried(new ItemStack(Items.BREAD));
+				pairedMenu.clicked(0, 0, ContainerInput.PICKUP, contributor);
+				contributor.getInventory().setItem(0, new ItemStack(Items.IRON_PICKAXE));
+				pairedMenu.clicked(pairedMenu.findSlot(contributor.getInventory(), 0).orElseThrow(), 0, ContainerInput.QUICK_MOVE, contributor);
+				check(passed, pairedMenu.getCarried().is(Items.BREAD)
+					&& contributor.getInventory().getItem(0).is(Items.IRON_PICKAXE)
+					&& total(mateHalf, Items.BREAD) == 0 && total(mateHalf, Items.IRON_PICKAXE) == 0,
+					"the same double chest keeps its material-only click and shift-click filters when registered as warehouse overflow");
+			} finally {
+				pairedMenu.setCarried(ItemStack.EMPTY);
+				pairedMenu.removed(contributor);
+			}
 			ref.data().chest = beforePairChest;
 			ref.data().extra.lager = beforePairLager;
 			ref.data().extra.lagerMore.clear(); ref.data().extra.lagerMore.addAll(beforePairLagerMore);
 			ref.data().extra.lagerChests.clear(); ref.data().extra.lagerChests.addAll(beforePairLagerChests);
-			check(passed, rightRegisteredHalfFiltered,
-				"a double material chest registered by its right half rejects hopper and player-slot food on both halves");
 			pairedPrivateBe.setAttached(VillagerPlus.OWNER, UUID.randomUUID());
 			ref.data().extra.lager = java.util.Optional.empty();
 			ref.data().extra.lagerMore.clear();

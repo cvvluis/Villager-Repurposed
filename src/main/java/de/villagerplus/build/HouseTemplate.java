@@ -697,6 +697,12 @@ public final class HouseTemplate {
 	/** {@code keepBeds = false}: Betten werden nicht mitgebaut (Lager, Schule - sonst wuerden dort neue Betten/Heimstaetten entstehen). */
 	public List<Step> steps(BlockPos anchor, Direction target, int costPercent, boolean mirrored,
 		java.util.function.UnaryOperator<Block> subst, boolean keepBeds) {
+		return steps(anchor, target, costPercent, mirrored, (pos, block) -> subst.apply(block), keepBeds);
+	}
+
+	/** Resolve material roles at original template positions, before rotating or mirroring the block state. */
+	List<Step> steps(BlockPos anchor, Direction target, int costPercent, boolean mirrored,
+		java.util.function.BiFunction<BlockPos, Block, Block> subst, boolean keepBeds) {
 		Rotation rot = rotation(target, mirrored);
 		List<TBlock> sorted = new ArrayList<>(blocks);
 		sorted.sort(Comparator.<TBlock>comparingInt(b -> mirrorPos(b.rel(), mirrored).rotate(rot).getY())
@@ -731,7 +737,7 @@ public final class HouseTemplate {
 						b -> b.defaultBlockState().setValue(BedBlock.FACING, f).setValue(BedBlock.PART, BedPart.HEAD)));
 				}
 			} else if (block instanceof DoorBlock) {
-				Block resolved = subst.apply(block);
+				Block resolved = subst.apply(tb.rel(), block);
 				if (!(resolved instanceof DoorBlock)) {
 					continue;
 				}
@@ -744,7 +750,7 @@ public final class HouseTemplate {
 					steps.add(Step.linked(pos, pos.below(), b -> copyDoor(resolved, resolvedState)));
 				}
 			} else {
-				Block sub = subst.apply(block);
+				Block sub = subst.apply(tb.rel(), block);
 				if (sub == null) {
 					continue;
 				}

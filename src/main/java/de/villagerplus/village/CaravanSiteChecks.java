@@ -512,6 +512,26 @@ public final class CaravanSiteChecks {
      &&merchant.infoLines().stream().anyMatch(line->line.startsWith("Spezialität|"))
      &&merchant.infoLines().stream().noneMatch(line->line.startsWith("Angebot|")),
      "independent merchant exposes its profile but withholds offers until real cargo backs them");checks++;
+   merchant.setTradeProfile(0, 0, "Fixture");
+   Caravan.preparePlayerTrade(level, merchant);
+   check(merchant.getOffers().isEmpty() && !merchant.backedTradeOffersInitialized(),
+    "interacting with an empty caravan leaves it available to retry when stock arrives");checks++;
+   var cargoDonkey=registeredDonkeys.get(0);
+   Caravan.prepareDonkeyCargo(cargoDonkey, 2, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.COAL, 7));
+   Caravan.preparePlayerTrade(level, merchant);
+   check(merchant.getOffers().isEmpty() && !merchant.backedTradeOffersInitialized()
+    && cargoDonkey.getSlot(502).get().getCount()==7,
+    "an incomplete cargo batch makes no offer and remains on the donkey");checks++;
+   Caravan.prepareDonkeyCargo(cargoDonkey, 2, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.COAL, 8));
+   Caravan.preparePlayerTrade(level, merchant);
+   check(merchant.getOffers().size()==1 && merchant.getOffers().get(0).getResult().is(net.minecraft.world.item.Items.COAL)
+    && merchant.getOffers().get(0).getResult().getCount()==8 && cargoDonkey.getSlot(502).get().isEmpty()
+    && merchant.backedTradeOffersInitialized() && merchant.backedOffersCovered(),
+    "an active merchant reserves real cargo on interaction before reaching the depot");checks++;
+   Caravan.preparePlayerTrade(level, merchant);
+   check(merchant.getOffers().size()==1 && merchant.backedTradeStockSnapshot().stream()
+    .mapToInt(net.minecraft.world.item.ItemStack::getCount).sum()==8,
+    "repeated interactions cannot reserve or create the same goods twice");checks++;
    var tradeFixture=de.villagerplus.entity.ModEntities.CARAVAN_TRADER.create(level,EntitySpawnReason.COMMAND);
    if(tradeFixture==null)throw new IllegalStateException("Caravan site: could not create merchant stock fixture");
    try {

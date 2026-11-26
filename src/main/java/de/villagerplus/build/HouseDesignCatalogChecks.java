@@ -13,10 +13,12 @@ import net.minecraft.tags.ItemTags;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.RotatedPillarBlock;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.TrapDoorBlock;
+import net.minecraft.world.level.block.state.properties.BedPart;
 import net.minecraft.world.level.block.state.BlockState;
 
 /** Pure plan-level coverage for the deterministic residential design catalog. */
@@ -72,6 +74,11 @@ public final class HouseDesignCatalogChecks {
 			check(HouseDesignCatalog.usesCatalog(variant) && (encodedSeed >>> 28) == 0L
 				&& HouseDesignCatalog.designForPlanVariant(variant).equals(HouseDesignCatalog.design(tier, seed)),
 				"versioned saved plan variants reconstruct the same catalog design"); checks++;
+			int previousVersionVariant = (int) (encodedSeed << 2) | 1;
+			long previousVersionSeed = encodedSeed & ((1L << 26) - 1L);
+			check(HouseDesignCatalog.designForPlanVariant(previousVersionVariant)
+				.equals(HouseDesignCatalog.presetFor(tier, previousVersionSeed).design(previousVersionSeed)),
+				"existing catalog plans retain their saved one/two-bed layout"); checks++;
 			int catalogOneVariant = (int) (Architect.withSizeTier(seed, tier) << 2) | 1;
 			Architect.Design oldCatalogDesign = HouseDesignCatalog.designForPlanVariant(catalogOneVariant);
 			check(HouseDesignCatalog.usesCatalog(catalogOneVariant) && oldCatalogDesign.wing() == 0
@@ -134,16 +141,19 @@ public final class HouseDesignCatalogChecks {
 		Set<Integer> multiStoreyWallHeights = new HashSet<>();
 		Set<Item> paletteItems = paletteItems(palette);
 		for (HouseDesignCatalog.Preset preset : HouseDesignCatalog.presets()) {
-			Architect.Design design = preset.design(seed);
-			if (preset.tier() == Architect.SizeTier.COMPACT) compactWallHeights.add(design.wallH());
-			if (preset.tier() == Architect.SizeTier.STANDARD) standardWallHeights.add(design.wallH());
-			if (preset.tier() == Architect.SizeTier.MULTI_STOREY) multiStoreyWallHeights.add(design.wallH());
+			Architect.Design legacyDesign = preset.design(seed);
 			String expectedFootprint = expectedFootprints.get(preset.id());
 			Integer expectedBedCount = expectedBeds.get(preset.id());
 			check(expectedFootprint != null && expectedBedCount != null
-				&& (design.hw() + "x" + design.hd()).equals(expectedFootprint)
-				&& design.beds() == expectedBedCount,
-				preset.id() + " preserves its saved footprint and configured residential bed layout"); checks++;
+				&& (legacyDesign.hw() + "x" + legacyDesign.hd()).equals(expectedFootprint)
+				&& legacyDesign.beds() == expectedBedCount,
+				preset.id() + " preserves the geometry reconstructed for existing saved plans"); checks++;
+			Architect.Design design = preset.twoResidentDesign(seed);
+			check(design.beds() == 2 && design.hw() >= 3 && design.hd() >= 3,
+				preset.id() + " gives every new two-resident home two beds and a clear 5 by 5 interior floor"); checks++;
+			if (preset.tier() == Architect.SizeTier.COMPACT) compactWallHeights.add(design.wallH());
+			if (preset.tier() == Architect.SizeTier.STANDARD) standardWallHeights.add(design.wallH());
+			if (preset.tier() == Architect.SizeTier.MULTI_STOREY) multiStoreyWallHeights.add(design.wallH());
 			Set<Integer> entranceOffsets = new HashSet<>();
 			for (long entranceSeed = 0; entranceSeed < 16; entranceSeed++) {
 				entranceOffsets.add(preset.design(entranceSeed).doorOffset());
@@ -234,6 +244,16 @@ public final class HouseDesignCatalogChecks {
 				preset.id() + " charges one unit of local palette material or one real bed per paid step"); checks++;
 			check(bedFootCount == design.beds(),
 				preset.id() + " keeps exactly its configured, paid bed count"); checks++;
+			Set<BlockPos> bedFeet = steps.stream().filter(step -> step.tag() != null && step.tag().equals(ItemTags.BEDS))
+				.map(Step::pos).collect(java.util.stream.Collectors.toSet());
+			long validBedHeads = steps.stream().filter(step -> step.linkedTo() != null && bedFeet.contains(step.linkedTo()))
+				.filter(step -> {
+					BlockState state = step.make().apply(Blocks.BED.white());
+					return state.is(Blocks.BED.white()) && state.getValue(BedBlock.PART) == BedPart.HEAD
+						&& state.getValue(BedBlock.FACING) == Direction.NORTH;
+				}).count();
+			check(bedFeet.size() == 2 && validBedHeads == 2,
+				preset.id() + " places two complete, correctly oriented bed POI pairs"); checks++;
 			check(paidDoor && windowCount >= 2,
 				preset.id() + " has a paid wooden door and multiple palette windows"); checks++;
 			boolean tierWindowAccent = preset.tier() == Architect.SizeTier.COMPACT

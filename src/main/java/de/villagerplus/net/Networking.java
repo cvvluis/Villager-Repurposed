@@ -197,7 +197,7 @@ public final class Networking {
 				: "Tafel konnte hier nicht platziert werden.";
 			ServerPlayNetworking.send(player, new RelocateBoard.Result(payload.board(), payload.requestId(), ok, message));
 			if (ok) {
-				de.villagerplus.block.DorftafelBlock.open(level, player, payload.board());
+				ref.data().extra.board.ifPresent(board -> de.villagerplus.block.DorftafelBlock.open(level, player, board));
 			}
 		});
 		ServerPlayNetworking.registerGlobalReceiver(BoardRequest.TYPE, (payload, context) -> {

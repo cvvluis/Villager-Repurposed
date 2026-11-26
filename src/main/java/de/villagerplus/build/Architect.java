@@ -617,7 +617,8 @@ public final class Architect {
 		}
 
 		if (roleSchool) schoolClassroom(m, d, p, c, dir);
-		else put(m, Step.free(at(c, dir, hw - 1, -hd + 1, 0), Blocks.TORCH.defaultBlockState()));
+		// In two-bed plans this cell is already the second head. Retaining that step keeps the saved cursor order.
+		else if (d.beds() < 2) put(m, Step.free(at(c, dir, hw - 1, -hd + 1, 0), Blocks.TORCH.defaultBlockState()));
 
 		upperStorey(m, d, p, c, dir);
 

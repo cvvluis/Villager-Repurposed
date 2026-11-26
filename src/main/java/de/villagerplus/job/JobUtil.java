@@ -96,6 +96,11 @@ public final class JobUtil {
 		LONG_ROUTE_DIAGNOSTICS.remove(villager.getUUID());
 	}
 
+	static boolean failedLongRoute(Villager villager, BlockPos goal, long now) {
+		LongRouteAttempt attempt = LONG_ROUTE_ATTEMPTS.get(villager.getUUID());
+		return attempt != null && attempt.goal().equals(goal) && attempt.waypoint() == null && now < attempt.retryAt();
+	}
+
 	static void clearLongRoutes() {
 		LONG_ROUTE_ATTEMPTS.clear();
 		LONG_ROUTE_DIAGNOSTICS.clear();
@@ -525,19 +530,24 @@ public final class JobUtil {
 			return false;
 		}
 		if (route.getNodeCount() > STRAND_MAX_ROUTE_NODES) clearRouteFailures(workerId);
-		BlockPos waypoint=pos;
-		for(int i=0;i<route.getNodeCount();i++) {
-			BlockPos node=route.getNodePos(i);
-			if(c.v().position().distanceToSqr(Vec3.atBottomCenterOf(node))>100.0) break;
-			waypoint=node;
-		}
-		LONG_ROUTE_ATTEMPTS.put(workerId, new LongRouteAttempt(pos.immutable(), waypoint.immutable(), c.now() + LONG_ROUTE_CACHE_TICKS));
+		BlockPos waypoint = cacheReachableRoute(c, pos, route);
 		var walk=c.v().getBrain().getMemory(MemoryModuleType.WALK_TARGET);
 		if(walk.isPresent()) c.v().getBrain().setMemory(MemoryModuleType.WALK_TARGET,
 			new WalkTarget(waypoint,walk.get().getSpeedModifier(),1));
 		rememberLongRouteDiagnostic(c.v(), "reachable from=" + c.v().blockPosition().toShortString() + " goal=" + pos.toShortString()
 			+ " waypoint=" + waypoint.toShortString() + " nodes=" + route.getNodeCount());
 		return false;
+	}
+
+	static BlockPos cacheReachableRoute(Ctx c, BlockPos pos, net.minecraft.world.level.pathfinder.Path route) {
+		BlockPos waypoint=pos;
+		for(int i=0;i<route.getNodeCount();i++) {
+			BlockPos node=route.getNodePos(i);
+			if(c.v().position().distanceToSqr(Vec3.atBottomCenterOf(node))>100.0) break;
+			waypoint=node;
+		}
+		LONG_ROUTE_ATTEMPTS.put(c.v().getUUID(), new LongRouteAttempt(pos.immutable(), waypoint.immutable(), c.now() + LONG_ROUTE_CACHE_TICKS));
+		return waypoint;
 	}
 
 	public static void swing(Villager v) {
@@ -594,14 +604,12 @@ public final class JobUtil {
 			: de.villagerplus.village.StockPolicy.insertVillage(c.level(), c.village(), stack);
 	}
 
-	/** Sammelt frisch gedroppte Items in der Naehe auf. */
+	/** Collect fresh job drops. Player throws use the separate nearby offer rules. */
 	public static void collectDrops(Ctx c, double radius, int maxAge) {
 		List<ItemEntity> items = c.level().getEntitiesOfClass(ItemEntity.class, c.v().getBoundingBox().inflate(radius),
-			e -> e.isAlive() && e.getAge() < maxAge);
-		for (ItemEntity e : items) {
-			give(c.level(), c.v(), e.getItem().copy());
-			e.discard();
-		}
+			e -> e.isAlive() && e.getAge() < maxAge && !(e.getOwner() instanceof net.minecraft.world.entity.player.Player)
+				&& !LooseItemPickup.isReserved(e));
+		for (ItemEntity e : items) LooseItemPickup.takeAvailable(c, e);
 	}
 
 	/** Dorfkiste der Dorfmitte, sonst eine gemerkte/nahe Truhe. */
@@ -726,7 +734,7 @@ public final class JobUtil {
 			} else if (de.villagerplus.build.Blueprints.GRANARY.equals(depot)) {
 				// Before the first granary exists, food (including starter seeds) uses the ordinary village chest.
 				// The controlled food bridge (StockPolicy.insertFoodBridge) lets this internal delivery pass the material-store filter;
-				// direct hopper/player insertion keeps refusing food.
+				// Hoppers and villager deliveries still follow the storage filters.
 				destinationDepot = de.villagerplus.build.Blueprints.GRANARY;
 				foodBridge = true;
 			}

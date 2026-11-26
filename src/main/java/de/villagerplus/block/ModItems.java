@@ -14,6 +14,8 @@ import net.minecraft.world.item.Item;
 public final class ModItems {
 	/** Dorfkarte: traegt Dimension, Glockenposition und Name des Heimatdorfs (als custom_data); verbindet zwei Doerfer. */
 	public static final Item DORFKARTE = register("dorfkarte", new Item.Properties().stacksTo(1));
+	/** Reusable tool that grants one villager permission to use a chest. */
+	public static final Item CHEST_ACCESS = register("chest_access", new Item.Properties().stacksTo(1));
 
 	private ModItems() {
 	}
@@ -24,6 +26,9 @@ public final class ModItems {
 	}
 
 	public static void initialize() {
-		CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.TOOLS_AND_UTILITIES).register(tab -> tab.accept(DORFKARTE));
+		CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.TOOLS_AND_UTILITIES).register(tab -> {
+			tab.accept(DORFKARTE);
+			tab.accept(CHEST_ACCESS);
+		});
 	}
 }

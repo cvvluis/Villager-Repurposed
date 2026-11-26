@@ -9,6 +9,8 @@ import net.minecraft.core.Direction;
 public final class HouseDesignCatalog {
 	/** House-only marker in bit 0; callers must give saved HouseTemplate source plans precedence. */
 	private static final int CATALOG_MARKER = 1;
+	/** Version marker for new plans that guarantee a two-resident bedroom floor. */
+	private static final int TWO_RESIDENT_MARKER = 1 << 1;
 	private static final long DESIGN_SEED_MASK = (1L << 30) - 1L;
 	private static final long CURRENT_DESIGN_SEED_MASK = (1L << 26) - 1L;
 	private static final int CURRENT_TIER_SHIFT = 26;
@@ -104,6 +106,14 @@ public final class HouseDesignCatalog {
 			return new Architect.Design(Architect.Kind.HOUSE, this.halfWidth, this.halfDepth, this.wallHeight,
 				this.ridgeAlongPerp, this.overhang, this.base, this.frameBeams, this.halfTimber, this.porch,
 				this.chimney, this.windowSpacing, entryOffset, this.beds, this.twoToneUpperWall, this.wing, deco);
+		}
+
+		/** New homes reserve a 5 by 5 clear floor and two complete bed pairs. */
+		public Architect.Design twoResidentDesign(long seed) {
+			Architect.Design old = design(seed);
+			return new Architect.Design(old.kind(), Math.max(3, old.hw()), Math.max(3, old.hd()), old.wallH(),
+				old.ridgeAlongPerp(), old.overhang(), old.useBase(), old.frameBeams(), old.halfTimber(), old.porch(),
+				old.chimney(), old.windowSpacing(), old.doorOffset(), 2, old.secondWallUpper(), old.wing(), old.deco());
 		}
 	}
 
@@ -211,14 +221,14 @@ public final class HouseDesignCatalog {
 
 	public static Architect.Design design(Architect.SizeTier tier, long seed) {
 		long stableSeed = seed & CURRENT_DESIGN_SEED_MASK;
-		return presetFor(normalizeTier(tier), stableSeed).design(stableSeed);
+		return presetFor(normalizeTier(tier), stableSeed).twoResidentDesign(stableSeed);
 	}
 
 	/** Produces a persistent plan variant for a newly designed house without changing old unmarked plans. */
 	public static int newPlanVariant(Architect.SizeTier tier, long seed) {
 		long encodedSeed = (Integer.toUnsignedLong(normalizeTier(tier).ordinal()) << CURRENT_TIER_SHIFT)
 			| (seed & CURRENT_DESIGN_SEED_MASK);
-		return (int) (encodedSeed << 2) | CATALOG_MARKER;
+		return (int) (encodedSeed << 2) | CATALOG_MARKER | TWO_RESIDENT_MARKER;
 	}
 
 	/** Adds the catalog version marker to a generated house plan variant. */
@@ -246,7 +256,10 @@ public final class HouseDesignCatalog {
 		long seed = Integer.toUnsignedLong(planVariant) >>> 2;
 		if ((seed >>> 28) == 0L) {
 			Architect.SizeTier tier = Architect.SizeTier.values()[(int) ((seed >>> CURRENT_TIER_SHIFT) & 3L)];
-			return design(tier, seed & CURRENT_DESIGN_SEED_MASK);
+			long stableSeed = seed & CURRENT_DESIGN_SEED_MASK;
+			if ((planVariant & TWO_RESIDENT_MARKER) != 0) return design(tier, stableSeed);
+			// Existing catalog plans keep the exact one/two-bed layout they saved before this version.
+			return presetFor(tier, stableSeed).design(stableSeed);
 		}
 		return legacyCatalogDesign(Architect.sizeTier(seed), seed);
 	}

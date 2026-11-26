@@ -89,7 +89,8 @@ public final class Config {
 
 	/** Traeger (Arbeitslose/Dorftrottel): sammeln Items auf, die schon so lange herumliegen. */
 	public static final int PORTER_RADIUS = 24;
-	public static final int PORTER_MIN_ITEM_AGE = 6000;
+	/** Leave four minutes for player recovery before treating loose items as village cleanup. */
+	public static final int PORTER_MIN_ITEM_AGE = 4800;
 
 	/** Dorfausbau. */
 	public static final int VILLAGE_RADIUS = 96;

@@ -38,6 +38,7 @@ import java.util.Optional;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Difficulty;
@@ -45,6 +46,7 @@ import net.minecraft.world.Container;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.npc.villager.VillagerProfession;
 import net.minecraft.world.entity.vehicle.minecart.MinecartChest;
@@ -55,12 +57,14 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.item.alchemy.Potions;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BellBlockEntity;
 import net.minecraft.world.level.block.entity.BrewingStandBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BedPart;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 
 /** Headless world checks for the previously open job, depot and station behaviours. */
@@ -71,18 +75,34 @@ public final class RoleCycleChecks {
 	private record FixtureCell(BlockState state, CompoundTag blockEntity) { }
 
 	public static int run(ServerLevel level, BlockPos origin) {
+		BlockPos guardAt = origin.east(48);
+		BlockPos combat = guardAt.east().above();
+		BlockPos penAt = origin.south(96);
+		BlockPos penCenter = penAt.east(24);
+		// FULL blocks alone do not put the remote fixtures in vanilla's entity queries.
+		boolean combatReady = ButcherChecks.prepareEntityTickingFixture(level, combat);
+		boolean penReady = ButcherChecks.prepareEntityTickingFixture(level, penCenter);
+		if (!combatReady || !penReady) {
+			System.out.println("ROLE CYCLE PREPARING entity-ticking fixtures [guard=" + combatReady + ", pen=" + penReady + "]");
+			return -1;
+		}
 		checks = 0;
-		pace();
-		lighting(level, origin);
-		brewing(level, origin.south(48));
-		guard(level, origin.east(48));
-		if (!pen(level, origin.south(96))) return -1;
-		freight(level, origin.east(96));
-		gravel(level, origin.west(48));
-		workstation(level, origin.west(96));
-		station(level, origin.north(48));
-		sign(level, origin.north(96));
-		return checks;
+		try {
+			pace();
+			lighting(level, origin);
+			brewing(level, origin.south(48));
+			guard(level, guardAt);
+			pen(level, penAt);
+			freight(level, origin.east(96));
+			gravel(level, origin.west(48));
+			workstation(level, origin.west(96));
+			station(level, origin.north(48));
+			sign(level, origin.north(96));
+			return checks;
+		} finally {
+			ButcherChecks.releaseEntityTickingFixture(level, combat);
+			ButcherChecks.releaseEntityTickingFixture(level, penCenter);
+		}
 	}
 
 	private static void pace() {
@@ -335,7 +355,10 @@ public final class RoleCycleChecks {
 			state.lightAt = level.getGameTime() + 1000;
 			float health = zombie.getHealth();
 			GuardDuty.work(context(level, ref, guard, state));
-			check(zombie.getHealth() < health, "guard hurts a hostile at contact range");
+			check(zombie.getHealth() < health, "guard hurts a hostile at contact range"
+				+ " [health=" + health + "->" + zombie.getHealth() + ", activity=" + state.activity
+				+ ", selectedFixture=" + (state.targetEntity == zombie) + ", distanceSquared=" + guard.distanceToSqr(zombie)
+				+ ", entityTicking=" + level.isPositionEntityTicking(zombie.blockPosition()) + ", tick=" + level.getGameTime() + "]");
 			check(state.activity.contains("bekämpft"), "guard reports the fight");
 			zombie.discard();
 			spawned.remove(zombie);
@@ -467,13 +490,8 @@ public final class RoleCycleChecks {
 		}
 	}
 
-	private static boolean pen(ServerLevel level, BlockPos at) {
-		// Remote command fixtures are commonly only FULL-chunk loaded, not entity-ticking.
+	private static void pen(ServerLevel level, BlockPos at) {
 		BlockPos pen = at.east(24);
-		if (!ButcherChecks.prepareEntityTickingFixture(level, pen)) {
-			System.out.println("ROLE CYCLE PREPARING entity-ticking pen at " + pen.toShortString() + "; retry after server ticks");
-			return false;
-		}
 		List<Entity> spawned = new ArrayList<>();
 		Map<BlockPos, FixtureCell> before = new HashMap<>();
 		VillageRef ref = Checks090.fixtureForEquipment(level, at);
@@ -577,9 +595,7 @@ public final class RoleCycleChecks {
 			restoreFixtureCells(level, before);
 			ref.data().extra.pen = oldPen;
 			ref.dirty();
-			ButcherChecks.releaseEntityTickingFixture(level, pen);
 		}
-		return true;
 	}
 
 	private static void freight(ServerLevel level, BlockPos at) {
@@ -776,6 +792,10 @@ public final class RoleCycleChecks {
 
 	private static void sign(ServerLevel level, BlockPos at) {
 		List<Entity> spawned = new ArrayList<>();
+		BlockPos head = at.south(3);
+		BlockPos foot = head.south();
+		BlockState previousHead = level.getBlockState(head), previousFoot = level.getBlockState(foot);
+		BlockState previousHeadFloor = level.getBlockState(head.below()), previousFootFloor = level.getBlockState(foot.below());
 		try {
 			column(level, at.below());
 			level.setBlock(at, de.villagerplus.block.ModBlocks.DORFSCHILD.defaultBlockState(), 3);
@@ -784,12 +804,23 @@ public final class RoleCycleChecks {
 			VillagerMemory memory = resident.getAttachedOrCreate(VillagerPlus.MEMORY);
 			memory.name = "Elsa";
 			memory.homeDoor = Optional.of(at.south());
+			BlockState bed = Blocks.BED.white().defaultBlockState().setValue(BedBlock.FACING, Direction.NORTH);
+			level.setBlock(head.below(), Blocks.STONE.defaultBlockState(), 3);
+			level.setBlock(foot.below(), Blocks.STONE.defaultBlockState(), 3);
+			level.setBlock(foot, bed.setValue(BedBlock.PART, BedPart.FOOT), 3);
+			level.setBlock(head, bed.setValue(BedBlock.PART, BedPart.HEAD), 3);
+			resident.getBrain().setMemory(MemoryModuleType.HOME, GlobalPos.of(level.dimension(), head));
+			memory.homeBed = Optional.of(head);
 			JobManager.state(resident).activity = "backt Brot";
 			String text = String.join("\n", de.villagerplus.block.DorfschildBlock.describe(level, at));
 			check(text.contains("Hier wohnt:") && text.contains("Elsa") && text.contains("Bauer")
 				&& text.contains("backt Brot") && text.contains("Stimmung"), "house sign lists name, role, status and mood");
 		} finally {
 			spawned.forEach(Entity::discard);
+			level.setBlock(head, previousHead, 3);
+			level.setBlock(foot, previousFoot, 3);
+			level.setBlock(head.below(), previousHeadFloor, 3);
+			level.setBlock(foot.below(), previousFootFloor, 3);
 		}
 	}
 

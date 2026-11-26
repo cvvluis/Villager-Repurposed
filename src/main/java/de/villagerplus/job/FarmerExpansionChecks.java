@@ -34,6 +34,7 @@ import net.minecraft.world.level.storage.TagValueOutput;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.CropBlock;
+import net.minecraft.world.level.block.FarmlandBlock;
 import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -123,6 +124,10 @@ public final class FarmerExpansionChecks {
 			"a completed field wakes the first-pen retry without nearby animals, but no field or no public storage stays blocked");
 		checkVisibleStarterFarmBlueprint();
 		checkPaidStarterFootprint();
+		check(FarmerJob.replantSeedCheatDue(1_000L, 7_000L)
+			&& !FarmerJob.replantSeedCheatDue(1_000L, 6_999L)
+			&& !FarmerJob.replantSeedCheatDue(7_000L, 6_999L),
+			"a missing field seed is replaced only after 6,000 elapsed ticks, including across a saved timer");
 		BlockPos site = ref.bell().offset(50, 0, 50);
 		Map<BlockPos, BlockState> before = new LinkedHashMap<>();
 		BlockPos[] privateFoodChestPos = {null};
@@ -300,31 +305,47 @@ public final class FarmerExpansionChecks {
 					+ " [visits=" + procurementVisits + "/" + procurementVisitLimit + ", fences=" + procuredFences
 					+ ", gates=" + procuredGates + ", planksRemaining=" + remainingPlanks
 					+ ", sticksRemaining=" + remainingSticks + "]");
-			ctx = new Ctx(level, farmer, state, memory, ref, actionTime);
-			worked = new FarmerJob().secondary(ctx);
-			BlockPos waterSource = FarmerJob.farmWaterSourceForChecks(farmer, level);
-			String savedWaterPlan = FarmerJob.farmWaterPlanTagForChecks(farmer);
-			check(worked && savedWaterPlan != null && waterSource != null
-				&& JobUtil.count(box, stack -> stack.is(Items.BUCKET)) == 1
-				&& JobUtil.count(farmer.getInventory(), stack -> stack.is(Items.WATER_BUCKET)) == 0,
-				"the farmer saves a safe, reachable water-source route before consuming the public empty bucket");
-			TagValueOutput waterSave = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, level.registryAccess());
-			farmer.saveWithoutId(waterSave);
-			Villager waterReload = EntityTypes.VILLAGER.create(level, EntitySpawnReason.COMMAND);
-			if (waterReload == null) throw new IllegalStateException("FARM EXPANSION CHECK FAILED: could not create water-route reload fixture");
-			waterReload.load(TagValueInput.create(ProblemReporter.DISCARDING, level.registryAccess(), waterSave.buildResult()));
-			check(savedWaterPlan.equals(FarmerJob.farmWaterPlanTagForChecks(waterReload)),
-				"the field site and natural-water route survive villager NBT reload");
-			waterReload.discard();
-			BlockPos waterStand = FarmerJob.farmWaterStandForChecks(level, waterSource);
-			if (waterStand == null) throw new IllegalStateException("FARM EXPANSION CHECK FAILED: planned water source has no safe reachable stand");
-			farmer.teleportTo(waterStand.getX() + 0.5, waterStand.getY(), waterStand.getZ() + 0.5);
-			actionTime = Math.max(actionTime + 120, state.cooldownUntil);
-			worked = new FarmerJob().secondary(new Ctx(level, farmer, state, memory, ref, actionTime));
-			check(worked && FarmerJob.farmWaterPlanTagForChecks(farmer) == null
-				&& JobUtil.count(box, stack -> stack.is(Items.BUCKET)) == 0
-				&& JobUtil.count(farmer.getInventory(), stack -> stack.is(Items.WATER_BUCKET)) == 1,
-				"a real public empty bucket is filled from the selected source and carried to its paid field step");
+			var data = ref.data();
+			String oldPlanType = data.planType;
+			var oldPlanOrigin = data.planOrigin;
+			BlockPos civicSite = ref.bell().north(24);
+			data.planType = Blueprints.GRANARY;
+			data.planOrigin = java.util.Optional.of(civicSite);
+			try {
+				ctx = new Ctx(level, farmer, state, memory, ref, actionTime);
+				worked = new FarmerJob().secondary(ctx);
+				BlockPos waterSource = FarmerJob.farmWaterSourceForChecks(farmer, level);
+				String savedWaterPlan = FarmerJob.farmWaterPlanTagForChecks(farmer);
+				check(worked && savedWaterPlan != null && waterSource != null && FarmerJob.farmWaterPlanStillNeededForChecks(ctx)
+					&& JobUtil.count(box, stack -> stack.is(Items.BUCKET)) == 1
+					&& JobUtil.count(farmer.getInventory(), stack -> stack.is(Items.WATER_BUCKET)) == 0,
+					"the first field saves a safe water route during a civic plan without consuming the bucket before arrival");
+				data.planType = Blueprints.FARM;
+				check(!FarmerJob.farmWaterPlanStillNeededForChecks(ctx),
+					"a competing farm still invalidates the first-field water route");
+				data.planType = Blueprints.GRANARY;
+				TagValueOutput waterSave = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, level.registryAccess());
+				farmer.saveWithoutId(waterSave);
+				Villager waterReload = EntityTypes.VILLAGER.create(level, EntitySpawnReason.COMMAND);
+				if (waterReload == null) throw new IllegalStateException("FARM EXPANSION CHECK FAILED: could not create water-route reload fixture");
+				waterReload.load(TagValueInput.create(ProblemReporter.DISCARDING, level.registryAccess(), waterSave.buildResult()));
+				check(savedWaterPlan.equals(FarmerJob.farmWaterPlanTagForChecks(waterReload)),
+					"the field site and natural-water route survive villager NBT reload");
+				waterReload.discard();
+				BlockPos waterStand = FarmerJob.farmWaterStandForChecks(level, waterSource);
+				if (waterStand == null) throw new IllegalStateException("FARM EXPANSION CHECK FAILED: planned water source has no safe reachable stand");
+				farmer.teleportTo(waterStand.getX() + 0.5, waterStand.getY(), waterStand.getZ() + 0.5);
+				actionTime = Math.max(actionTime + 120, state.cooldownUntil);
+				worked = new FarmerJob().secondary(new Ctx(level, farmer, state, memory, ref, actionTime));
+				check(worked && FarmerJob.farmWaterPlanTagForChecks(farmer) == null
+					&& Blueprints.GRANARY.equals(data.planType) && data.planOrigin.equals(java.util.Optional.of(civicSite))
+					&& JobUtil.count(box, stack -> stack.is(Items.BUCKET)) == 0
+					&& JobUtil.count(farmer.getInventory(), stack -> stack.is(Items.WATER_BUCKET)) == 1,
+					"a real public bucket obtains source water while the unrelated civic plan remains active");
+			} finally {
+				data.planType = oldPlanType;
+				data.planOrigin = oldPlanOrigin;
+			}
 			// This fixture tests the saved field cursor after water pickup; route travel back to the site is covered separately.
 			farmer.teleportTo(actual.getX() + 2.5, actual.getY() + 1.0, actual.getZ() + 0.5);
 			actionTime = Math.max(actionTime + 120, state.cooldownUntil);
@@ -407,6 +428,7 @@ public final class FarmerExpansionChecks {
 
 			for (int cursor = 1; cursor < 25; cursor++) {
 				BlockPos nextStep = FarmerJob.starterExpansionStepPosForChecks(actual, cursor);
+				if (cursor == 17) level.setBlock(nextStep.below(), Blocks.FARMLAND.defaultBlockState(), 3);
 				farmer.teleportTo(nextStep.getX() + 0.5, nextStep.getY(), nextStep.getZ() + 0.5);
 				actionTime += 30;
 				worked = new FarmerJob().secondary(new Ctx(level, farmer, state, memory, ref, actionTime));
@@ -414,8 +436,8 @@ public final class FarmerExpansionChecks {
 				check(worked && (cursor == 24 ? completed : FarmerJob.expansionCursorForChecks(farmer) == cursor + 1),
 					"field construction resumes paid step " + (cursor + 1) + " of 25" + (completed ? " and registers completion" : ""));
 				if (cursor == 17) {
-					check(level.getBlockState(starterGrass).is(Blocks.WHEAT),
-						"the first crop cell clears natural grass and gets planted without losing the saved field cursor");
+					check(level.getBlockState(starterGrass).is(Blocks.WHEAT) && level.getBlockState(nextStep.below()).is(Blocks.FARMLAND),
+						"the first crop uses already prepared identical farmland and clears its grass without losing the cursor");
 				}
 			}
 			check(ref.data().farms == 1 && FarmerJob.expansionStateTag(farmer) == null,
@@ -454,6 +476,99 @@ public final class FarmerExpansionChecks {
 			}
 			check(rememberedCropSpots == 8,
 				"the saved field plan registers every planted crop for the farmer's harvest search");
+
+			// Lose a crop on the finished field while leaving the irrigated soil in place, as in an older save.
+			BlockPos bareCell = actual.offset(-1, 0, 0);
+			level.setBlock(bareCell, Blocks.AIR.defaultBlockState(), 3);
+			level.setBlock(bareCell.below(), Blocks.FARMLAND.defaultBlockState().setValue(FarmlandBlock.MOISTURE, 7), 3);
+			farmer.teleportTo(bareCell.getX() + 0.5, bareCell.getY(), bareCell.getZ() + 0.5);
+			JobState replant = new JobState();
+			FarmerJob farm = new FarmerJob();
+			List<Container> publicSeedStores = Balance.storage(level, ref);
+			for (Item seed : List.of(Items.WHEAT_SEEDS, Items.CARROT, Items.POTATO, Items.BEETROOT_SEEDS)) {
+				removePublicStock(publicSeedStores, seed);
+				for (int slot = 0; slot < farmer.getInventory().getContainerSize(); slot++) {
+					if (farmer.getInventory().getItem(slot).is(seed)) farmer.getInventory().setItem(slot, ItemStack.EMPTY);
+				}
+			}
+			FarmerJob.resetReplantSeedWaitForChecks(farmer);
+			actionTime += 30;
+			long initialMissingSeedSince = FarmerJob.replantSeedWaitStartedAt(farmer, bareCell, actionTime);
+			farm.primary(new Ctx(level, farmer, replant, memory, ref, actionTime));
+			check(level.getBlockState(bareCell).isAir()
+				&& JobUtil.count(farmer.getInventory(), stack -> stack.is(Items.WHEAT_SEEDS)
+					|| stack.is(Items.CARROT) || stack.is(Items.POTATO) || stack.is(Items.BEETROOT_SEEDS)) == 0
+				&& publicSeedStores.stream().mapToInt(store -> JobUtil.count(store, stack -> stack.is(Items.WHEAT_SEEDS)
+					|| stack.is(Items.CARROT) || stack.is(Items.POTATO) || stack.is(Items.BEETROOT_SEEDS))).sum() == 0
+				&& !FarmerJob.replantSeedCheatDue(initialMissingSeedSince, actionTime),
+				"maintenance cannot plant a missing crop without any seed stock before the fresh shortage timer expires");
+			put(box, 0, Items.WHEAT_SEEDS, 1);
+			farmer.teleportTo(bareCell.getX() + 0.5, bareCell.getY(), bareCell.getZ() + 4.5);
+			actionTime += 250;
+			boolean approached = farm.primary(new Ctx(level, farmer, replant, memory, ref, actionTime));
+			check(approached && level.getBlockState(bareCell).isAir()
+				&& JobUtil.count(box, stack -> stack.is(Items.WHEAT_SEEDS)) == 1
+				&& farmer.getBrain().hasMemoryValue(MemoryModuleType.WALK_TARGET),
+				"the farmer approaches the empty bed without sowing or charging seed remotely");
+			farmer.teleportTo(bareCell.getX() + 0.5, bareCell.getY(), bareCell.getZ() + 0.5);
+			actionTime += 30;
+			boolean replanted = farm.primary(new Ctx(level, farmer, replant, memory, ref, actionTime));
+			check(replanted && level.getBlockState(bareCell).is(Blocks.WHEAT)
+				&& level.getBlockState(bareCell).getValue(CropBlock.AGE) == 0
+				&& JobUtil.count(box, stack -> stack.is(Items.WHEAT_SEEDS)) == 0
+				&& ref.data().farms == 1 && FarmerJob.expansionStateTag(farmer) == null,
+				"normal farmer work replaces a vanished crop with exactly one real public seed on an existing field");
+			level.setBlock(bareCell, Blocks.AIR.defaultBlockState(), 3);
+			level.setBlock(bareCell.below(), Blocks.FARMLAND.defaultBlockState().setValue(FarmlandBlock.MOISTURE, 7), 3);
+			for (Item seed : List.of(Items.WHEAT_SEEDS, Items.CARROT, Items.POTATO, Items.BEETROOT_SEEDS)) {
+				removePublicStock(Balance.storage(level, ref), seed);
+				for (int slot = 0; slot < farmer.getInventory().getContainerSize(); slot++) {
+					if (farmer.getInventory().getItem(slot).is(seed)) farmer.getInventory().setItem(slot, ItemStack.EMPTY);
+				}
+			}
+			state.replantCheckAt = 0;
+			actionTime += 250;
+			check(!FarmerJob.replantBareSoilForChecks(new Ctx(level, farmer, state, memory, ref, actionTime))
+				&& level.getBlockState(bareCell).isAir(),
+				"a bare cell waits for real seed stock before the emergency seed timer expires");
+			long seedWaitStarted = FarmerJob.replantSeedWaitStartedAt(farmer, bareCell, actionTime);
+			TagValueOutput seedWaitSave = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, level.registryAccess());
+			farmer.saveWithoutId(seedWaitSave);
+			Villager seedWaitReload = EntityTypes.VILLAGER.create(level, EntitySpawnReason.COMMAND);
+			if (seedWaitReload == null) throw new IllegalStateException("FARM EXPANSION CHECK FAILED: could not create seed-wait reload fixture");
+			seedWaitReload.load(TagValueInput.create(ProblemReporter.DISCARDING, level.registryAccess(), seedWaitSave.buildResult()));
+			check(FarmerJob.replantSeedWaitStartedAt(seedWaitReload, bareCell, actionTime) == seedWaitStarted,
+				"the elapsed seed-shortage timer survives villager NBT reload");
+			actionTime = seedWaitStarted + 5_999L;
+			state.replantCheckAt = 0;
+			check(!FarmerJob.replantBareSoilForChecks(new Ctx(level, seedWaitReload, state, memory, ref, actionTime))
+				&& level.getBlockState(bareCell).isAir(),
+				"a field is not seeded for free before the full shortage wait has elapsed");
+			actionTime = seedWaitStarted + 6_000L;
+			state.replantCheckAt = 0;
+			boolean emergencySeeded = FarmerJob.replantBareSoilForChecks(new Ctx(level, seedWaitReload, state, memory, ref, actionTime));
+			check(emergencySeeded && level.getBlockState(bareCell).is(Blocks.WHEAT)
+				&& level.getBlockState(bareCell).getValue(CropBlock.AGE) == 0
+				&& JobUtil.count(seedWaitReload.getInventory(), stack -> stack.is(Items.WHEAT_SEEDS)) == 0
+				&& Balance.storage(level, ref).stream().mapToInt(chest ->
+					JobUtil.count(chest, stack -> stack.is(Items.WHEAT_SEEDS))).sum() == 0,
+				"after a persistent 6,000-tick shortage the bare cell gets one age-zero crop without charging or duplicating seed");
+			seedWaitReload.discard();
+			BlockPos protectedCell = actual.offset(0, 0, -1);
+			level.setBlock(protectedCell, Blocks.AIR.defaultBlockState(), 3);
+			level.setBlock(protectedCell.below(), Blocks.FARMLAND.defaultBlockState().setValue(FarmlandBlock.MOISTURE, 7), 3);
+			farmer.teleportTo(protectedCell.getX() + 0.5, protectedCell.getY(), protectedCell.getZ() + 0.5);
+			ZonePolicy.Zone restricted = new ZonePolicy.Zone("protected-farm-cell", "protected", protectedCell.getX(), protectedCell.getZ(),
+				protectedCell.getX(), protectedCell.getZ());
+			ref.bellEntity().setAttached(VillagerPlus.ZONES, List.of(zone, restricted));
+			put(box, 0, Items.WHEAT_SEEDS, 1);
+			actionTime += 250;
+			farm.primary(new Ctx(level, farmer, replant, memory, ref, actionTime));
+			check(level.getBlockState(protectedCell).isAir() && JobUtil.count(box, stack -> stack.is(Items.WHEAT_SEEDS)) == 1,
+				"maintenance leaves protected farmland empty and preserves the seed");
+			ref.bellEntity().setAttached(VillagerPlus.ZONES, List.of(zone));
+			level.setBlock(protectedCell, Blocks.WHEAT.defaultBlockState(), 3);
+			box.setItem(0, ItemStack.EMPTY);
 
 			// Continue the same feature slice through a real mature crop harvest and communal food delivery.
 			BlockPos cropPos = actual.offset(1, 0, 0);
@@ -511,6 +626,162 @@ public final class FarmerExpansionChecks {
 			check(!searchedUnauthorizedHarvest && level.getBlockState(outsideZoneCrop).equals(unauthorizedCrop),
 				"the fallback field scan also ignores mature crops outside an explicit farm zone");
 
+			// Natural vanilla fields can be well beyond the farmer's local radius. Keep two mature remote candidates
+			// in the village scan, but allow only the farther one through an explicit farm-zone fixture.
+			BlockPos remoteAnchor = ref.bell().offset(60, 0, 0);
+			level.getChunkAt(remoteAnchor);
+			int remoteChunkX = Math.floorDiv(remoteAnchor.getX(), 16);
+			int remoteChunkZ = Math.floorDiv(remoteAnchor.getZ(), 16);
+			List<BlockPos> remoteCells = new ArrayList<>();
+			for (int x = (remoteChunkX << 4) + 1; x < (remoteChunkX << 4) + 15; x++) {
+				for (int z = (remoteChunkZ << 4) + 1; z < (remoteChunkZ << 4) + 15; z++) {
+					BlockPos candidate = new BlockPos(x, actual.getY(), z);
+					long dx = (long)candidate.getX() - ref.bell().getX();
+					long dz = (long)candidate.getZ() - ref.bell().getZ();
+					long distanceSquared = dx * dx + dz * dz;
+					if (distanceSquared < 55L * 55L || distanceSquared > 65L * 65L
+						|| distanceSquared > (long)FarmerJob.CROP_SCAN_RADIUS * FarmerJob.CROP_SCAN_RADIUS
+						|| !level.hasChunkAt(candidate) || !level.getBlockState(candidate).isAir()
+						|| level.getBlockEntity(candidate) != null || level.getBlockEntity(candidate.below()) != null) continue;
+					remoteCells.add(candidate.immutable());
+				}
+			}
+			remoteCells.sort(java.util.Comparator.comparingDouble(pos -> pos.distSqr(ref.bell())));
+			if (remoteCells.size() < 2) throw new IllegalStateException("FARM EXPANSION CHECK FAILED: no two distant loaded crop cells");
+			BlockPos nearerRemoteCrop = remoteCells.getFirst();
+			BlockPos allowedRemoteCrop = remoteCells.getLast();
+			for (BlockPos remoteCropPos : List.of(nearerRemoteCrop, allowedRemoteCrop)) {
+				before.putIfAbsent(remoteCropPos.below(), level.getBlockState(remoteCropPos.below()));
+				before.putIfAbsent(remoteCropPos, level.getBlockState(remoteCropPos));
+				level.setBlock(remoteCropPos.below(), Blocks.FARMLAND.defaultBlockState().setValue(FarmlandBlock.MOISTURE, 7), 3);
+				level.setBlock(remoteCropPos, cropState(Blocks.WHEAT.defaultBlockState()), 3);
+			}
+			net.minecraft.world.level.ChunkPos unloadedProbe = null;
+			int minCropChunkX = Math.floorDiv(ref.bell().getX() - FarmerJob.CROP_SCAN_RADIUS, 16);
+			int maxCropChunkX = Math.floorDiv(ref.bell().getX() + FarmerJob.CROP_SCAN_RADIUS, 16);
+			int minCropChunkZ = Math.floorDiv(ref.bell().getZ() - FarmerJob.CROP_SCAN_RADIUS, 16);
+			int maxCropChunkZ = Math.floorDiv(ref.bell().getZ() + FarmerJob.CROP_SCAN_RADIUS, 16);
+			for (int chunkX = minCropChunkX; chunkX <= maxCropChunkX && unloadedProbe == null; chunkX++) {
+				for (int chunkZ = minCropChunkZ; chunkZ <= maxCropChunkZ; chunkZ++) {
+					if (level.getChunkSource().getChunkNow(chunkX, chunkZ) != null
+						|| chunkX == remoteChunkX && chunkZ == remoteChunkZ) continue;
+					long dx = (long)(chunkX << 4) + 8 - ref.bell().getX();
+					long dz = (long)(chunkZ << 4) + 8 - ref.bell().getZ();
+					if (dx * dx + dz * dz <= (long)FarmerJob.CROP_SCAN_RADIUS * FarmerJob.CROP_SCAN_RADIUS) {
+						unloadedProbe = new net.minecraft.world.level.ChunkPos(chunkX, chunkZ);
+						break;
+					}
+				}
+			}
+			if (unloadedProbe == null) throw new IllegalStateException("FARM EXPANSION CHECK FAILED: no unloaded crop-scan chunk available");
+			FarmerJob.clearCropScans();
+			ZonePolicy.Zone remoteZone = new ZonePolicy.Zone("remote-vanilla-field", "farm",
+				allowedRemoteCrop.getX(), allowedRemoteCrop.getZ(), allowedRemoteCrop.getX(), allowedRemoteCrop.getZ());
+			BlockPos distantHarvest = FarmerJob.nearestRipeVillageCrop(level, ref, ref.bell(), List.of(remoteZone));
+			check(nearerRemoteCrop.distSqr(ref.bell()) > (long)Config.FARM_RADIUS * Config.FARM_RADIUS
+				&& allowedRemoteCrop.distSqr(ref.bell()) > (long)Config.FARM_RADIUS * Config.FARM_RADIUS
+				&& distantHarvest != null && distantHarvest.equals(allowedRemoteCrop),
+				"the village crop scan finds ripe vanilla crops beyond the local work radius and selects the farm-zone-authorized field");
+			check(level.getChunkSource().getChunkNow(unloadedProbe.x(), unloadedProbe.z()) == null,
+				"the village crop scan skips an unloaded chunk without loading it");
+			BlockPos isolatedRemoteHarvest = FarmerJob.nearestRipeVillageCrop(level, ref, ref.bell(), List.of(
+				new ZonePolicy.Zone("near-remote-field-only", "farm", nearerRemoteCrop.getX(), nearerRemoteCrop.getZ(),
+					nearerRemoteCrop.getX(), nearerRemoteCrop.getZ())));
+			check(isolatedRemoteHarvest != null && isolatedRemoteHarvest.equals(nearerRemoteCrop)
+				&& !isolatedRemoteHarvest.equals(allowedRemoteCrop),
+				"the zone-scoped remote crop is selected while a closer out-of-zone crop is excluded");
+			// Exercise the real FarmerJob path: a ripe vanilla field must beat a pending grass diversion,
+			// then be reachable and harvested while the closer crop outside the explicit zone stays intact.
+			var remoteZonesBefore = ref.bellEntity().getAttached(VillagerPlus.ZONES);
+			int remoteFarmsBefore = ref.data().farms;
+			ref.bellEntity().setAttached(VillagerPlus.ZONES, List.of(remoteZone));
+			ref.data().farms = 0;
+			List<Container> remotePublicStores = Balance.storage(level, ref);
+			for (Item seed : List.of(Items.WHEAT_SEEDS, Items.CARROT, Items.POTATO, Items.BEETROOT_SEEDS)) {
+				removePublicStock(remotePublicStores, seed);
+				for (int slot = 0; slot < farmer.getInventory().getContainerSize(); slot++) {
+					if (farmer.getInventory().getItem(slot).is(seed)) farmer.getInventory().setItem(slot, ItemStack.EMPTY);
+				}
+			}
+			farmer.getInventory().clearContent();
+			// Unlike a teleport-only probe, routing needs a continuous supported walking lane.
+			for (int dx = 1; dx <= 4; dx++) {
+				BlockPos stand = allowedRemoteCrop.offset(dx, 0, 0);
+				level.getChunkAt(stand);
+				for (BlockPos cell : List.of(stand.below(), stand, stand.above())) before.putIfAbsent(cell, level.getBlockState(cell));
+				level.setBlock(stand.below(), Blocks.STONE.defaultBlockState(), 3);
+				level.setBlock(stand, Blocks.AIR.defaultBlockState(), 3);
+				level.setBlock(stand.above(), Blocks.AIR.defaultBlockState(), 3);
+			}
+			farmer.teleportTo(allowedRemoteCrop.getX() + 4.5, allowedRemoteCrop.getY(), allowedRemoteCrop.getZ() + 0.5);
+			farmer.setOnGround(true);
+			farmer.getBrain().setMemory(MemoryModuleType.JOB_SITE, GlobalPos.of(level.dimension(), ref.bell()));
+			farmer.getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
+			JobUtil.clearLongRoute(farmer);
+			state.clearTarget();
+			level.setBlock(starterGrass, Blocks.SHORT_GRASS.defaultBlockState(), 3);
+			state.forageTarget = starterGrass.immutable(); // pending grass forage must be discarded when a ripe crop exists
+			state.replantTarget = null;
+			state.cooldownUntil = 0;
+			state.idleUntil[0] = 0;
+			state.walkStart = 0; state.bestDist = 0; state.lastMoveAt = 0; state.stuckCount = 0;
+			memory.workSpots.clear();
+			FarmerJob.clearCropScans();
+			actionTime += 300;
+			int harvestsBeforeRoute = FarmerJob.HARVESTS;
+			boolean routedToRemoteCrop = new FarmerJob().primary(new Ctx(level, farmer, state, memory, ref, actionTime));
+			check(routedToRemoteCrop && allowedRemoteCrop.equals(state.target) && state.forageTarget == null
+				&& state.harvestStand != null && FarmerJob.HARVESTS == harvestsBeforeRoute
+				&& !state.activity.equals("erntet auf dem Feld")
+				&& level.getBlockState(allowedRemoteCrop).getValue(CropBlock.AGE) == 7
+				&& level.getBlockState(nearerRemoteCrop).getValue(CropBlock.AGE) == 7,
+				"the real farmer selects the reachable remote ripe crop before pending grass forage without counting an early harvest [routed="
+					+ routedToRemoteCrop + ", target=" + state.target + ", stand=" + state.harvestStand + ", activity=" + state.activity + "]");
+			farmer.teleportTo(allowedRemoteCrop.getX() + 0.5, allowedRemoteCrop.getY(), allowedRemoteCrop.getZ() + 0.5);
+			JobUtil.clearLongRoute(farmer);
+			state.cooldownUntil = 0;
+			state.idleUntil[0] = 0;
+			actionTime += 30;
+			boolean harvestedRemoteCrop = new FarmerJob().primary(new Ctx(level, farmer, state, memory, ref, actionTime));
+			check(harvestedRemoteCrop && level.getBlockState(allowedRemoteCrop).is(Blocks.WHEAT)
+				&& level.getBlockState(allowedRemoteCrop).getValue(CropBlock.AGE) == 0
+				&& FarmerJob.HARVESTS == harvestsBeforeRoute + 1
+				&& JobUtil.count(farmer.getInventory(), stack -> stack.is(Items.WHEAT) || stack.is(Items.WHEAT_SEEDS)) > 0
+				&& level.getBlockState(nearerRemoteCrop).getValue(CropBlock.AGE) == 7,
+				"the farmer harvests and replants the authorized remote vanilla crop while preserving the closer out-of-zone crop");
+			level.setBlock(allowedRemoteCrop, level.getBlockState(allowedRemoteCrop).setValue(CropBlock.AGE, 7), 3);
+			Map<BlockPos, BlockState> enclosedField = new java.util.LinkedHashMap<>();
+			try {
+				for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) for (int dy = 0; dy <= 4; dy++) {
+					if (dx == 0 && dz == 0 && dy < 2) continue;
+					BlockPos wall = allowedRemoteCrop.offset(dx, dy, dz);
+					enclosedField.put(wall, level.getBlockState(wall));
+					level.setBlock(wall, Blocks.STONE.defaultBlockState(), 3);
+				}
+				farmer.getInventory().clearContent();
+				farmer.teleportTo(allowedRemoteCrop.getX() + 4.5, allowedRemoteCrop.getY(), allowedRemoteCrop.getZ() + 0.5);
+				farmer.setOnGround(true);
+				JobState blockedRoute = new JobState();
+				blockedRoute.target = allowedRemoteCrop;
+				actionTime += 300;
+				boolean workedOnBlockedCrop = new FarmerJob().primary(new Ctx(level, farmer, blockedRoute, memory, ref, actionTime));
+				BlockState blockedCrop = level.getBlockState(allowedRemoteCrop);
+				check(blockedRoute.target == null && blockedRoute.harvestStand == null
+					&& blockedRoute.waitingToRetryHarvest(allowedRemoteCrop, actionTime + 199)
+					&& !blockedRoute.waitingToRetryHarvest(allowedRemoteCrop, actionTime + 200)
+					&& FarmerJob.HARVESTS == harvestsBeforeRoute + 1
+					&& blockedCrop.is(Blocks.WHEAT) && blockedCrop.getValue(CropBlock.AGE) == 7,
+					"a sealed ripe crop is skipped until its route cooldown expires [worked=" + workedOnBlockedCrop + ", crop=" + blockedCrop
+						+ ", target=" + blockedRoute.target + ", stand=" + blockedRoute.harvestStand + ", activity=" + blockedRoute.activity
+						+ ", retry=" + blockedRoute.waitingToRetryHarvest(allowedRemoteCrop, actionTime) + "]");
+			} finally {
+				enclosedField.forEach((pos, original) -> level.setBlock(pos, original, 3));
+			}
+			ref.data().farms = remoteFarmsBefore;
+			if (remoteZonesBefore == null) ref.bellEntity().removeAttached(VillagerPlus.ZONES);
+			else ref.bellEntity().setAttached(VillagerPlus.ZONES, remoteZonesBefore);
+			FarmerJob.clearCropScans();
+
 			// A full inventory must postpone the harvest instead of scattering crops around the field.
 			var inventory = farmer.getInventory();
 			for (int slot = 0; slot < inventory.getContainerSize(); slot++) inventory.setItem(slot, new ItemStack(Items.STONE, 64));
@@ -540,8 +811,9 @@ public final class FarmerExpansionChecks {
 				"a farmer waiting for fence wood counts as wood demand for the woodcutting rule");
 			check(!FarmerJob.fenceWoodWanted(ref, waitNow + 601), "the fence wood demand expires with the wait");
 			FarmerJob.setFenceWoodWaitForTest(ref, 0);
-			return 124;
+			return 134;
 		} finally {
+			FarmerJob.clearCropScans();
 			for (Villager villager : fixtures) villager.discard();
 			oldExpansionPlans.forEach((villager, plan) -> { if (!villager.isRemoved()) villager.addTag(plan); });
 			if (privateFoodChestPos[0] != null) {

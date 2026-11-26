@@ -1,5 +1,8 @@
 package de.villagerplus.job;
 
+import de.villagerplus.VillagerPlus;
+import de.villagerplus.mixin.CompoundContainerAccessorMixin;
+import de.villagerplus.village.ChestAccess;
 import de.villagerplus.village.RecipeIndex;
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -7,9 +10,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
+import java.util.function.Function;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.Container;
+import net.minecraft.world.CompoundContainer;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -44,6 +49,15 @@ public final class RecipeCrafting {
 		return craft(c, chest, JobUtil.chest(c), outputFilter, outputCap);
 	}
 
+	/** Work from a public stock container using the indexed crafting recipes for one known output. */
+	static boolean craftCraftingOutput(Ctx c, Container stock, BlockPos workPos, Item output, int outputCap) {
+		Predicate<ItemStack> matches = stack -> stack.is(output);
+		for (RecipeHolder<CraftingRecipe> holder : RecipeIndex.producing(output)) {
+			if (craftLoadedRecipe(c, stock, workPos, holder.value(), matches, outputCap, false)) return true;
+		}
+		return false;
+	}
+
 	public static boolean craft(Ctx c, Container chest, BlockPos workPos, Predicate<ItemStack> outputFilter, int outputCap) {
 		for (RecipeHolder<?> holder : RecipeIndex.all()) {
 			if (holder.value() instanceof CraftingRecipe recipe) {
@@ -53,14 +67,18 @@ public final class RecipeCrafting {
 					continue;
 				}
 				if (craftLoadedRecipe(c, chest, workPos, recipe, outputFilter, outputCap, true)) return true;
+				if (craftFromAssignedChest(c, chest, recipe, preview, outputFilter, outputCap)) return true;
 			} else if (holder.value() instanceof StonecutterRecipe recipe
-				&& craftStonecutterRecipe(c, chest, workPos, recipe, outputFilter, outputCap, true)) {
+				&& (craftStonecutterRecipe(c, chest, workPos, recipe, outputFilter, outputCap, true)
+					|| craftFromAssignedStonecutter(c, chest, recipe, outputFilter, outputCap))) {
 				return true;
 			} else if (holder.value() instanceof CampfireCookingRecipe recipe
-				&& craftCampfireCookingRecipe(c, chest, workPos, recipe, outputFilter, outputCap, true)) {
+				&& (craftCampfireCookingRecipe(c, chest, workPos, recipe, outputFilter, outputCap, true)
+					|| craftFromAssignedCampfire(c, chest, recipe, outputFilter, outputCap))) {
 				return true;
 			} else if (holder.value() instanceof SmithingRecipe recipe
-				&& craftSmithingRecipe(c, chest, workPos, recipe, outputFilter, outputCap, true)) {
+				&& (craftSmithingRecipe(c, chest, workPos, recipe, outputFilter, outputCap, true)
+					|| craftFromAssignedSmithing(c, chest, recipe, outputFilter, outputCap))) {
 				return true;
 			} else if (holder.value().getClass().getName().equals(FARMERS_DELIGHT_COOKING_POT_RECIPE)
 				&& craftFarmersDelightCookingPotRecipe(c, chest, workPos, holder.value(), outputFilter, outputCap, true)) {
@@ -234,7 +252,13 @@ public final class RecipeCrafting {
 		ItemStack output = loaded.get().value().assemble(input);
 		if (output.isEmpty() || !outputFilter.test(output)
 			|| !outputAllowed(c, chest, outputFilter, output, outputCap, allowPlanBatch)) return false;
-		if (workPos != null && !JobUtil.approachLong(c, workPos, 3.0)) return true;
+		if (workPos != null) {
+			// A container block is not itself a walkable goal. Pick a free, loaded interaction
+			// stand beside it, then navigate to that stand; targeting the chest center caused
+			// repeated short-route failures at village storage and stalled recipe prerequisites.
+			BlockPos stand = JobUtil.sharedStandSpot(c, workPos, 3.0);
+			if (stand == null || !JobUtil.approachShared(c, stand, 0.75)) return true;
+		}
 		if (!commit(chest, input, output, List.of())) return false;
 		c.setActivity("stellt her: " + output.getHoverName().getString());
 		Anim.hold(c, output.getItem());
@@ -269,26 +293,31 @@ public final class RecipeCrafting {
 
 	private static boolean craftLoadedRecipe(Ctx c, Container chest, BlockPos workPos, CraftingRecipe recipe,
 		Predicate<ItemStack> outputFilter, int outputCap, boolean allowPlanBatch) {
-		CraftingInput input = inputFor(recipe, chest, c.level());
+		return craftLoadedRecipe(c, chest, chest, workPos, recipe, outputFilter, outputCap, allowPlanBatch);
+	}
+
+	private static boolean craftLoadedRecipe(Ctx c, Container inputs, Container stock, BlockPos workPos,
+		CraftingRecipe recipe, Predicate<ItemStack> outputFilter, int outputCap, boolean allowPlanBatch) {
+		CraftingInput input = inputFor(recipe, inputs, c.level());
 		if (input == null) return false;
 		ItemStack output = recipe.assemble(input);
 		if (output.isEmpty() || !outputFilter.test(output)
-			|| !outputAllowed(c, chest, outputFilter, output, outputCap, allowPlanBatch)) return false;
+			|| !outputAllowed(c, stock, outputFilter, output, outputCap, allowPlanBatch)) return false;
 		List<ItemStack> remainder = recipe.getRemainingItems(input);
 		if (workPos != null && !JobUtil.approachLong(c, workPos, 3.0)) return true;
-		if (!commit(chest, input, output, remainder)) return false;
+		if (!commit(inputs, stock, consumedItems(input), craftResults(output, remainder))) return false;
 		int extra = 0;
 		if (output.is(net.minecraft.tags.ItemTags.PLANKS) || (allowPlanBatch && planDemand(c, output.getItem()) > 0)) {
 			// One stop at the table turns the logs at hand into planks (every batch is a real recipe transaction on the chest stock),
 			// as far as the plan's request or the stock cap allows, instead of one walk and one pause per four planks.
 			// A shape the plan asks for (fifty stairs for a roof) is crafted the same way: one stop per batch of the request, not one per recipe.
 			while (extra < MAX_PLANK_BATCHES - 1) {
-				CraftingInput more = inputFor(recipe, chest, c.level());
+				CraftingInput more = inputFor(recipe, inputs, c.level());
 				if (more == null) break;
 				ItemStack next = recipe.assemble(more);
 				if (next.isEmpty() || !next.is(output.getItem()) || !outputFilter.test(next)
-					|| !outputAllowed(c, chest, outputFilter, next, outputCap, allowPlanBatch)
-					|| !commit(chest, more, next, recipe.getRemainingItems(more))) break;
+					|| !outputAllowed(c, stock, outputFilter, next, outputCap, allowPlanBatch)
+					|| !commit(inputs, stock, consumedItems(more), craftResults(next, recipe.getRemainingItems(more)))) break;
 				extra++;
 			}
 		}
@@ -297,6 +326,138 @@ public final class RecipeCrafting {
 		c.st().cooldownUntil = c.now() + 100 + PLANK_BATCH_PAUSE * extra;
 		c.mem().jobsDone++;
 		return true;
+	}
+
+	/**
+	 * Uses a resident's explicitly assigned chest only for a loaded recipe whose exact inputs are absent from
+	 * ordinary stock. The recipe's own placement contract selects the inputs; unrelated chest contents are never
+	 * moved, and ChestAccess revalidates the loaded chest instance and grant on every attempt.
+	 */
+	private static boolean craftFromAssignedChest(Ctx c, Container stock, CraftingRecipe recipe,
+		ItemStack preview, Predicate<ItemStack> outputFilter, int outputCap) {
+		if (preview == null || c.v() == null) return false;
+		ChestAccess access = c.v().getAttached(VillagerPlus.CHEST_ACCESS);
+		if (access == null) return false;
+		Container assigned = ChestAccess.container(c.level(), c.v());
+		if (assigned == null || sharesInventory(stock, assigned) || inputFor(recipe, stock, c.level()) != null) return false;
+		BlockPos chestPos = access.chest().pos();
+		Container combined = new CompoundContainer(stock, assigned);
+		CraftingInput input = inputFor(recipe, combined, c.level());
+		if (input == null) return false;
+		ItemStack output = recipe.assemble(input);
+		if (output.isEmpty() || !outputFilter.test(output)
+			|| !outputAllowed(c, stock, outputFilter, output, outputCap, true)
+			|| simulateTransaction(combined, stock, consumedItems(input), craftResults(output, recipe.getRemainingItems(input))) == null) {
+			return false;
+		}
+
+		BlockPos stand = JobUtil.sharedStandSpot(c, chestPos, 3.0);
+		if (stand == null) return false;
+		if (!JobUtil.approachShared(c, stand, 0.75)) return true;
+		ChestAccess latestAccess = c.v().getAttached(VillagerPlus.CHEST_ACCESS);
+		if (latestAccess == null) return false;
+		if (!latestAccess.chest().equals(access.chest())) return true; // The next work tick routes to the newly assigned chest.
+		// Re-resolve after navigation so a replaced, unloaded, or revoked chest cannot be used from a stale view.
+		Container current = ChestAccess.container(c.level(), c.v());
+		if (current == null || sharesInventory(stock, current)) return false;
+		return craftLoadedRecipe(c, new CompoundContainer(stock, current), stock, null, recipe, outputFilter, outputCap, true);
+	}
+
+	private static boolean craftFromAssignedStonecutter(Ctx c, Container stock, StonecutterRecipe recipe,
+		Predicate<ItemStack> outputFilter, int outputCap) {
+		return craftFromAssignedInputs(c, stock, outputFilter, outputCap, container -> {
+			for (int slot = 0; slot < container.getContainerSize(); slot++) {
+				ItemStack stack = container.getItem(slot);
+				if (stack.isEmpty()) continue;
+				SingleRecipeInput input = new SingleRecipeInput(stack.copyWithCount(1));
+				var loaded = c.level().recipeAccess().getRecipeFor(RecipeType.STONECUTTING, input, c.level());
+				if (loaded.isPresent() && loaded.get().value() == recipe) return input;
+			}
+			return null;
+		}, input -> recipe.assemble((SingleRecipeInput) input), input -> List.of(), false);
+	}
+
+	private static boolean craftFromAssignedCampfire(Ctx c, Container stock, CampfireCookingRecipe recipe,
+		Predicate<ItemStack> outputFilter, int outputCap) {
+		return craftFromAssignedInputs(c, stock, outputFilter, outputCap, container -> {
+			for (int slot = 0; slot < container.getContainerSize(); slot++) {
+				ItemStack stack = container.getItem(slot);
+				if (stack.isEmpty()) continue;
+				SingleRecipeInput input = new SingleRecipeInput(stack.copyWithCount(1));
+				var loaded = c.level().recipeAccess().getRecipeFor(RecipeType.CAMPFIRE_COOKING, input, c.level());
+				if (loaded.isPresent() && loaded.get().value() == recipe) return input;
+			}
+			return null;
+		}, input -> recipe.assemble((SingleRecipeInput) input), input -> List.of(), false);
+	}
+
+	private static boolean craftFromAssignedSmithing(Ctx c, Container stock, SmithingRecipe recipe,
+		Predicate<ItemStack> outputFilter, int outputCap) {
+		return craftFromAssignedInputs(c, stock, outputFilter, outputCap,
+			container -> {
+				SmithingRecipeInput input = smithingInputFor(recipe, container, c.level());
+				if (input == null) return null;
+				var loaded = c.level().recipeAccess().getRecipeFor(RecipeType.SMITHING, input, c.level());
+				return loaded.isPresent() && loaded.get().value() == recipe ? input : null;
+			}, input -> recipe.assemble((SmithingRecipeInput) input), input -> List.of(), true);
+	}
+
+	/** Exact inputs from a permitted chest are consumed only for a concrete recipe need; all results stay in public stock. */
+	private static boolean craftFromAssignedInputs(Ctx c, Container stock, Predicate<ItemStack> outputFilter, int outputCap,
+		Function<Container, RecipeInput> resolveInput, Function<RecipeInput, ItemStack> assemble,
+		Function<RecipeInput, List<ItemStack>> getRemainders, boolean privateInputsOnly) {
+		if (stock == null || c.v() == null) return false;
+		ChestAccess access = c.v().getAttached(VillagerPlus.CHEST_ACCESS);
+		if (access == null) return false;
+		Container assigned = ChestAccess.container(c.level(), c.v());
+		if (assigned == null || sharesInventory(stock, assigned) || resolveInput.apply(stock) != null) return false;
+		Container inputs = privateInputsOnly ? assigned : new CompoundContainer(stock, assigned);
+		RecipeInput input = resolveInput.apply(inputs);
+		if (input == null) return false;
+		ItemStack output = assemble.apply(input);
+		List<ItemStack> remainders = getRemainders.apply(input);
+		if (output.isEmpty() || !outputFilter.test(output) || !outputAllowed(c, stock, outputFilter, output, outputCap, true)
+			|| (privateInputsOnly
+				? simulatePrivateTransaction(inputs, stock, consumedItems(input), craftResults(output, remainders))
+				: simulateTransaction(inputs, stock, consumedItems(input), craftResults(output, remainders))) == null) return false;
+
+		BlockPos chestPos = access.chest().pos();
+		BlockPos stand = JobUtil.sharedStandSpot(c, chestPos, 3.0);
+		if (stand == null) return false;
+		if (!JobUtil.approachShared(c, stand, 0.75)) return true;
+		ChestAccess latestAccess = c.v().getAttached(VillagerPlus.CHEST_ACCESS);
+		if (latestAccess == null) return false;
+		if (!latestAccess.chest().equals(access.chest())) return true; // The next work tick routes to the newly assigned chest.
+		Container current = ChestAccess.container(c.level(), c.v());
+		if (current == null || sharesInventory(stock, current) || resolveInput.apply(stock) != null) return false;
+		inputs = privateInputsOnly ? current : new CompoundContainer(stock, current);
+		input = resolveInput.apply(inputs);
+		if (input == null) return false;
+		output = assemble.apply(input);
+		remainders = getRemainders.apply(input);
+		if (output.isEmpty() || !outputFilter.test(output) || !outputAllowed(c, stock, outputFilter, output, outputCap, true)
+			|| !(privateInputsOnly
+				? commitPrivateTransaction(inputs, stock, consumedItems(input), craftResults(output, remainders))
+				: commit(inputs, stock, consumedItems(input), craftResults(output, remainders)))) return false;
+		c.setActivity("stellt her: " + output.getHoverName().getString());
+		Anim.hold(c, output.getItem());
+		c.st().cooldownUntil = c.now() + 100;
+		c.mem().jobsDone++;
+		return true;
+	}
+
+	/** Wrapper identities differ even when two compound views expose the same real chest half. */
+	private static boolean sharesInventory(Container first, Container second) {
+		if (first == second) return true;
+		if (first instanceof CompoundContainerAccessorMixin pair) {
+			return sharesInventory(pair.villagerplus$getContainer1(), second)
+				|| sharesInventory(pair.villagerplus$getContainer2(), second);
+		}
+		if (second instanceof CompoundContainerAccessorMixin pair) {
+			return sharesInventory(first, pair.villagerplus$getContainer1())
+				|| sharesInventory(first, pair.villagerplus$getContainer2());
+		}
+		return false;
 	}
 
 	/** A plan needs at least its requested count; one loaded recipe batch may exceed that minimum. */
@@ -583,17 +744,101 @@ public final class RecipeCrafting {
 	}
 
 	static boolean commit(Container chest, RecipeInput input, ItemStack output, List<ItemStack> remainders) {
+		return commit(chest, chest, consumedItems(input), craftResults(output, remainders));
+	}
+
+	private static List<ItemStack> consumedItems(RecipeInput input) {
 		List<ItemStack> consumed = new ArrayList<>();
 		for (int i = 0; i < input.size(); i++) if (!input.getItem(i).isEmpty()) consumed.add(input.getItem(i).copyWithCount(1));
+		return consumed;
+	}
+
+	private static List<ItemStack> craftResults(ItemStack output, List<ItemStack> remainders) {
 		List<ItemStack> returned = new ArrayList<>(remainders);
 		returned.add(output.copy());
-		return commit(chest, consumed, returned);
+		return returned;
 	}
 
 	/** Atomically consume exact one-item inputs and fit every output/remainder before mutating the pantry. */
 	static boolean commit(Container chest, List<ItemStack> consumed, List<ItemStack> returned) {
-		List<ItemStack> simulated = new ArrayList<>(chest.getContainerSize());
-		for (int i = 0; i < chest.getContainerSize(); i++) simulated.add(chest.getItem(i).copy());
+		return commit(chest, chest, consumed, returned);
+	}
+
+	/** Simulates a private-input recipe while keeping all results in public stock, independently of inventory slot layout. */
+	private static List<List<ItemStack>> simulatePrivateTransaction(Container inputs, Container stock,
+		List<ItemStack> consumed, List<ItemStack> returned) {
+		List<ItemStack> inputSlots = snapshotContents(inputs);
+		List<ItemStack> stockSlots = snapshotContents(stock);
+		for (ItemStack ingredient : consumed) {
+			if (ingredient.isEmpty()) continue;
+			boolean found = false;
+			for (int slot = 0; slot < inputSlots.size(); slot++) {
+				ItemStack present = inputSlots.get(slot);
+				if (present.isEmpty() || !ItemStack.isSameItemSameComponents(present, ingredient)) continue;
+				present.shrink(1);
+				if (present.isEmpty()) inputSlots.set(slot, ItemStack.EMPTY);
+				found = true;
+				break;
+			}
+			if (!found) return null;
+		}
+		for (ItemStack result : returned) {
+			if (!result.isEmpty() && !insert(stockSlots, stock, result.copy())) return null;
+		}
+		return List.of(inputSlots, stockSlots);
+	}
+
+	private static boolean commitPrivateTransaction(Container inputs, Container stock, List<ItemStack> consumed,
+		List<ItemStack> returned) {
+		List<List<ItemStack>> simulated = simulatePrivateTransaction(inputs, stock, consumed, returned);
+		if (simulated == null) return false;
+		applyContents(inputs, simulated.get(0));
+		applyContents(stock, simulated.get(1));
+		return true;
+	}
+
+	private static List<ItemStack> snapshotContents(Container container) {
+		List<ItemStack> slots = new ArrayList<>(container.getContainerSize());
+		for (int slot = 0; slot < container.getContainerSize(); slot++) slots.add(container.getItem(slot).copy());
+		return slots;
+	}
+
+	private static void applyContents(Container container, List<ItemStack> slots) {
+		for (int slot = 0; slot < slots.size(); slot++) {
+			ItemStack before = container.getItem(slot);
+			ItemStack after = slots.get(slot);
+			if (ItemStack.matches(before, after)) continue;
+			if (after.isEmpty() || (ItemStack.isSameItemSameComponents(before, after) && before.getCount() > after.getCount())) {
+				container.removeItem(slot, before.getCount() - after.getCount());
+			} else {
+				container.setItem(slot, after.copy());
+			}
+		}
+		container.setChanged();
+	}
+
+	private static boolean commit(Container inputs, Container stock, List<ItemStack> consumed, List<ItemStack> returned) {
+		List<ItemStack> simulated = simulateTransaction(inputs, stock, consumed, returned);
+		if (simulated == null) return false;
+		for (int i = 0; i < simulated.size(); i++) {
+			ItemStack before = inputs.getItem(i);
+			ItemStack after = simulated.get(i);
+			if (ItemStack.matches(before, after)) continue;
+			if (after.isEmpty() || (ItemStack.isSameItemSameComponents(before, after) && before.getCount() > after.getCount())) {
+				inputs.removeItem(i, before.getCount() - after.getCount());
+			} else {
+				inputs.setItem(i, after);
+			}
+		}
+		inputs.setChanged();
+		return true;
+	}
+
+	/** The output stock occupies the first slots of inputs. Additional input slots can never receive output. */
+	private static List<ItemStack> simulateTransaction(Container inputs, Container stock, List<ItemStack> consumed,
+		List<ItemStack> returned) {
+		List<ItemStack> simulated = new ArrayList<>(inputs.getContainerSize());
+		for (int i = 0; i < inputs.getContainerSize(); i++) simulated.add(inputs.getItem(i).copy());
 		for (ItemStack ingredient : consumed) {
 			if (ingredient.isEmpty()) continue;
 			int left = 1;
@@ -605,12 +850,13 @@ public final class RecipeCrafting {
 					left = 0;
 				}
 			}
-			if (left > 0) return false;
+			if (left > 0) return null;
 		}
-		for (ItemStack remaining : returned) if (!remaining.isEmpty() && !insert(simulated, chest, remaining.copy())) return false;
-		for (int i = 0; i < simulated.size(); i++) chest.setItem(i, simulated.get(i));
-		chest.setChanged();
-		return true;
+		List<ItemStack> outputSlots = simulated.subList(0, stock.getContainerSize());
+		for (ItemStack remaining : returned) {
+			if (!remaining.isEmpty() && !insert(outputSlots, stock, remaining.copy())) return null;
+		}
+		return simulated;
 	}
 
 	private static boolean insert(List<ItemStack> slots, Container chest, ItemStack moving) {

@@ -314,7 +314,7 @@ public final class BuildHaul {
 				List<String> wanted = project.active() ? restoreReleasedDemand(project.wanted(), released) : project.wanted();
 				data.buildProjects.set(i, new VillageData.BuildProject(project.type(), project.origin(), project.dir(), project.step(),
 					project.variant(), project.source(), project.progress(), project.owner(), project.ownerUnavailableSince(), wanted,
-					new VillageData.ProjectHaul(project.siteStock(), remaining), project.materialWait(), project.construction(),
+					new VillageData.ProjectHaul(project.siteStock(), remaining, project.haul().emergencyWait()), project.materialWait(), project.construction(),
 					project.bounds(), project.repair(), project.cleanupOnly()));
 				changed = true;
 			}

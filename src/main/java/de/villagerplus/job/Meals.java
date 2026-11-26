@@ -61,6 +61,8 @@ public final class Meals {
 
 		// Give meals made by the cook a real household route even when the resident
 		// still carries ordinary food or has it in the local home chest.
+		var access = c.v().getAttached(de.villagerplus.VillagerPlus.CHEST_ACCESS);
+		Container authorizedChest = de.villagerplus.village.ChestAccess.nearbyContainer(c.level(), c.v(), 3.5);
 		if (eatFirst(c, c.v().getInventory(), s -> isPreparedFood(c.level(), s))) return true;
 		if (eatFirst(c, source, s -> isPreparedFood(c.level(), s))) return true;
 		if (eatFromGranary(c, s -> isPreparedFood(c.level(), s))) return true;
@@ -68,7 +70,32 @@ public final class Meals {
 		// Keep the usual food fallback for villages without a prepared meal.
 		if (eatFirst(c, c.v().getInventory(), Meals::isFood)) return true;
 		if (eatFirst(c, source, Meals::isFood)) return true;
+		if (authorizedChest != null && eatFirst(c, authorizedChest, Meals::isFood, access.grantedBy())) return true;
 		return eatFromGranary(c, Meals::isFood);
+	}
+
+	/** Routine-independent meal check for a resident close to its assigned chest. */
+	public static boolean eatFromAssignedChest(Ctx c) {
+		if (c.now() < c.st().nextAssignedMealCheckAt) return false;
+		var access = c.v().getAttached(de.villagerplus.VillagerPlus.CHEST_ACCESS);
+		if (access == null || !access.chest().dimension().equals(c.level().dimension())) return false;
+		var pos = access.chest().pos();
+		if (c.v().distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) > 3.5 * 3.5) return false;
+		long lastMeal = c.mem().lastMeal;
+		if (lastMeal == 0L) {
+			// New or legacy residents have no meal timestamp. Start the hunger clock when their chest is assigned
+			// and nearby; zero must not permanently disable feeding in a confined stall.
+			c.mem().lastMeal = Math.max(1L, c.now());
+			c.st().nextAssignedMealCheckAt = c.now() + 200L;
+			return false;
+		}
+		if (c.now() - lastMeal < Config.HUNGER_AFTER / 2L || onCooldown(c)) {
+			c.st().nextAssignedMealCheckAt = c.now() + 200L;
+			return false;
+		}
+		c.st().nextAssignedMealCheckAt = c.now() + 100L;
+		Container chest = de.villagerplus.village.ChestAccess.nearbyContainer(c.level(), c.v(), 3.5);
+		return chest != null && eatFirst(c, chest, Meals::isFood, access.grantedBy());
 	}
 
 	/** Eat only from the specified stock source; used by services where inventory food is not what is being purchased. */
@@ -92,6 +119,10 @@ public final class Meals {
 	}
 
 	private static boolean eatFirst(Ctx c, Container source, Predicate<ItemStack> filter) {
+		return eatFirst(c, source, filter, null);
+	}
+
+	private static boolean eatFirst(Ctx c, Container source, Predicate<ItemStack> filter, java.util.UUID grantor) {
 		if (source == null || onCooldown(c)) return false;
 		for (int slot = 0; slot < source.getContainerSize(); slot++) {
 			ItemStack present = source.getItem(slot);
@@ -100,7 +131,7 @@ public final class Meals {
 			ItemStack eaten = source.removeItem(slot, 1);
 			if (eaten.isEmpty()) return false;
 			source.setChanged();
-			if (finishMeal(c, new MealPortion(eaten, source))) return true;
+			if (finishMeal(c, new MealPortion(eaten, source, grantor))) return true;
 			source.setItem(slot, before);
 			source.setChanged();
 		}
@@ -109,12 +140,15 @@ public final class Meals {
 
 	private static boolean finishMeal(Ctx c, MealPortion portion) {
 		ItemStack eaten = portion.food();
+		boolean playerProvided = portion.grantor() != null;
 		if (eaten != null) {
 			var useRemainder = eaten.get(DataComponents.USE_REMAINDER);
 			var craftingRemainder = eaten.getItem().getCraftingRemainder();
 			ItemStack remainder = useRemainder != null ? useRemainder.convertInto().create()
 				: craftingRemainder == null ? ItemStack.EMPTY : craftingRemainder.create();
-			if (!remainder.isEmpty() && !storeRemainder(c.v().getInventory(), portion.source(), remainder)) return false;
+			if (!remainder.isEmpty() && !(playerProvided
+				? storeRemainder(portion.source(), c.v().getInventory(), remainder)
+				: storeRemainder(c.v().getInventory(), portion.source(), remainder))) return false;
 			Anim.hold(c, eaten.getItem());
 			Anim.eatParticles(c.level(), c.v(), eaten.getItem());
 		}
@@ -123,6 +157,9 @@ public final class Meals {
 		c.level().playSound(null, c.v().blockPosition(), SoundEvents.GENERIC_EAT.value(), SoundSource.NEUTRAL, 0.6F, 1.0F);
 		JobUtil.swing(c.v());
 		c.mem().lastMeal = c.now();
+		if (playerProvided) {
+			c.v().getGossips().add(portion.grantor(), net.minecraft.world.entity.ai.gossip.GossipType.MINOR_POSITIVE, 4);
+		}
 		return true;
 	}
 
@@ -179,7 +216,7 @@ public final class Meals {
 		return moving.isEmpty();
 	}
 
-	private record MealPortion(ItemStack food, Container source) { }
+	private record MealPortion(ItemStack food, Container source, java.util.UUID grantor) { }
 
 	/** Lange nichts gegessen? Dann arbeitet der Dorfbewohner nur noch halb so schnell. */
 	public static boolean hungry(Ctx c) {

@@ -4,6 +4,8 @@ import de.villagerplus.Config;
 import de.villagerplus.VillagerMemory;
 import de.villagerplus.VillagerPlus;
 import de.villagerplus.build.HouseTemplate;
+import de.villagerplus.build.Blueprints;
+import de.villagerplus.job.Meals;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -29,6 +31,7 @@ import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.DoorBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
+import net.minecraft.world.level.block.entity.HopperBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
 import net.minecraft.util.ProblemReporter;
@@ -41,6 +44,7 @@ public final class PrivateChestProvisioning {
 
 	private static final int HOME_INTERIOR_SCAN_RADIUS = 5;
 	private static final int MAX_HOME_WALL_RAY = HOME_INTERIOR_SCAN_RADIUS + 2;
+	private static final int HOME_FOOD_RESERVE = 4;
 	private enum ExistingChest { FOUND, NONE, INCOMPLETE_SCAN, UNSAFE }
 	private record HomeInterior(Set<BlockPos> cells, boolean bounded, HouseTemplate.Footprint footprint) { }
 
@@ -79,6 +83,9 @@ public final class PrivateChestProvisioning {
 		}
 		ExistingChest existingChest = rememberExisting(level, villager.getUUID(), memory, bed, door);
 		if (existingChest == ExistingChest.FOUND) {
+			BlockPos homeChest = memory.homeChest.orElse(null);
+			transferPersonalItems(level, villager, homeChest, bed, door);
+			provisionHomeFood(level, village, homeChest, bed, door, villager.getUUID());
 			setPending(villager, false);
 			return true;
 		}
@@ -122,8 +129,104 @@ public final class PrivateChestProvisioning {
 			return false;
 		}
 		memory.homeChest = Optional.of(placement.immutable());
+		transferPersonalItems(level, villager, placement, bed, door);
+		provisionHomeFood(level, village, placement, bed, door, owner);
 		setPending(villager, false);
 		return true;
+	}
+
+	/** Moves only miscellaneous items already owned by the resident; food and job stock remain available to routines. */
+	private static void transferPersonalItems(ServerLevel level, Villager villager, BlockPos homeChest,
+		BlockPos bed, BlockPos door) {
+		if (level == null || villager == null || homeChest == null
+			|| !validOwnedHomeChest(level, homeChest, bed, door, villager.getUUID())) return;
+		BlockEntity entity = level.getBlockEntity(homeChest);
+		if (!(entity instanceof ChestBlockEntity chest)
+			|| chest.getAttachedOrElse(VillagerPlus.PRIVATE_CHEST_PERSONAL_ITEMS, false)) return;
+
+		Container inventory = villager.getInventory();
+		boolean movedAny = false;
+		for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+			ItemStack stack = inventory.getItem(slot);
+			if (!personalInventoryItem(stack)) continue;
+			ItemStack removed = inventory.removeItem(slot, stack.getCount());
+			if (removed.isEmpty()) continue;
+			ItemStack remainder = HopperBlockEntity.addItem(null, chest, removed, null);
+			movedAny |= removed.getCount() > remainder.getCount();
+			if (!remainder.isEmpty()) {
+				// The source slot was emptied before insertion, so returning the remainder cannot overwrite goods.
+				inventory.setItem(slot, remainder);
+			}
+		}
+		inventory.setChanged();
+		chest.setChanged();
+		boolean personalItemsRemain = false;
+		for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+			ItemStack stack = inventory.getItem(slot);
+			if (personalInventoryItem(stack)) {
+				personalItemsRemain = true;
+				break;
+			}
+		}
+		if (movedAny && !personalItemsRemain) {
+			chest.setAttached(VillagerPlus.PRIVATE_CHEST_PERSONAL_ITEMS, true);
+			chest.setChanged();
+		}
+	}
+
+	private static boolean personalInventoryItem(ItemStack stack) {
+		return !stack.isEmpty() && StockPolicy.category(stack.getItem()) == StockPolicy.Category.OTHER
+			&& !StockPolicy.isRawSmeltingSupply(stack.getItem());
+	}
+
+	/** Keeps a small, paid food buffer in verified resident storage; only real public granary stock is moved. */
+	private static void provisionHomeFood(ServerLevel level, VillageRef village, BlockPos homeChest, BlockPos bed,
+		BlockPos door, UUID owner) {
+		if (level == null || village == null || homeChest == null
+			|| !validOwnedHomeChest(level, homeChest, bed, door, owner)) return;
+		Container destination = HopperBlockEntity.getContainerAt(level, homeChest);
+		if (destination == null) return;
+		int food = 0;
+		for (int slot = 0; slot < destination.getContainerSize(); slot++) {
+			ItemStack stack = destination.getItem(slot);
+			if (Meals.isFood(stack)) food += stack.getCount();
+		}
+		int missing = HOME_FOOD_RESERVE - food;
+		if (missing <= 0) return;
+		for (Specials.LocatedContainer located : Specials.locatedContainers(level, village, Blueprints.GRANARY)) {
+			Container source = located.container();
+			if (source == destination) continue;
+			for (int slot = 0; slot < source.getContainerSize() && missing > 0; slot++) {
+				ItemStack stack = source.getItem(slot);
+				if (!Meals.isFood(stack)) continue;
+				int amount = Math.min(missing, stack.getCount());
+				ItemStack removed = source.removeItem(slot, amount);
+				if (removed.isEmpty()) continue;
+				ItemStack remainder = HopperBlockEntity.addItem(null, destination, removed, null);
+				int moved = removed.getCount() - remainder.getCount();
+				if (!remainder.isEmpty()) {
+					// removeItem may leave a partial stack in place, so merge the unaccepted share back
+					// instead of overwriting that paid source remainder.
+					ItemStack sourceRemainder = source.getItem(slot);
+					if (sourceRemainder.isEmpty()) {
+						source.setItem(slot, remainder);
+					} else if (ItemStack.isSameItemSameComponents(sourceRemainder, remainder)
+						&& sourceRemainder.getCount() + remainder.getCount() <= sourceRemainder.getMaxStackSize()) {
+						sourceRemainder.grow(remainder.getCount());
+					} else {
+						ItemStack unreturned = HopperBlockEntity.addItem(null, source, remainder, null);
+						if (!unreturned.isEmpty()) throw new IllegalStateException("Could not return untransferred private-chest food");
+					}
+					source.setChanged();
+				}
+				if (moved > 0) {
+					missing -= moved;
+					source.setChanged();
+					destination.setChanged();
+				}
+			}
+			if (missing <= 0) return;
+		}
 	}
 
 	public static boolean isPending(Villager villager) {

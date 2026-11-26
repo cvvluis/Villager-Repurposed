@@ -31,30 +31,40 @@ public class PorterJob implements Job {
 		if (JobUtil.depositSurplus(c, produce(), 16, 0)) {
 			return true;
 		}
+		if (!LooseItemPickup.allowsPickup(c)) return sortOrIdle(c);
 		JobState st = c.st();
-		ItemEntity item = st.targetEntity instanceof ItemEntity e && e.isAlive() ? e : null;
+		ItemEntity item = st.targetEntity instanceof ItemEntity e && availableDrop(c, e) ? e : null;
 		if (item == null) {
 			st.clearTarget();
 			AABB box = c.v().getBoundingBox().inflate(Config.PORTER_RADIUS);
-			item = c.level().getEntitiesOfClass(ItemEntity.class, box, e -> e.isAlive() && e.getAge() > Config.PORTER_MIN_ITEM_AGE)
+			item = c.level().getEntitiesOfClass(ItemEntity.class, box, e -> availableDrop(c, e))
 				.stream().min(Comparator.comparingDouble(e -> e.distanceToSqr(c.v()))).orElse(null);
 			if (item == null) {
-				if (PorterSorting.work(c)) return true;
-				c.setIdle(0, 600);
-				return false;
+				return sortOrIdle(c);
 			}
 			st.targetEntity = item;
 		}
 		c.setActivity("räumt auf");
-		if (!JobUtil.approach(c, item.position(), 1.6)) {
+		if (!JobUtil.approach(c, item.position(), LooseItemPickup.REACH)) {
 			return true;
 		}
-		JobUtil.give(c.level(), c.v(), item.getItem().copy());
-		item.discard();
-		c.mem().jobsDone++;
+		boolean collected = LooseItemPickup.collectInReach(c, item);
 		st.clearTarget();
+		if (!collected) return false;
+		c.mem().jobsDone++;
 		st.cooldownUntil = c.now() + 20;
 		return true;
+	}
+
+	private static boolean availableDrop(Ctx c, ItemEntity item) {
+		return item.getAge() >= Config.PORTER_MIN_ITEM_AGE && LooseItemPickup.canCollect(c, item)
+			&& (!LooseItemPickup.inReach(c, item) || LooseItemPickup.clearReach(c, item));
+	}
+
+	private static boolean sortOrIdle(Ctx c) {
+		if (PorterSorting.work(c)) return true;
+		c.setIdle(0, 600);
+		return false;
 	}
 
 	@Override

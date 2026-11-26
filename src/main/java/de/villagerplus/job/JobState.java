@@ -3,6 +3,7 @@ package de.villagerplus.job;
 import java.util.List;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
 
 /** Fluechtiger Laufzeit-Zustand eines Jobs (geht beim Neustart bewusst verloren). */
 public class JobState {
@@ -57,6 +58,18 @@ public class JobState {
 	/** B01: next tick a profession may retry replacing its missing work block (not persisted). */
 	public long workBlockIdleUntil;
 	public BlockPos target;
+	BlockPos harvestStand;
+	private java.util.LinkedHashMap<BlockPos, Long> harvestRetry;
+
+	boolean waitingToRetryHarvest(BlockPos cropPos, long now) {
+		return harvestRetry != null && now < harvestRetry.getOrDefault(cropPos, Long.MIN_VALUE);
+	}
+
+	void delayHarvestRetry(BlockPos cropPos, long retryAt) {
+		if (harvestRetry == null) harvestRetry = new java.util.LinkedHashMap<>();
+		if (harvestRetry.size() >= 16 && !harvestRetry.containsKey(cropPos)) harvestRetry.pollFirstEntry();
+		harvestRetry.put(cropPos.immutable(), retryAt);
+	}
 	/** Runtime-only target while a farmer walks to a safe wild-grass seed source. */
 	public BlockPos forageTarget;
 	/** Next game time at which a forager may run the wide (far meadow) seed-grass search again. */
@@ -67,6 +80,20 @@ public class JobState {
 	public BlockPos forageRejectedTarget;
 	public Entity targetEntity;
 	public long walkStart;
+	/** Next small-radius search for player-thrown offerings. */
+	long nextOfferedItemScan;
+	/** A nearby player drop the resident is currently walking toward (runtime only). */
+	public ItemEntity offeredItemTarget;
+	/** Start time for abandoning a drop that cannot be reached. */
+	public long offeredItemTargetSince;
+	/** Expires the item entity claim if this resident becomes unavailable. */
+	public long offeredItemClaimUntil;
+	/** Next bounded check for food in an explicitly assigned chest. */
+	public long nextAssignedMealCheckAt;
+	BlockPos replantTarget;
+	long replantCheckAt;
+	/** Next search for bread ingredients in the public granary. */
+	long granaryBreadCheckAt;
 	public long chestCheckAt;
 	public long lightAt;
 	/** Cached public tool-shed chest while the lamplighter fetches a real shovel for saved-road repair. */
@@ -125,6 +152,7 @@ public class JobState {
 
 	public void clearTarget() {
 		target = null;
+		harvestStand = null;
 		targetEntity = null;
 		walkStart = 0;
 	}

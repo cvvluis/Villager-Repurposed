@@ -47,11 +47,13 @@ public final class PrivateChestProvisioningChecks {
 		Optional<BlockPos> oldBed = memory.homeBed, oldDoor = memory.homeDoor, oldChest = memory.homeChest;
 		Optional<GlobalPos> oldHome = villager.getBrain().getMemory(MemoryModuleType.HOME);
 		Optional<GlobalPos> oldMeeting = villager.getBrain().getMemory(MemoryModuleType.MEETING_POINT);
+		BlockPos oldGranary = Specials.get(village, de.villagerplus.build.Blueprints.GRANARY);
 		boolean oldPending = PrivateChestProvisioning.isPending(villager);
 		String oldName = memory.name, oldSignText = memory.signText;
 		Optional<BlockPos> oldSignPos = memory.signPos;
 		net.minecraft.network.chat.Component oldCustomName = villager.getCustomName();
 		boolean oldNameVisible = villager.isCustomNameVisible();
+		List<ItemStack> originalInventory = snapshotContents(villager.getInventory());
 		BlockPos bed = village.bell().offset(40, 0, 40);
 		BlockPos door = bed.south(4);
 		BlockPos movedBed = bed.east(14);
@@ -63,12 +65,14 @@ public final class PrivateChestProvisioningChecks {
 		BlockPos doorlessBed = bed.west(14);
 		BlockPos unverifiedBed = bed.north(16);
 		BlockPos unverifiedDoor = unverifiedBed.south(4);
+		BlockPos granaryChestPos = bed.west(20);
 		List<BlockPos> fixture = new ArrayList<>(fixturePositions(bed));
 		fixture.addAll(fixturePositions(movedBed));
 		fixture.addAll(fixturePositions(secondBed));
 		fixture.addAll(fixturePositions(thirdBed));
 		fixture.addAll(fixturePositions(doorlessBed));
 		fixture.addAll(fixturePositions(unverifiedBed));
+		fixture.add(granaryChestPos.immutable());
 		for (BlockPos pos : fixture) {
 			level.getChunkAt(pos);
 			if (!level.getBlockState(pos).isAir() || level.getBlockEntity(pos) != null) {
@@ -297,7 +301,14 @@ public final class PrivateChestProvisioningChecks {
 
 			clearRoom(level, bed, door);
 			installRoom(level, bed, door);
-			int nonChestStockBeforePayment = totalItemsExcept(stocks, Items.CHEST);
+			level.setBlock(granaryChestPos, Blocks.CHEST.defaultBlockState(), 3);
+			Container foodDepot = HopperBlockEntity.getContainerAt(level, granaryChestPos);
+			if (foodDepot == null) throw new IllegalStateException("Granary fixture chest has no inventory");
+			foodDepot.setItem(0, new ItemStack(Items.BREAD, 3));
+			foodDepot.setChanged();
+			Specials.set(village, de.villagerplus.build.Blueprints.GRANARY, granaryChestPos);
+			check(passed, Lager.publicStorageAt(level, granaryChestPos) && total(foodDepot, Items.BREAD) == 3,
+				"the granary fixture contains three real bread items before resident provisioning");
 			BlockPos protectedContainerPos = PrivateChestProvisioning.findPlacement(level, bed, door);
 			if (protectedContainerPos == null) throw new IllegalStateException("Private chest container fixture has no safe candidate");
 			level.setBlock(protectedContainerPos, Blocks.CHEST.defaultBlockState(), 3);
@@ -315,6 +326,9 @@ public final class PrivateChestProvisioningChecks {
 			level.setBlock(protectedContainerPos, Blocks.AIR.defaultBlockState(), 3);
 			BlockPos occupiedCandidate = PrivateChestProvisioning.findPlacement(level, bed, door);
 			if (occupiedCandidate == null) throw new IllegalStateException("Private chest occupancy fixture has no safe candidate");
+			if (StockPolicy.category(Items.EMERALD) != StockPolicy.Category.OTHER) {
+				throw new IllegalStateException("Private chest personal-item fixture requires emeralds to remain non-stock personal goods");
+			}
 			villager.setPos(occupiedCandidate.getX() + 0.5, occupiedCandidate.getY(), occupiedCandidate.getZ() + 0.5);
 			check(passed, PrivateChestProvisioning.ensure(level, villager, memory, village)
 				&& memory.homeChest.isPresent() && !memory.homeChest.get().equals(occupiedCandidate)
@@ -334,9 +348,32 @@ public final class PrivateChestProvisioningChecks {
 				&& PrivateChestProvisioning.withinHomeFootprint(placed, firstHomeFootprint)
 				&& PrivateChestProvisioning.withinHomeInteriorFootprint(placed, firstHomeFootprint)
 				&& PrivateChestProvisioning.validOwnedHomeChest(level, placed, bed, door, villager.getUUID())
-				&& Ownership.isOwnedBy(level, placed, villager.getUUID()) && chestCount(stocks) == 0
-				&& totalItemsExcept(stocks, Items.CHEST) == nonChestStockBeforePayment,
-				"placement stays in the proven house interior, consumes exactly one real public chest, and marks its owner");
+				&& Ownership.isOwnedBy(level, placed, villager.getUUID()) && chestCount(stocks) == 0,
+				"placement stays in the proven house interior, consumes exactly one real public chest, and marks its owner"
+					+ " [chest=" + placed.toShortString() + ", owner=" + Ownership.isOwnedBy(level, placed, villager.getUUID())
+					+ ", pending=" + PrivateChestProvisioning.isPending(villager) + ", publicChests=" + chestCount(stocks) + "]");
+			Container provisionedHome = HopperBlockEntity.getContainerAt(level, placed);
+			check(passed, provisionedHome != null && total(provisionedHome, Items.BREAD) == 3
+				&& total(foodDepot, Items.BREAD) == 0,
+				"verified private home storage receives a small food reserve paid from the actual public granary");
+			BlockEntity provisionedEntity = level.getBlockEntity(placed);
+			check(passed, provisionedHome != null && total(provisionedHome, Items.EMERALD) == 0
+				&& provisionedEntity != null && !provisionedEntity.getAttachedOrElse(VillagerPlus.PRIVATE_CHEST_PERSONAL_ITEMS, false),
+				"an initially empty resident inventory does not prematurely complete private-item provisioning");
+			villager.getInventory().setItem(0, new ItemStack(Items.EMERALD, 3));
+			villager.getInventory().setItem(1, new ItemStack(Items.RAW_IRON, 2));
+			PrivateChestProvisioning.ensure(level, villager, memory, village);
+			check(passed, total(provisionedHome, Items.EMERALD) == 3 && total(villager.getInventory(), Items.EMERALD) == 0
+				&& total(villager.getInventory(), Items.RAW_IRON) == 2
+				&& provisionedEntity.getAttachedOrElse(VillagerPlus.PRIVATE_CHEST_PERSONAL_ITEMS, false)
+				&& total(foodDepot, Items.BREAD) == 0
+				&& chestCount(stocks) == 0,
+				"later personal goods move once while raw smelting work stock and all nonfood public stock stay untouched");
+		villager.getInventory().setItem(0, new ItemStack(Items.EMERALD, 1));
+		PrivateChestProvisioning.ensure(level, villager, memory, village);
+		check(passed, total(provisionedHome, Items.EMERALD) == 3 && total(villager.getInventory(), Items.EMERALD) == 1
+			&& total(villager.getInventory(), Items.RAW_IRON) == 2 && chestCount(stocks) == 0,
+			"the persistent owner-chest marker prevents re-copying subsequent personal inventory");
 			check(passed, Lager.publicContainerAt(level, placed) == null && !Lager.materialChests(level, village).contains(placed),
 				"owner-marked private storage is excluded from public community containers");
 			villager.getBrain().eraseMemory(MemoryModuleType.HOME);
@@ -362,6 +399,7 @@ public final class PrivateChestProvisioningChecks {
 				loadedResident.load(TagValueInput.create(ProblemReporter.DISCARDING, level.registryAccess(), residentSave.buildResult()));
 				loadedMemory = loadedResident.getAttachedOrCreate(VillagerPlus.MEMORY);
 				check(passed, loadedEntity != null && villager.getUUID().equals(loadedEntity.getAttached(VillagerPlus.OWNER))
+					&& loadedEntity.getAttachedOrElse(VillagerPlus.PRIVATE_CHEST_PERSONAL_ITEMS, false)
 					&& loadedMemory.homeChest.equals(Optional.of(placed)) && !PrivateChestProvisioning.isPending(loadedResident)
 					&& loadedResident.getBrain().getMemory(MemoryModuleType.HOME).filter(home -> home.equals(GlobalPos.of(level.dimension(), bed))).isPresent(),
 					"owner, home, and provisioned chest survive block-entity and villager entity save/load round trips");
@@ -491,9 +529,10 @@ public final class PrivateChestProvisioningChecks {
 				VillagerMemory unassignedMemory = unassignedResident.getAttachedOrCreate(VillagerPlus.MEMORY);
 				check(passed, unassignedResident.getBrain().getMemory(MemoryModuleType.HOME).isEmpty()
 					&& PrivateChestProvisioning.isPending(unassignedResident)
-					&& unassignedMemory.homeBed.equals(Optional.of(doorlessBed)) && unassignedMemory.homeChest.isEmpty()
+					&& unassignedMemory.homeBed.isEmpty() && unassignedMemory.homeDoor.isEmpty() && unassignedMemory.signPos.isEmpty()
+					&& unassignedMemory.homeChest.isEmpty()
 					&& chestCount(stocks) == 1 && chestBlocksNear(level, doorlessBed) == 0,
-					"the no-HOME request and recorded bed survive entity save/load without creating a chest");
+					"the pending chest request survives save/load after the former HOME assignment is cleared and without creating a chest");
 
 				unassignedResident.getBrain().setMemory(MemoryModuleType.HOME, GlobalPos.of(level.dimension(), doorlessBed));
 				unassignedResident.getBrain().setMemory(MemoryModuleType.MEETING_POINT, GlobalPos.of(level.dimension(), village.bell()));
@@ -587,6 +626,8 @@ public final class PrivateChestProvisioningChecks {
 			originalMemory.homeBed = oldBed;
 			originalMemory.homeDoor = oldDoor;
 			originalMemory.homeChest = oldChest;
+			if (oldGranary == null) Specials.remove(village, de.villagerplus.build.Blueprints.GRANARY);
+			else Specials.set(village, de.villagerplus.build.Blueprints.GRANARY, oldGranary);
 			originalMemory.name = oldName;
 			originalMemory.signPos = oldSignPos;
 			originalMemory.signText = oldSignText;
@@ -599,6 +640,10 @@ public final class PrivateChestProvisioningChecks {
 			else villager.getBrain().eraseMemory(MemoryModuleType.MEETING_POINT);
 			villager.setCustomName(oldCustomName);
 			villager.setCustomNameVisible(oldNameVisible);
+			for (int slot = 0; slot < Math.min(originalInventory.size(), villager.getInventory().getContainerSize()); slot++) {
+				villager.getInventory().setItem(slot, originalInventory.get(slot).copy());
+			}
+			villager.getInventory().setChanged();
 		}
 	}
 

@@ -168,6 +168,13 @@ public final class AutoTest {
 	private static final String[] FEATURE_BUNDLE_61_RETRY = {"lightspacing", "plazageometry"};
 	/** Focused checks for the next housing, woodland, farm, mine, storage, and caravan visual repairs. */
 	private static final String[] FEATURE_BUNDLE_62 = {"woodcuttinggroup", "farmexpand", "mining", "minelifecycle", "a01behavior", "buildhaul", "houses", "plazageometry"};
+	/** Regression pass for the current owner-reported housing, farm, storage, trader, village-contact and core-loop fixes. */
+	private static final String[] FEATURE_BUNDLE_63 = {"firstbuilding", "langkeys", "roles", "craftrecipes", "stockpolicy", "buildhaul",
+		"mining", "miningcycle", "minelifecycle", "minewalk", "minekit", "stonehands", "planstonesupply", "stoneeconomy",
+		"smithanvil", "strandrescue", "deepstrand", "builderpaths", "builderchecks", "caravandelivery", "caravanroad",
+		"caravanr02", "railtransport", "railtransportdispatch", "railmetro", "roads", "roadwork", "roadroute", "equipment",
+		"workblocks", "chestscan", "demolition", "wallconstruction", "houses", "palettefallback", "farmexpand", "itempickup",
+		"mealcycle", "privatechest", "networkdiscovery"};
 	/** House-site search, 12-block reservation and builder path regressions. */
 	private static final String[] HOUSE_SEARCH = {"builderpaths", "houseplot", "builderchecks", "supply", "planstonesupply"};
 	private static final String[] EQUIPMENT_BUNDLE = {"smithanvil", "equipment"};
@@ -306,6 +313,7 @@ public final class AutoTest {
 					: mode.equals("featurebundle61") ? FEATURE_BUNDLE_61
 					: mode.equals("featurebundle61retry") ? FEATURE_BUNDLE_61_RETRY
 					: mode.equals("featurebundle62") ? FEATURE_BUNDLE_62
+					: mode.equals("featurebundle63") ? FEATURE_BUNDLE_63
 					: mode.equals("housesearch") ? HOUSE_SEARCH
 					: mode.equals("equipmentbundle") ? EQUIPMENT_BUNDLE
 					: mode.equals("nextvisible") ? NEXT_VISIBLE

@@ -255,8 +255,16 @@ public final class FarmerSeedGrassChecks {
 				&& state.cooldownUntil > routeAbortAt && level.getBlockState(grass).is(Blocks.SHORT_GRASS),
 				"after a bounded unreachable-route abort, the farmer releases that patch and can choose another without altering it");
 
-			// A ripe generated crop far away must not hide the grass while the first field lacks its seeds (natural run: 0 forages, 2 harvests in 48k ticks).
+			// A ripe generated crop far away is harvested before grass foraging, even while the first field lacks its seeds.
 			BlockPos farCrop = grass.offset(-30, 0, 0);
+			for (int dx = 1; dx <= 50; dx++) {
+				BlockPos stand = farCrop.offset(dx, 0, 0);
+				set(level, before, stand.below(), Blocks.STONE.defaultBlockState());
+				if (!stand.equals(grass)) set(level, before, stand, Blocks.AIR.defaultBlockState());
+				set(level, before, stand.above(), Blocks.AIR.defaultBlockState());
+			}
+			worker.setOnGround(true);
+			set(level, before, farCrop.below(), Blocks.FARMLAND.defaultBlockState().setValue(net.minecraft.world.level.block.FarmlandBlock.MOISTURE, 7));
 			set(level, before, farCrop, Blocks.WHEAT.defaultBlockState().setValue(net.minecraft.world.level.block.CropBlock.AGE, 7));
 			worker.getInventory().clearContent();
 			memory.workSpots.clear();
@@ -270,22 +278,16 @@ public final class FarmerSeedGrassChecks {
 				state.walkStart = 0; state.bestDist = 0; state.lastMoveAt = 0; state.stuckCount = 0;
 				context = new Ctx(level, worker, state, memory, ref, routeAbortAt + 400L + farms * 400L);
 				boolean worked = new FarmerJob().primary(context);
-				if (farms == 0) {
-					require(worked && state.target == null && grass.equals(state.forageTarget),
-						"without a field and seeds a far ripe crop does not keep the farmer from the seed grass");
-				} else {
-					require(worked && farCrop.equals(state.target),
-						"once the first field exists the same far ripe crop is harvested as before");
-				}
+				require(worked && farCrop.equals(state.target) && state.forageTarget == null,
+					farms == 0
+						? "a ripe distant natural crop is selected before starter-seed grass while the first field is unfunded"
+						: "once the first field exists the same distant crop remains the farmer's target");
 			}
 			state.target = null;
-			require(FarmerJob.forageSeedsBeforeFarHarvest(0, 7, 0, true) && !FarmerJob.forageSeedsBeforeFarHarvest(0, 4, 4, true)
-				&& !FarmerJob.forageSeedsBeforeFarHarvest(0, 0, 0, false) && !FarmerJob.forageSeedsBeforeFarHarvest(1, 0, 0, true),
-				"the grass-first rule needs no field, a far crop and fewer than eight seeds");
 			require(FarmerJob.seedsWaitForRipeCrops(true, 0, 3, 2) && !FarmerJob.seedsWaitForRipeCrops(true, 0, 6, 2)
 				&& !FarmerJob.seedsWaitForRipeCrops(false, 0, 0, 2) && FarmerJob.seedsWaitForRipeCrops(true, 1, 20, 2),
 				"an unfunded first field keeps harvesting a ripe far field until eight seeds are in hand, then delivers; with a field the seeds travel with the food");
-			return 9;
+			return 8;
 		} finally {
 			if (worker != null) {
 				JobUtil.clearLongRoute(worker);

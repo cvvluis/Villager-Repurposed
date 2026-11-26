@@ -87,7 +87,8 @@ public final class BoardWayfinding {
 	}
 
 	public static void announcePlaza(ServerLevel level, BlockPos plaza, BlockPos board) {
-		Component msg = Component.translatable("message.villagerplus.plaza_built", board.toShortString());
+		Component msg = board == null ? Component.translatable("message.villagerplus.plaza_built_no_board")
+			: Component.translatable("message.villagerplus.plaza_built", board.toShortString());
 		long radiusSq = 64L * 64L;
 		for (ServerPlayer player : level.players()) {
 			if (player.blockPosition().distSqr(plaza) <= radiusSq) {
@@ -95,7 +96,7 @@ public final class BoardWayfinding {
 			}
 		}
 		if (Config.DEBUG) {
-			org.slf4j.LoggerFactory.getLogger("villagerplus").info("Plaza {} board {}", plaza.toShortString(), board.toShortString());
+			org.slf4j.LoggerFactory.getLogger("villagerplus").info("Plaza {} board {}", plaza.toShortString(), board == null ? "-" : board.toShortString());
 		}
 	}
 
@@ -106,6 +107,7 @@ public final class BoardWayfinding {
 	public static boolean hasOfficialBoard(ServerLevel level, VillageRef ref) {
 		BlockPos board = officialBoard(ref);
 		if (board == null) return false;
-		return level.getBlockState(board).getBlock() instanceof DorftafelBlock;
+		var state = de.villagerplus.world.LoadedColumns.state(level, board);
+		return state != null && state.getBlock() instanceof DorftafelBlock;
 	}
 }

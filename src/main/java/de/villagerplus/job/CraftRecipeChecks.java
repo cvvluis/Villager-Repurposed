@@ -55,6 +55,9 @@ public final class CraftRecipeChecks {
 			checkLoadedRecipe(level, "minecraft:white_bed", Items.BED.white(),
 				new ItemStack(Items.WOOL.white(), 3), new ItemStack(Items.OAK_PLANKS, 3));
 			checks++;
+			checkLoadedRecipe(level, "villagerplus:chest_access", de.villagerplus.block.ModItems.CHEST_ACCESS,
+				new ItemStack(Items.PAPER), new ItemStack(Items.EMERALD));
+			checks++;
 
 			// R01: lever (loaded shaped recipe) and a leftover-container recipe (cake returns its milk buckets) end to end.
 			checkLoadedRecipe(level, "minecraft:lever", Items.LEVER, new ItemStack(Items.STICK), new ItemStack(Items.COBBLESTONE));

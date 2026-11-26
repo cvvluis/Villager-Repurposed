@@ -277,6 +277,24 @@ public final class HouseTemplateChecks {
             require(rejectsBlockedStairwell,
                 "the in-world route check rejects an upper-floor block that removes stair headroom");
 
+            Architect.Design sharedHome = HouseDesignCatalog.Preset.STANDARD_COURTYARD.design(designSeed);
+            BlockPos sharedHomeOrigin = designOrigin.east(32);
+            List<Step> sharedHomeSteps = ConstructionSite.order(
+                Architect.build(sharedHome, villagePalette, sharedHomeOrigin, designDir), sharedHomeOrigin, sharedHome, villagePalette);
+            placeBlueprintForCheck(level, sharedHomeSteps, designBefore);
+            for (int side : new int[] {-1, 1}) {
+                BlockPos foot = sharedHomeOrigin.relative(designDir.getClockWise(), side * (sharedHome.hw() - 1))
+                    .relative(designDir, -sharedHome.hd() + 2);
+                Direction bedFacing = designDir.getOpposite();
+                BlockState footState = level.getBlockState(foot);
+                BlockState headState = level.getBlockState(foot.relative(bedFacing));
+                require(footState.is(Blocks.BED.white()) && footState.getValue(BedBlock.PART) == BedPart.FOOT
+                    && footState.getValue(BedBlock.FACING) == bedFacing
+                    && headState.is(Blocks.BED.white()) && headState.getValue(BedBlock.PART) == BedPart.HEAD
+                    && headState.getValue(BedBlock.FACING) == bedFacing,
+                    "two-resident courtyard house has a complete bed on side " + side);
+            }
+
             Architect.Design compactFunction = Architect.design(Architect.Kind.GRANARY,
                 Architect.withSizeTier(designSeed, Architect.SizeTier.COMPACT));
             Architect.Design standardFunction = Architect.design(Architect.Kind.GRANARY,
@@ -453,7 +471,7 @@ public final class HouseTemplateChecks {
 			}).max().orElse(Integer.MAX_VALUE);
 			require(furthestStep <= broadEaves.half() + 1,
 				"two-block eaves and the decorated approach stay within the site's one-block margin");
-			return 27;
+			return 29;
         } finally {
             designBefore.forEach((pos, state) -> level.setBlock(pos, state, 3));
             before.forEach((pos, state) -> level.setBlock(pos, state, 3));

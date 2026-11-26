@@ -330,6 +330,11 @@ public final class WoodcuttingGroupChecks {
 		BlockPos selectedPlanTree = Builder.selectPlanWoodTree(level, ref, builder, exactLogs);
 		require(treeRoot.equals(selectedPlanTree),
 			"plan tree selection skips a closer road tree, a concurrently claimed tree, and a closer wrong species");
+		var anyTreeDemand = Woodcutting.demandedLogIds(List.of("minecraft:crafting_table#1"));
+		BlockPos selectedAnyTree = Builder.selectPlanWoodTree(level, ref, builder, anyTreeDemand);
+		require(selectedAnyTree != null
+			&& Woodcutting.matchesRequestedLog(level.getBlockState(selectedAnyTree).getBlock(), anyTreeDemand),
+			"a crafting-table shortage can select a safely reachable tree when its species is absent from the plan palette");
 		builder.setPos(treeRoot.getX() - 0.5, treeRoot.getY(), treeRoot.getZ() + 0.5);
 		state.clearTarget();
 		state.woodCheckAt = 0;
@@ -429,7 +434,7 @@ public final class WoodcuttingGroupChecks {
 		require(restored.planType.equals(data.planType) && restored.planOrigin.equals(data.planOrigin)
 			&& restored.planStep == data.planStep && restored.planBuilder().filter(owner::equals).isPresent(),
 			"the same plan owner and cursor survive a saved-data round trip during wood supply");
-		return 9;
+		return 10;
 	}
 
 	private static boolean outside(BoundingBox bounds, BlockPos pos) {

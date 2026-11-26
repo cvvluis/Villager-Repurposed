@@ -201,6 +201,33 @@ public final class Villages {
 		return be == null ? null : new VillageRef(best, be.getAttachedOrCreate(VillagerPlus.VILLAGE), be);
 	}
 
+	/** Resolve the official board by its saved marker, including old markers on non-anchor parts. */
+	static final int LEGACY_BOARD_OWNER_RADIUS = 160;
+
+	static VillageRef officialBoardAt(ServerLevel level, BlockPos pos, BlockState state) {
+		BlockPos[] parts = de.villagerplus.block.DorftafelBlock.parts(state, pos);
+		for (long packed : bells(level.dimension())) {
+			BlockPos bell = BlockPos.of(packed);
+			if (Math.abs(bell.getX() - parts[0].getX()) > LEGACY_BOARD_OWNER_RADIUS
+				|| Math.abs(bell.getZ() - parts[0].getZ()) > LEGACY_BOARD_OWNER_RADIUS) continue;
+			VillageRef ref = officialBoardForBell(level, bell, parts);
+			if (ref != null) return ref;
+		}
+		return null;
+	}
+
+	static VillageRef officialBoardForBell(ServerLevel level, BlockPos bell, BlockPos[] parts) {
+		if (!de.villagerplus.world.LoadedColumns.ready(level, bell)
+			|| !(level.getBlockEntity(bell) instanceof net.minecraft.world.level.block.entity.BellBlockEntity entity)) return null;
+		VillageData data = entity.getAttached(VillagerPlus.VILLAGE);
+		if (data == null || data.extra.boardInTransit.isPresent() || data.extra.board.isEmpty()) return null;
+		BlockPos marker = data.extra.board.get();
+		for (BlockPos lower : parts) {
+			if (marker.equals(lower) || marker.equals(lower.above())) return new VillageRef(bell, data, entity);
+		}
+		return null;
+	}
+
 	/** Merkt sich die Glocken eines geladenen Chunks - damit auch Villager ohne Treffpunkt-Gedaechtnis (z. B. frisch geladen) ihr Dorf finden. */
 	public static void noteChunk(net.minecraft.world.level.chunk.LevelChunk chunk) {
 		for (BlockEntity be : chunk.getBlockEntities().values()) {

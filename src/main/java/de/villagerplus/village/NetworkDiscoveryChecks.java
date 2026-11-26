@@ -1,17 +1,108 @@
 package de.villagerplus.village;
 
 import com.mojang.serialization.JsonOps;
+import com.mojang.authlib.GameProfile;
+import de.villagerplus.dev.Checks090;
+import de.villagerplus.job.ButcherChecks;
 import java.util.List;
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.GlobalPos;
+import net.minecraft.server.level.ClientInformation;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.phys.Vec3;
 
 /** Checks the production caravan-contact transition, persistence, and board-facing partner rows. */
 public final class NetworkDiscoveryChecks {
 	private NetworkDiscoveryChecks() { }
 
+	/** Exercise the arrival handler used by the ordinary guest tick against two real village bells. */
+	public static int guestArrival(ServerLevel level, BlockPos hostBell) {
+		BlockPos originBell = hostBell.east(256);
+		boolean hostReady = ButcherChecks.prepareEntityTickingFixture(level, hostBell);
+		boolean originReady = ButcherChecks.prepareEntityTickingFixture(level, originBell);
+		if (!hostReady || !originReady) return -1;
+		Villager resident = null;
+		Villager guest = null;
+		try {
+			VillageRef host = Checks090.fixtureForEquipment(level, hostBell);
+			VillageRef origin = Checks090.fixtureForEquipment(level, originBell);
+			resident = fixtureVillager(level, originBell.south(2));
+			Villages.bindResident(level, origin, resident, null);
+			BlockPos goal = host.chestPos(level);
+			BlockPos startingPoint = goal.south(10);
+			guest = fixtureVillager(level, startingPoint);
+			guest.addTag(Guests.TAG);
+			GlobalPos destination = GlobalPos.of(level.dimension(), hostBell);
+			String dimension = Network.dim(level);
+			long now = level.getGameTime();
+			int checks = 0;
+			Network.GuestOrigin visitorOrigin = Network.nextGuestOrigin(level, host);
+			require(visitorOrigin != null && visitorOrigin.bell().pos().equals(originBell) && visitorOrigin.population() == 1,
+				"natural guest selection captures an inhabited real bell and its current population"); checks++;
+			require(level.players().stream().noneMatch(player -> player.blockPosition().distSqr(originBell) <= 40L * 40L),
+				"no player is visiting the real origin"); checks++;
+			ServerPlayer actionPlayer = new ServerPlayer(level.getServer(), level,
+				new GameProfile(UUID.randomUUID(), "GuestNetworkFixture"), ClientInformation.createDefault());
+			actionPlayer.setPos(Vec3.atBottomCenterOf(hostBell.south(2)));
+			Guests.State visit = new Guests.State(destination, startingPoint, visitorOrigin.name(), visitorOrigin);
+			require(!Guests.arrive(level, host, guest, goal, visit, now)
+				&& Network.of(host.bellEntity()).links().isEmpty()
+				&& !Network.act(level, actionPlayer, hostBell, Network.ACTION_GREET, 0, dimension, originBell).success(),
+				"a guest still on the way unlocks no village action"); checks++;
+
+			guest.setPos(Vec3.atBottomCenterOf(goal.south()));
+			Guests.State fictional = new Guests.State(destination, startingPoint, visitorOrigin.name(), null);
+			require(Guests.arrive(level, host, guest, goal, fictional, now) && Network.of(host.bellEntity()).links().isEmpty(),
+				"a fictional visitor with the same displayed name never identifies a real village"); checks++;
+			require(Guests.arrive(level, host, guest, goal, visit, now),
+				"the arrival handler accepts the real visitor in the village center"); checks++;
+			TradeNetwork hostNetwork = Network.of(host.bellEntity());
+			TradeNetwork originNetwork = Network.of(origin.bellEntity());
+			require(Network.reciprocalLink(hostNetwork, originNetwork, dimension, hostBell, originBell),
+				"a real visitor arrival creates reciprocal actionable links without a player visiting"); checks++;
+			require(hostNetwork.links().getFirst().relation() == 10 && !hostNetwork.links().getFirst().route()
+				&& hostNetwork.links().getFirst().lastVisitDay() == -1L && originNetwork.links().getFirst().lastVisitDay() == -1L
+				&& hostNetwork.partners().stream().allMatch(partner -> partner.lastVisitDay() == -1L),
+				"guest discovery starts neutral and records no trade or automatic route"); checks++;
+			require(!Guests.arrive(level, host, guest, goal, visit, now + 40)
+				&& Network.of(host.bellEntity()).equals(hostNetwork) && Network.of(origin.bellEntity()).equals(originNetwork),
+				"further arrival ticks do not duplicate the relationship"); checks++;
+			TradeNetwork reloaded = TradeNetwork.CODEC.parse(JsonOps.INSTANCE,
+				TradeNetwork.CODEC.encodeStart(JsonOps.INSTANCE, hostNetwork).getOrThrow()).getOrThrow();
+			Network.save(host.bellEntity(), reloaded);
+			require(reloaded.equals(hostNetwork) && Network.neighborRows(level, host).stream().anyMatch(row -> row.startsWith(visitorOrigin.name() + "|"))
+				&& VillageMap.mapNeighborBells(level, host).contains(originBell),
+				"the saved contact survives codec restoration and appears on the map and neighbor panel"); checks++;
+			require(Network.act(level, actionPlayer, hostBell, Network.ACTION_GREET, 0, dimension, originBell).success(),
+				"the host can greet the newly discovered origin at the board"); checks++;
+			return checks;
+		} finally {
+			if (guest != null) guest.discard();
+			if (resident != null) resident.discard();
+			ButcherChecks.releaseEntityTickingFixture(level, hostBell);
+			ButcherChecks.releaseEntityTickingFixture(level, originBell);
+		}
+	}
+
+	private static Villager fixtureVillager(ServerLevel level, BlockPos position) {
+		Villager villager = EntityTypes.VILLAGER.spawn(level, position, EntitySpawnReason.COMMAND);
+		require(villager != null, "fixture villager spawned");
+		villager.addTag("vp090_fixture");
+		villager.setNoAi(true);
+		villager.setPos(Vec3.atBottomCenterOf(position));
+		return villager;
+	}
+
 	public static int run() {
 		int checks = 0;
 		checks += relationStageChecks();
 		checks += loadedVillageDiscoveryChecks();
+		checks += unloadedGuestArrivalChecks();
 		BlockPos bell = new BlockPos(120, 70, -45);
 		TradeNetwork initial = TradeNetwork.create(bell, "desert");
 		TradeNetwork forest = TradeNetwork.create(bell, "forest");
@@ -151,6 +242,46 @@ public final class NetworkDiscoveryChecks {
 			&& mapNeighbors.get(1).endsWith("nicht geladen")
 			&& mapNeighbors.stream().noneMatch(row -> row.contains("Unbekannter Ort") || row.contains("Ostheim-alt")),
 			"the map lists real neutral villages before trade, preserves unloaded identities, and suppresses duplicate bells and fictional partners"); checks++;
+		return checks;
+	}
+
+	/** A confirmed arrival must remain actionable while the origin is unloaded, then reconcile when it becomes available. */
+	private static int unloadedGuestArrivalChecks() {
+		int checks = 0;
+		String dimension = "minecraft:overworld";
+		BlockPos hostBell = new BlockPos(120, 70, -45);
+		BlockPos originBell = new BlockPos(376, 71, -45);
+		TradeNetwork host = TradeNetwork.create(hostBell, "taiga");
+		TradeNetwork origin = TradeNetwork.create(originBell, "plains");
+
+		TradeNetwork contacted = Network.rememberUnloadedGuestContact(host, dimension, originBell, "Fernheim", 4, 8L);
+		require(contacted != null && contacted.links().size() == 1 && origin.links().isEmpty(),
+			"a real guest arriving from an unloaded origin persists the host-side contact without touching the origin or loading its chunk"); checks++;
+		TradeNetwork.Link hostLink = contacted.links().getFirst();
+		require(hostLink.dimension().equals(dimension) && hostLink.bell().equals(originBell) && hostLink.name().equals("Fernheim")
+			&& hostLink.population() == 4 && hostLink.relation() == 10 && !hostLink.route() && hostLink.lastVisitDay() == -1L,
+			"the remembered contact stores the confirmed bell identity and neutral, unvisited relationship state"); checks++;
+		require(Network.rememberUnloadedGuestContact(contacted, dimension, originBell, "Fernheim", 4, 8L).equals(contacted),
+			"repeated guest-arrival ticks do not duplicate the saved one-sided link"); checks++;
+
+		TradeNetwork routeQueued = Network.queueRemoteRoute(contacted, dimension, originBell, 24000L);
+		TradeNetwork greetQueued = Network.queueRemoteGreeting(routeQueued, dimension, originBell, 24000L);
+		require(routeQueued != null && greetQueued != null && greetQueued.hasPendingAction(Network.ACTION_ROUTE, dimension, originBell)
+			&& greetQueued.hasPendingAction(Network.ACTION_GREET, dimension, originBell),
+			"route and greeting actions can be queued against a confirmed but currently unloaded visitor origin"); checks++;
+
+		Network.DiscoveryPair loadedPair = Network.discoverLoadedPair(greetQueued, origin, dimension, hostBell, originBell,
+			"Heimdorf", "Fernheim", 2, 4, 9L, false);
+		require(loadedPair.changed() && Network.reciprocalLink(loadedPair.source(), loadedPair.target(), dimension, hostBell, originBell),
+			"loading the visitor origin later repairs the reciprocal link using the stored physical contact"); checks++;
+		Network.DiscoveryPair applied = Network.reconcilePendingActions(loadedPair.source(), loadedPair.target(),
+			dimension, hostBell, originBell, 24001L);
+		require(applied.changed() && Network.reciprocalLink(applied.source(), applied.target(), dimension, hostBell, originBell)
+			&& applied.source().links().getFirst().route() && applied.target().links().getFirst().route()
+			&& applied.source().links().getFirst().relation() == 15 && applied.target().links().getFirst().relation() == 15
+			&& !applied.source().hasPendingAction(Network.ACTION_ROUTE, dimension, originBell)
+			&& !applied.source().hasPendingAction(Network.ACTION_GREET, dimension, originBell),
+			"deferred route and greeting actions apply once the reciprocal bell pair is available"); checks++;
 		return checks;
 	}
 

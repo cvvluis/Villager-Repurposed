@@ -296,7 +296,7 @@ public final class Checks090 {
   finally { if(!hadOverride)de.villagerplus.compat.SeasonCompat.clearDevOverride(); }
  }
  private static int runMode(CommandSourceStack source,String mode)throws Exception {
-  if(!java.util.Set.of("ctov","vp-ctov-headless","vp-master-test-2026-10-29","vp-master-test-2026-10-30","vp-k04-fresh-2026-10-30","vp-k04-fresh2-2026-10-30","vp-k04-fresh3-2026-10-30","vp-k04-fresh4-2026-10-30","vp-k04-fresh5-2026-10-30","vp-k04-fresh6-2026-10-30","vp-k04-fresh7-2026-10-30","vp-k04-fresh8-2026-10-30","vp-k04-fresh9-2026-10-30","vp-k04-fresh10-2026-10-30","vp-k04-fresh11-2026-10-30","vp-k04-fresh12-2026-10-30","vp-k04-fresh13-2026-10-30","vp-k04-fresh14-2026-10-30","vp-k04-fresh15-2026-10-30","vp-k04-fresh16-2026-10-30","vp-k04-fresh17-2026-10-30","vp-k04-fresh18-2026-10-30","vp-k04-fresh19-2026-10-30","vp-k04-fresh20-2026-10-30","vp-role-test","vp-g02-live-2026-10-31","vp-wave18-2026-11-01","vp-b05-debug-2026-11-01","vp-smithsmelting-serialization-2026-11-01","vp-path-cut-2026-11-01","vp-u07-quota-2026-11-01","vp-master-wave3-2026-11-01","vp-wave27-parallel-2026-11-01","vp-wave28-featurebatch-2026-11-01","vp-wave31-featurebatch-2026-11-01","vp-wave32-featurebatch-2026-11-01","vp-wave32-featurebatch-retry-2026-11-01","vp-wave33-featurebatch-2026-11-01","vp-wave34-featurebatch-2026-11-01","vp-g03-direct-set-2026-11-01","vp-continuation-batch-2026-11-02","vp-continuation-retry-2026-11-02","vp-continuation-final-2026-11-02","vp-continuation-settled-2026-11-02","vp-nextfeaturebatch-2026-11-02","vp-nextfeaturebatch-retry-2026-11-02","vp-nextfeaturebatch-final-2026-11-02","vp-lamp-spacing-2026-11-02","vp-featurebatch-2026-11-02","vp-master-progress-2026-11-02","vp-nextfeature-clean-2026-11-02","vp-nextfeature-final-2026-11-02","vp-nextfeature-verify-2026-11-02","vp-nextfeature-verify2-2026-11-02","vp-nextfeature-verify3-2026-11-02","vp-nextfeature-verify4-2026-11-02","vp-nextfeature-verify5-2026-11-02","vp-nextfeature-verify6-2026-11-02","vp-nextfeature-verify7-2026-11-02","vp-nextfeature-verify8-2026-11-02","vp-nextfeature-verify9-2026-11-02","vp-featurecontinuation-2026-11-02","vp-feature-wave-2026-11-02","vp-feature-wave-final-2026-11-02","vp-woodland-storage-checks-2026-11-02","vp-farmstart-test-2026-11-02","vp-farmstart-diagnostic-2026-11-02","vp-farmstart-verify-2026-11-02","vp-farmstart-final-2026-11-02","vp-farmstart-final2-2026-11-02","vp-farmstart-verify3-2026-11-02","vp-featurebatch37-verified-2026-11-02","vp-featurebatch37-2026-11-02","vp-featurebatch37-final-2026-11-02","vp-featurebatch37-final2-2026-11-02","vp-featurebatch39-2026-11-03","vp-featurebatch40-2026-11-03","vp-featurebatch40-retry-2026-11-03","vp-featurebatch41-2026-11-03","vp-featurebatch41-retry-2026-11-03","vp-featurebatch41-fixes-2026-11-03","vp-featurebatch41-fixes2-2026-11-03","vp-featurebatch41-fixes3-2026-11-03","vp-featurebatch41-fixes4-2026-11-03","vp-featurebatch42-recovery-2026-11-03","vp-featurebatch42-fixes-2026-11-03","vp-eqrepair03-2026-11-03","vp-housing-grade-2026-11-03","vp-farm-storage-parallel-2026-11-03","vp-caravan-visit-follow-2026-11-03","vp-featurebundle-2026-11-04","vp-featurebundle43-retry-2026-11-04","vp-featurebundle44-home-road-projects-2026-11-04","vp-featurebundle45-farms-market-crew-2026-11-04","vp-featurebundle46-2026-11-04","vp-featurebundle46-retry-2026-11-04","vp-featurebundle47-live","vp-featurebundle48-live","vp-featurebundle49-live","vp-featurebundle50-live","vp-featurebundle51-live","vp-featurebundle52-socialcrowd","vp-featurebundle53-design-live","vp-featurebundle54-live","vp-featurebundle55-live","vp-featurebundle56-live","vp-featurebundle56-retry-live","vp-featurebundle56-final-live","vp-featurebundle56-verify-live","vp-featurebundle58-live","vp-featurebundle59-live","vp-featurebundle59-retry-live","vp-featurebundle59-final-live","vp-featurebundle59-final2-live","vp-featurebundle59-final3-live","vp-featurebundle59-final4-live","vp-featurebundle58-retry-live","vp-featurebundle58-retry2-live").contains(source.getLevel().getServer().getWorldData().getLevelName())&&!java.util.Set.of("vp-village-expansion-ui-2026-11-02","vp-cityscape-2026-11-02","vp-cityscape-final-2026-11-02","vp-cityscape-retry-2026-11-02","vp-settlement-next-2026-11-02").contains(source.getLevel().getServer().getWorldData().getLevelName()))throw new IllegalStateException("Checks only allowed in explicitly named development worlds; received: " + source.getLevel().getServer().getWorldData().getLevelName());
+  if(!java.util.Set.of("ctov","vp-ctov-headless","vp-master-test-2026-10-29","vp-master-test-2026-10-30","vp-k04-fresh-2026-10-30","vp-k04-fresh2-2026-10-30","vp-k04-fresh3-2026-10-30","vp-k04-fresh4-2026-10-30","vp-k04-fresh5-2026-10-30","vp-k04-fresh6-2026-10-30","vp-k04-fresh7-2026-10-30","vp-k04-fresh8-2026-10-30","vp-k04-fresh9-2026-10-30","vp-k04-fresh10-2026-10-30","vp-k04-fresh11-2026-10-30","vp-k04-fresh12-2026-10-30","vp-k04-fresh13-2026-10-30","vp-k04-fresh14-2026-10-30","vp-k04-fresh15-2026-10-30","vp-k04-fresh16-2026-10-30","vp-k04-fresh17-2026-10-30","vp-k04-fresh18-2026-10-30","vp-k04-fresh19-2026-10-30","vp-k04-fresh20-2026-10-30","vp-role-test","vp-g02-live-2026-10-31","vp-wave18-2026-11-01","vp-b05-debug-2026-11-01","vp-smithsmelting-serialization-2026-11-01","vp-path-cut-2026-11-01","vp-u07-quota-2026-11-01","vp-master-wave3-2026-11-01","vp-wave27-parallel-2026-11-01","vp-wave28-featurebatch-2026-11-01","vp-wave31-featurebatch-2026-11-01","vp-wave32-featurebatch-2026-11-01","vp-wave32-featurebatch-retry-2026-11-01","vp-wave33-featurebatch-2026-11-01","vp-wave34-featurebatch-2026-11-01","vp-g03-direct-set-2026-11-01","vp-continuation-batch-2026-11-02","vp-continuation-retry-2026-11-02","vp-continuation-final-2026-11-02","vp-continuation-settled-2026-11-02","vp-nextfeaturebatch-2026-11-02","vp-nextfeaturebatch-retry-2026-11-02","vp-nextfeaturebatch-final-2026-11-02","vp-lamp-spacing-2026-11-02","vp-featurebatch-2026-11-02","vp-master-progress-2026-11-02","vp-nextfeature-clean-2026-11-02","vp-nextfeature-final-2026-11-02","vp-nextfeature-verify-2026-11-02","vp-nextfeature-verify2-2026-11-02","vp-nextfeature-verify3-2026-11-02","vp-nextfeature-verify4-2026-11-02","vp-nextfeature-verify5-2026-11-02","vp-nextfeature-verify6-2026-11-02","vp-nextfeature-verify7-2026-11-02","vp-nextfeature-verify8-2026-11-02","vp-nextfeature-verify9-2026-11-02","vp-featurecontinuation-2026-11-02","vp-feature-wave-2026-11-02","vp-feature-wave-final-2026-11-02","vp-woodland-storage-checks-2026-11-02","vp-farmstart-test-2026-11-02","vp-farmstart-diagnostic-2026-11-02","vp-farmstart-verify-2026-11-02","vp-farmstart-final-2026-11-02","vp-farmstart-final2-2026-11-02","vp-farmstart-verify3-2026-11-02","vp-featurebatch37-verified-2026-11-02","vp-featurebatch37-2026-11-02","vp-featurebatch37-final-2026-11-02","vp-featurebatch37-final2-2026-11-02","vp-featurebatch39-2026-11-03","vp-featurebatch40-2026-11-03","vp-featurebatch40-retry-2026-11-03","vp-featurebatch41-2026-11-03","vp-featurebatch41-retry-2026-11-03","vp-featurebatch41-fixes-2026-11-03","vp-featurebatch41-fixes2-2026-11-03","vp-featurebatch41-fixes3-2026-11-03","vp-featurebatch41-fixes4-2026-11-03","vp-featurebatch42-recovery-2026-11-03","vp-featurebatch42-fixes-2026-11-03","vp-eqrepair03-2026-11-03","vp-housing-grade-2026-11-03","vp-farm-storage-parallel-2026-11-03","vp-caravan-visit-follow-2026-11-03","vp-featurebundle-2026-11-04","vp-featurebundle43-retry-2026-11-04","vp-featurebundle44-home-road-projects-2026-11-04","vp-featurebundle45-farms-market-crew-2026-11-04","vp-featurebundle46-2026-11-04","vp-featurebundle46-retry-2026-11-04","vp-featurebundle47-live","vp-featurebundle48-live","vp-featurebundle49-live","vp-featurebundle50-live","vp-featurebundle51-live","vp-featurebundle52-socialcrowd","vp-featurebundle53-design-live","vp-featurebundle54-live","vp-featurebundle55-live","vp-featurebundle56-live","vp-featurebundle56-retry-live","vp-featurebundle56-final-live","vp-featurebundle56-verify-live","vp-featurebundle58-live","vp-featurebundle59-live","vp-featurebundle59-retry-live","vp-featurebundle59-final-live","vp-featurebundle59-final2-live","vp-featurebundle59-final3-live","vp-featurebundle59-final4-live","vp-featurebundle63-verify","vp-featurebundle58-retry-live","vp-featurebundle58-retry2-live").contains(source.getLevel().getServer().getWorldData().getLevelName())&&!java.util.Set.of("vp-village-expansion-ui-2026-11-02","vp-cityscape-2026-11-02","vp-cityscape-final-2026-11-02","vp-cityscape-retry-2026-11-02","vp-settlement-next-2026-11-02").contains(source.getLevel().getServer().getWorldData().getLevelName()))throw new IllegalStateException("Checks only allowed in explicitly named development worlds; received: " + source.getLevel().getServer().getWorldData().getLevelName());
   ServerLevel level=source.getLevel();ServerPlayer player=level.getServer().getPlayerList().getPlayers().stream().findFirst().orElse(null);
   if(mode.equals("g02status")) {
    G02SupplyTrace.report(source,level);return 1;
@@ -408,6 +408,11 @@ public final class Checks090 {
   if(mode.equals("craftrecipes")) {
    int count=de.villagerplus.job.CraftRecipeChecks.run(level,new BlockPos(29000,201,29000));
    source.sendSuccess(()->Component.literal("VP090 craftrecipes PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("itempickup")) {
+   int count=de.villagerplus.job.LooseItemPickupChecks.run(level,new BlockPos(34088,280,34088));
+   if(count<0) return -1;
+   source.sendSuccess(()->Component.literal("VP090 itempickup PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("wellbeing")) {
    int count=de.villagerplus.village.WellbeingChecks.run(level,new BlockPos(29400,201,29400));
@@ -558,7 +563,8 @@ public final class Checks090 {
    source.sendSuccess(()->Component.literal("VP090 treewalkback PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("housesign")) {
-   int count=de.villagerplus.village.HousingSignChecks.run(level,new BlockPos(47000,201,47000));
+   int count=de.villagerplus.village.HousingSignChecks.run(level,new BlockPos(47000,201,47000))
+    +de.villagerplus.village.HousingBedRepairChecks.run(level,new BlockPos(47200,201,47000));
    source.sendSuccess(()->Component.literal("VP090 housesign PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("strandrescue")) {
@@ -627,6 +633,11 @@ public final class Checks090 {
   if(mode.equals("foodchain")) {
    int count=de.villagerplus.job.FoodChainChecks.run(level,new BlockPos(53000,201,53000));
    source.sendSuccess(()->Component.literal("VP090 foodchain PASS "+count+" checks"),false);return count;
+  }
+  if(mode.equals("farmlandrestore")) {
+   int count=de.villagerplus.job.FarmlandRestoreChecks.run(level,new BlockPos(53504,281,53504));
+   if(count<0) return -1;
+   source.sendSuccess(()->Component.literal("VP090 farmlandrestore PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("stonehands")) {
    BlockPos at=new BlockPos(49200,201,49200);
@@ -784,7 +795,9 @@ public final class Checks090 {
    source.sendSuccess(()->Component.literal("VP090 featurebundle55 PASS "+total+" checks"),false);return total;
   }
   if(mode.equals("networkdiscovery")) {
-   int count=de.villagerplus.village.NetworkDiscoveryChecks.run();
+   int arrival=de.villagerplus.village.NetworkDiscoveryChecks.guestArrival(level,new BlockPos(34274,281,34274));
+   if(arrival<0) return -1;
+   int count=arrival+de.villagerplus.village.NetworkDiscoveryChecks.run();
    source.sendSuccess(()->Component.literal("VP090 networkdiscovery PASS "+count+" checks"),false);return count;
   }
   if(mode.equals("renamevillage")) {
@@ -961,9 +974,13 @@ public final class Checks090 {
    source.sendSuccess(()->Component.literal("VP090 houses PASS "+reportedCount+" checks"),false);return count;
   }
   if(mode.equals("tafelgross")) {
+   BlockPos boardOrigin=A.offset(60,0,60);
+   if(!de.villagerplus.village.DorftafelGrossChecks.prepare(level,boardOrigin)) return -1;
    VillageRef ref=fixture(level,A);
-   int count=de.villagerplus.village.DorftafelGrossChecks.run(level,A.offset(60,0,60),ref);
-   source.sendSuccess(()->Component.literal("VP090 tafelgross PASS "+count+" checks"),false);return count;
+   try {
+    int count=de.villagerplus.village.DorftafelGrossChecks.run(level,boardOrigin,ref);
+    source.sendSuccess(()->Component.literal("VP090 tafelgross PASS "+count+" checks"),false);return count;
+   } finally { de.villagerplus.village.DorftafelGrossChecks.release(level,boardOrigin); }
   }
   if(mode.equals("templatebuild")) {
    VillageRef ref=fixture(level,A);

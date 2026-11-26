@@ -20,6 +20,14 @@
     },
     {
      "condition": "minecraft:survives_explosion"
+    },
+    {
+     "condition": "minecraft:inverted",
+     "term": {
+      "condition": "minecraft:entity_properties",
+      "entity": "this",
+      "predicate": { "minecraft:entity_type": "minecraft:player" }
+     }
     }
    ]
   }

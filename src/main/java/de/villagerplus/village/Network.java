@@ -14,6 +14,7 @@ import java.util.Optional;
 import java.util.Set;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -298,6 +299,74 @@ public final class Network {
 	}
 
 	static record DiscoveryPair(TradeNetwork source, TradeNetwork target, boolean changed) { }
+	/** The real village a guest represented at departure. Null origins are fictional visitors. */
+	record GuestOrigin(GlobalPos bell, String name, int population) { }
+
+	static GuestOrigin guestOrigin(ServerLevel level, VillageRef source) {
+		if (!validVillageRef(level, source)) return null;
+		int population = loadedResidentCounts(level, List.of(source.bell())).getOrDefault(source.bell().asLong(), 0);
+		return population <= 0 ? null : new GuestOrigin(GlobalPos.of(level.dimension(), source.bell()), villageName(source), population);
+	}
+
+	/** Prefer an undiscovered inhabited neighbor for the next natural visit. Only loaded villages can supply guests. */
+	static GuestOrigin nextGuestOrigin(ServerLevel level, VillageRef host) {
+		if (!validVillageRef(level, host)) return null;
+		List<BlockPos> nearby = Villages.knownBellsNear(level, host.bell(), (int) MAX_DISTANCE);
+		Map<Long, Integer> populations = loadedResidentCounts(level, nearby);
+		TradeNetwork hostNetwork = of(host.bellEntity());
+		String dimension = dim(level);
+		GuestOrigin known = null;
+		for (BlockPos position : nearby) {
+			int population = populations.getOrDefault(position.asLong(), 0);
+			if (population <= 0 || host.bell().distSqr(position) > MAX_DISTANCE * MAX_DISTANCE
+				|| !(level.getBlockEntity(position) instanceof BellBlockEntity bell)) continue;
+			VillageRef neighbor = new VillageRef(position, bell.getAttachedOrCreate(VillagerPlus.VILLAGE), bell);
+			GuestOrigin candidate = new GuestOrigin(GlobalPos.of(level.dimension(), position), villageName(neighbor), population);
+			if (hostNetwork.linkIndex(dimension, position) < 0
+				&& canDiscoverLoadedNeighbor(hostNetwork, of(bell), dimension, host.bell(), position, population, true)) return candidate;
+			if (known == null) known = candidate;
+		}
+		return known;
+	}
+
+	/** Writes contact at arrival, without recording a trade or adjusting relations or route flags. */
+	static void recordGuestContact(ServerLevel level, VillageRef host, GuestOrigin origin) {
+		if (origin == null || origin.population() <= 0 || !origin.bell().dimension().equals(level.dimension())
+			|| !validVillageRef(level, host)) return;
+		BlockPos originBell = origin.bell().pos();
+		if (originBell.equals(host.bell()) || originBell.distSqr(host.bell()) > MAX_DISTANCE * MAX_DISTANCE) return;
+		TradeNetwork local = of(host.bellEntity());
+		String dimension = dim(level);
+		long day = level.getGameTime() / 24000L;
+		if (!de.villagerplus.world.LoadedColumns.ready(level, originBell)) {
+			// The visitor was assigned at a loaded, inhabited bell. Keep that identity even if the origin unloaded en route.
+			TradeNetwork remembered = rememberUnloadedGuestContact(local, dimension, originBell,
+				origin.name(), origin.population(), day);
+			if (remembered != null && !remembered.equals(local)) save(host.bellEntity(), remembered);
+			return;
+		}
+		if (!(level.getBlockEntity(originBell) instanceof BellBlockEntity bell)) return;
+		VillageRef remote = new VillageRef(originBell, bell.getAttachedOrCreate(VillagerPlus.VILLAGE), bell);
+		Map<Long, Integer> populations = loadedResidentCounts(level, List.of(host.bell(), originBell));
+		int population = populations.getOrDefault(originBell.asLong(), 0);
+		DiscoveryPair pair = discoverLoadedPair(local, of(bell), dimension, host.bell(), originBell, villageName(host), villageName(remote),
+			populations.getOrDefault(host.bell().asLong(), 0), population > 0 ? population : origin.population(), day, true);
+		if (pair.changed()) {
+			save(host.bellEntity(), pair.source());
+			save(bell, pair.target());
+		}
+	}
+
+	/** Preserve a confirmed guest arrival as a one-sided bell link until the origin can be resolved without loading it. */
+	static TradeNetwork rememberUnloadedGuestContact(TradeNetwork local, String dimension, BlockPos originBell,
+		String originName, int originPopulation, long day) {
+		if (local == null || dimension == null || dimension.isBlank() || dimension.length() > 128
+			|| originBell == null || originName == null || originName.isBlank() || originPopulation <= 0 || day < 0) return null;
+		if (local.linkIndex(dimension, originBell) >= 0 || local.links().size() >= TradeNetwork.MAX_LINKS) return local;
+		List<TradeNetwork.Link> links = new ArrayList<>(local.links());
+		links.add(new TradeNetwork.Link(dimension, originBell, originName, 10, false, originPopulation, day));
+		return local.withLinks(links);
+	}
 
 	/**
 	 * Pure preflight for adding a link from a real, loaded bell with live residents. A null target network means its bell
@@ -309,7 +378,7 @@ public final class Network {
 			|| sourceBell == null || targetBell == null || sourceBell.equals(targetBell) || targetPopulation <= 0) return false;
 		int sourceIndex = source.linkIndex(dimension, targetBell);
 		int targetIndex = target.linkIndex(dimension, sourceBell);
-		// An unknown neighbor is only discovered after contact: a player or resident physically at the other bell.
+		// An unknown neighbor is only discovered after contact with an actual village.
 		// A link that is already saved (legacy worlds, earlier contact, caravan visits) stays discoverable and refreshable.
 		if (sourceIndex < 0 && targetIndex < 0 && !physicalContact) return false;
 		return (sourceIndex >= 0 || source.links().size() < TradeNetwork.MAX_LINKS)
@@ -545,9 +614,16 @@ public final class Network {
 			VillageRef neighbor = resolve(level, link);
 			if (neighbor == null || !validVillageRef(level, neighbor)) continue;
 			TradeNetwork peer = of(neighbor.bellEntity());
-			DiscoveryPair forward = reconcilePendingActions(current, peer, dim(level), source.bell(), neighbor.bell(), level.getGameTime());
+			DiscoveryPair pair = new DiscoveryPair(current, peer, false);
+			if (!reciprocalLink(current, peer, dim(level), source.bell(), neighbor.bell())) {
+				// A real guest can arrive while its origin is unloaded, leaving the host's contact side saved first.
+				int population = populations.getOrDefault(neighbor.bell().asLong(), 0);
+				pair = discoverLoadedPair(current, peer, dim(level), source.bell(), neighbor.bell(),
+					villageName(source), villageName(neighbor), sourcePopulation, population, day, false);
+			}
+			DiscoveryPair forward = reconcilePendingActions(pair.source(), pair.target(), dim(level), source.bell(), neighbor.bell(), level.getGameTime());
 			DiscoveryPair reverse = reconcilePendingActions(forward.target(), forward.source(), dim(level), neighbor.bell(), source.bell(), level.getGameTime());
-			if (forward.changed() || reverse.changed()) {
+			if (pair.changed() || forward.changed() || reverse.changed()) {
 				current = reverse.target();
 				save(neighbor.bellEntity(), reverse.source());
 				changed = true;
@@ -838,7 +914,7 @@ public final class Network {
 		if (hosts.isEmpty()) {
 			return ActionOutcome.failure("Im Nachbardorf lebt niemand, der Gäste empfangen könnte.");
 		}
-		int n = Guests.invite(level, target, hosts.get(0), villageName(source), 2);
+		int n = Guests.invite(level, target, hosts.get(0), villageName(source), guestOrigin(level, source), 2);
 		if (n == 0) return ActionOutcome.failure("Die Gäste fanden im Nachbardorf keinen freien Ankunftsplatz.");
 		JobUtil.take(box, s -> s.is(Items.EMERALD), n);
 		markCooldown(source, target, key, now + 12000L);

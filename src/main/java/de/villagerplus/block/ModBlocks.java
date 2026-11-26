@@ -38,7 +38,9 @@ public final class ModBlocks {
 		ResourceKey<Block> blockKey = ResourceKey.create(Registries.BLOCK, Identifier.fromNamespaceAndPath(VillagerPlus.MOD_ID, name));
 		Block block = factory.apply(props.setId(blockKey));
 		ResourceKey<Item> itemKey = ResourceKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath(VillagerPlus.MOD_ID, name));
-		Registry.register(BuiltInRegistries.ITEM, itemKey, new BlockItem(block, new Item.Properties().setId(itemKey).useBlockDescriptionPrefix()));
+		Item.Properties itemProps = new Item.Properties().setId(itemKey).useBlockDescriptionPrefix();
+		BlockItem item = block instanceof DorftafelBlock board ? new DorftafelItem(board, itemProps) : new BlockItem(block, itemProps);
+		Registry.register(BuiltInRegistries.ITEM, itemKey, item);
 		return Registry.register(BuiltInRegistries.BLOCK, blockKey, block);
 	}
 

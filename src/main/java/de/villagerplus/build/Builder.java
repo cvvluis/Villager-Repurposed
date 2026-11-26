@@ -108,7 +108,7 @@ public final class Builder {
 			// Ground-level work can introduce raw-cobble support columns beyond the visible block request.
 			if (step.pos().getY() <= project.origin().getY() + 1) return false;
 			if (step.item() != Items.COBBLESTONE) continue;
-			if (!CobbleLike.substitutable(step)) return false;
+			if (!canSubstituteCobble(project.type(), step)) return false;
 			variants += step.cost();
 		}
 		return variants >= requested;
@@ -837,8 +837,10 @@ public final class Builder {
 	}
 
 	private static int siteHalf(String type, int variant, Architect.Design design, boolean hasLegacySource) {
-		return type.equals(Blueprints.HOUSE) && HouseDesignCatalog.usesCatalog(variant, hasLegacySource)
+		int generated = type.equals(Blueprints.HOUSE) && HouseDesignCatalog.usesCatalog(variant, hasLegacySource)
 			? HouseDesignCatalog.siteHalf(design) : design.half();
+		return Blueprints.STORAGE.equals(type) && storageTemplateAvailable()
+			? Math.max(generated, storageTemplateHalf()) : generated;
 	}
 
 	static int siteHeadroom(String type, int variant, Architect.Design design) {
@@ -846,9 +848,98 @@ public final class Builder {
 	}
 
 	private static int siteHeadroom(String type, int variant, Architect.Design design, boolean hasLegacySource) {
-		return type.equals(Blueprints.HOUSE) && HouseDesignCatalog.usesCatalog(variant, hasLegacySource)
+		int generated = type.equals(Blueprints.HOUSE) && HouseDesignCatalog.usesCatalog(variant, hasLegacySource)
 			? HouseDesignCatalog.siteHeadroom(design) : design.headroom();
+		return Blueprints.STORAGE.equals(type) && storageTemplateAvailable()
+			? Math.max(generated, storageTemplateHeadroom()) : generated;
 
+	}
+
+	private static final String STORAGE_TEMPLATE = "lagerhaus";
+
+	private static boolean storageTemplateAvailable() {
+		return TemplateLibrary.has(STORAGE_TEMPLATE);
+	}
+
+	/** The shipped storage NBT is larger than the old generated shed; reserve its real, rotated footprint. */
+	private static int storageTemplateHalf() {
+		HouseTemplate template = TemplateLibrary.get(STORAGE_TEMPLATE, "plains");
+		if (template == null) return 0;
+		int half = 0;
+		for (Direction direction : Direction.Plane.HORIZONTAL) {
+			for (boolean mirrored : new boolean[]{false, true}) {
+				HouseTemplate.Bounds bounds = template.bounds(direction, mirrored);
+				half = Math.max(half, Math.max(Math.max(Math.abs(bounds.minX()), Math.abs(bounds.maxX())),
+					Math.max(Math.abs(bounds.minZ()), Math.abs(bounds.maxZ()))));
+			}
+		}
+		return half;
+	}
+
+	private static int storageTemplateHeadroom() {
+		HouseTemplate template = TemplateLibrary.get(STORAGE_TEMPLATE, "plains");
+		return template == null ? 0 : template.bounds(Direction.SOUTH, false).maxY() + 2;
+	}
+
+	private static boolean storageTemplatePlanMarked(VillageRef ref, BlockPos origin) {
+		return ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.<Long>of()).contains(origin.asLong());
+	}
+
+	private static boolean houseTemplatePlanMarked(VillageRef ref, BlockPos origin) {
+		List<Long> markers = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.<Long>of());
+		return markers.contains(origin.asLong()) || markers.contains(~origin.asLong());
+	}
+
+	/** A positive origin marker is type-scoped by the active plan, so it can also persist a storage NBT choice. */
+	static void markStorageTemplatePlan(VillageRef ref, BlockPos origin) {
+		List<Long> next = new ArrayList<>(ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.<Long>of()));
+		// The marker predates typed NBT choices: normalize both encodings when a site is reused across plan types.
+		next.removeIf(marker -> marker == origin.asLong() || marker == ~origin.asLong());
+		next.add(origin.asLong());
+		ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.copyOf(next));
+		ref.dirty();
+	}
+
+	private static List<Step> storageTemplateSteps(ServerLevel level, VillageRef ref, BlockPos origin, Direction dir,
+			boolean requireMarked) {
+		return storageTemplateSteps(level, ref, origin, dir, requireMarked, null);
+	}
+
+	private static List<Step> storageTemplateSteps(ServerLevel level, VillageRef ref, BlockPos origin, Direction dir,
+			boolean requireMarked, Palette palette) {
+		if (!storageTemplateAvailable() || requireMarked && !storageTemplatePlanMarked(ref, origin)) return null;
+		List<Step> template = previewTemplateSteps(level, ref, origin, dir, STORAGE_TEMPLATE, palette);
+		return addPaidTemplateStorageChest(template, origin, dir);
+	}
+
+	static List<Step> storageTemplatePreviewForCheck(ServerLevel level, VillageRef ref, BlockPos origin, Direction dir) {
+		List<Step> preview = storageTemplateSteps(level, ref, origin, dir, false);
+		if (preview == null || preview.isEmpty()) return preview;
+		Container publicStock = de.villagerplus.village.Lager.combined(level, ref);
+		return fenceWindows(preview, 0, windowStock(publicStock, null, List.of(), Items.GLASS),
+			windowStock(publicStock, null, List.of(), Items.GLASS_PANE), true);
+	}
+
+	/** Ship the functional inventory as a paid plan step; structure NBT contributes shape, never chest contents. */
+	private static List<Step> addPaidTemplateStorageChest(List<Step> template, BlockPos origin, Direction dir) {
+		if (template == null || template.isEmpty()) return null;
+		List<Step> shape = template.stream().filter(step -> step.item() != Items.CHEST).toList();
+		Set<BlockPos> planned = shape.stream().map(Step::pos).collect(java.util.stream.Collectors.toSet());
+		List<BlockPos> floors = shape.stream()
+			.filter(step -> step.pos().getY() == origin.getY() - 1 && !step.free() && step.item() != null)
+			.map(step -> step.pos().above())
+			.filter(pos -> !planned.contains(pos) && !planned.contains(pos.above()))
+			.sorted(Comparator.comparingInt((BlockPos pos) -> (pos.getX() - origin.getX()) * dir.getStepX()
+				+ (pos.getZ() - origin.getZ()) * dir.getStepZ())
+				.thenComparingInt(pos -> Math.abs((pos.getX() - origin.getX()) * dir.getClockWise().getStepX()
+					+ (pos.getZ() - origin.getZ()) * dir.getClockWise().getStepZ())))
+			.toList();
+		if (floors.isEmpty()) return null;
+		BlockPos chest = floors.getFirst();
+		List<Step> result = new ArrayList<>(shape);
+		result.add(Step.block(chest, Blocks.CHEST,
+			block -> block.defaultBlockState().setValue(ChestBlock.FACING, dir)));
+		return List.copyOf(result);
 	}
 
 	/** Homes and functional buildings progress through their own saved, deterministic size cycles. */
@@ -905,11 +996,51 @@ public final class Builder {
 		if (!architect(b.type())) {
 			return List.of();
 		}
+		if (Blueprints.HOUSE.equals(b.type()) && houseTemplatePlanMarked(ref, b.origin())) {
+			Architect.Design design = designForPlan(b.type(), b.variant());
+			String templateType = templateTypeForPlan(ref, b.origin(), design);
+			List<Step> template = previewTemplateSteps(level, ref, b.origin(), Direction.from2DDataValue(b.dir()), templateType,
+				TemplatePalette.saved(b.palette()));
+			return template == null ? List.of() : template;
+		}
+		if (Blueprints.STORAGE.equals(b.type()) && storageTemplatePlanMarked(ref, b.origin())) {
+			List<Step> template = storageTemplateSteps(level, ref, b.origin(), Direction.from2DDataValue(b.dir()), true,
+				TemplatePalette.saved(b.palette()));
+			return template == null ? List.of() : template;
+		}
 		Palette palette = Palette.ofIds(b.palette());
 		if (palette == null) {
 			palette = PALETTES.computeIfAbsent(b.origin().asLong(), k -> Palette.detect(level, ref.bell(), v));
 		}
 		return Architect.build(designForPlan(b.type(), b.variant()), palette, b.origin(), Direction.from2DDataValue(b.dir()));
+	}
+
+	/** Candidate bed pairs reconstructed only from the saved design of a completed mod-owned house. */
+	public static List<List<Step>> houseBedPairsOfBuilt(ServerLevel level, VillageRef ref, Built building) {
+		if (level == null || ref == null || ref.bellEntity() == null || building == null
+			|| !Blueprints.HOUSE.equals(building.type())) return List.of();
+		List<Step> steps;
+		if (houseTemplatePlanMarked(ref, building.origin())) {
+			steps = stepsOfBuilt(level, ref, building, null);
+		} else {
+			Architect.Design saved = designForPlan(Blueprints.HOUSE, building.variant());
+			if (saved == null) return List.of();
+			Palette palette = Palette.ofIds(building.palette());
+			if (palette == null) palette = Palette.detect(level, ref.bell(), null, building.variant() >>> 2, building.origin());
+			if (palette == null) return List.of();
+			Architect.Design twoBeds = new Architect.Design(saved.kind(), saved.hw(), saved.hd(), saved.wallH(),
+				saved.ridgeAlongPerp(), saved.overhang(), saved.useBase(), saved.frameBeams(), saved.halfTimber(),
+				saved.porch(), saved.chimney(), saved.windowSpacing(), saved.doorOffset(), 2, saved.secondWallUpper(),
+				saved.wing(), saved.deco());
+			steps = Architect.build(twoBeds, palette, building.origin(), Direction.from2DDataValue(building.dir()));
+		}
+		List<List<Step>> pairs = new ArrayList<>();
+		for (Step foot : steps) {
+			if (foot.tag() == null || !foot.tag().equals(net.minecraft.tags.ItemTags.BEDS) || foot.linkedTo() != null) continue;
+			Step head = steps.stream().filter(step -> foot.pos().equals(step.linkedTo())).findFirst().orElse(null);
+			if (head != null) pairs.add(List.of(foot, head));
+		}
+		return pairs.size() == 2 ? List.copyOf(pairs) : List.of();
 	}
 
 	public static List<Built> builtOf(VillageRef ref) {
@@ -1180,6 +1311,13 @@ public final class Builder {
 				Direction dir = Direction.from2DDataValue(d.planDir);
 				preparedSteps = stepsFor(c.level(), ref, origin, dir, c);
 				if (helper && preparedSteps == null) return false;
+				if ((preparedSteps == null || preparedSteps.isEmpty()) && templateRepair(ref, d, origin)) {
+					if (preparedSteps == null) return false;
+					if (!helper && preparedSteps.isEmpty()) {
+						finish(c, ref, origin);
+						return true;
+					}
+				}
 				if (!helper && d.planType.equals(Blueprints.FARM) && preparedSteps != null
 					&& !stageFarmSeeds(box, siteStock, preparedSteps, d.planStep, c.level())) {
 					c.setActivity("wartet auf bezahlbares Saatgut für das Feld");
@@ -1189,6 +1327,12 @@ public final class Builder {
 					boolean siteReady = helper && !setupHaulOnly
 						? nextPlacementHasSiteMaterials(c, ref, preparedSteps, origin, d.planStep, siteStock)
 						: updateWanted(c, ref, d.planType, preparedSteps, box, siteStock, cargoManifest, origin, d.planStep, false);
+					if (!helper) {
+						Step emergencyStep = observeEmergencyStep(c, ref, origin, preparedSteps, siteStock, cargoManifest, siteReady);
+						if (emergencyStep != null) {
+							return continuePlan(c, ref, box, siteStock, cargoManifest, preparedSteps, standSlot, false, emergencyStep);
+						}
+					}
 					if (!helper && !siteReady && de.villagerplus.job.Workshop.tickAtSite(c,
 						ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.CONSTRUCTION, null), siteStock,
 						sitePlacementReservations(c.level(), preparedSteps, d.planStep, siteStock))) {
@@ -1307,7 +1451,7 @@ public final class Builder {
 						// (e.g. endlessly searching a tree that never yields what the plan needs).
 						long stallKey = d.planOrigin.map(BlockPos::asLong).orElse(0L);
 						if (!helper) {
-							String stallSignature = d.planStep + "|" + String.join(",", d.wanted);
+							String stallSignature = d.planType + "|" + d.planVariant + "|" + d.planStep + "|" + String.join(",", d.wanted);
 							PlanStall stall = observePlanStall(PLAN_STALLS.get(stallKey), stallSignature, c.now());
 							PLAN_STALLS.put(stallKey, stall);
 							if (stall.elapsedAt(c.now()) >= STALLED_PLAN_PALETTE_FALLBACK_TICKS) {
@@ -1331,7 +1475,7 @@ public final class Builder {
 									supplierBusy = true;
 								} else if (trySwitchToRusticStone(c.level(), ref) || trySwitchToLocalWood(c.level(), ref)
 									|| trySwitchToFenceWindows(c.level(), ref, siteStock, cargoManifest)
-									|| trySwitchToStoneForWood(c.level(), ref)) {
+									|| trySwitchToStoneForWood(c.level(), ref, box, siteStock, cargoManifest, supplierBusy)) {
 									PLAN_STALLS.remove(stallKey);
 									d.planProgress = c.now();
 									ref.dirty();
@@ -1360,7 +1504,7 @@ public final class Builder {
 			if (!helper && d.planType.equals(Blueprints.FARM) && preparedSteps != null && !d.wanted.isEmpty()
 				&& supplyFarmPerimeter(c, ref, preparedSteps, box, siteStock, cargoManifest)) return true;
 			boolean result = d.planType.equals(Blueprints.WALL) ? continueWall(c, ref, box)
-				: continuePlan(c, ref, box, siteStock, cargoManifest, preparedSteps, standSlot, helper);
+				: continuePlan(c, ref, box, siteStock, cargoManifest, preparedSteps, standSlot, helper, null);
 			if (!helper && d.hasPlan() && preparedSteps != null && !d.planType.equals(Blueprints.FARM)) {
 				updateWanted(c, ref, d.planType, preparedSteps, box, siteStock, cargoManifest, d.planOrigin.orElseThrow(), d.planStep, false);
 			}
@@ -1660,7 +1804,7 @@ public final class Builder {
 			if (manifest.equals(project.cargoManifest())) continue;
 			data.buildProjects.set(i, new VillageData.BuildProject(project.type(), project.origin(), project.dir(), project.step(),
 				project.variant(), project.source(), project.progress(), project.owner(), project.ownerUnavailableSince(), project.wanted(),
-				new VillageData.ProjectHaul(project.siteStock(), manifest), project.materialWait(), project.construction(),
+				new VillageData.ProjectHaul(project.siteStock(), manifest, project.haul().emergencyWait()), project.materialWait(), project.construction(),
 				project.bounds(), project.repair(), project.cleanupOnly()));
 			changed = true;
 		}
@@ -1750,9 +1894,13 @@ public final class Builder {
 			boolean repair = REPAIRS.contains(origin.asLong()) || REPAIRS.contains(origin.asLong() ^ WALL_KEY)
 				|| previous != null && previous.repair();
 			List<String> savedManifest = List.copyOf(cargoManifest);
+			Optional<VillageData.EmergencyMaterialWait> emergencyWait = previous != null && previous.step() == data.planStep
+				&& previous.variant() == data.planVariant && previous.dir() == data.planDir
+				&& previous.type().equals(data.planType) && previous.source().equals(data.planSource)
+				? previous.haul().emergencyWait() : Optional.empty();
 			VillageData.BuildProject saved = new VillageData.BuildProject(data.planType, origin, data.planDir, data.planStep,
 				data.planVariant, data.planSource, data.planProgress, data.planBuilder(), data.planBuilderUnavailableSince(),
-				List.copyOf(data.wanted), new VillageData.ProjectHaul(siteStockRows(siteStock), savedManifest),
+				List.copyOf(data.wanted), new VillageData.ProjectHaul(siteStockRows(siteStock), savedManifest, emergencyWait),
 				data.extra.planMaterialWait, site, bounds, repair, false);
 			data.putBuildProject(saved);
 		} else {
@@ -2821,6 +2969,7 @@ public final class Builder {
 			}
 			STEPS.remove(planKey);
 			PLAN_DIAGNOSTICS.remove(planKey);
+			PLAN_STALLS.remove(planKey);
 			STYLES.remove(planKey);
 			REPAIRS.remove(planKey);
 			REPAIRS.remove(planKey ^ WALL_KEY);
@@ -3072,6 +3221,11 @@ public final class Builder {
 			&& HouseDesignCatalog.usesCatalog(variant, hasLegacySource);
 	}
 
+	/** A planned housing expansion must not copy a one-bed source house when the village needs capacity. */
+	static boolean templateMeetsHousingBedDemand(String type, boolean needsBeds, int templateBeds) {
+		return !Blueprints.HOUSE.equals(type) || !needsBeds || templateBeds >= 2;
+	}
+
 	static boolean houseCandidateWithinSearchRadius(BlockPos bell, BlockPos candidate, int minRadius, int maxRadius) {
 		if (bell == null || candidate == null || minRadius < 0 || maxRadius < minRadius) return false;
 		long dx = (long) candidate.getX() - bell.getX();
@@ -3255,7 +3409,8 @@ public final class Builder {
 				int mirror = c.v().getRandom().nextBoolean() ? 1 : 0;
 				for (BlockPos bed : nearest) {
 					HouseTemplate t = TEMPLATES.computeIfAbsent(bed.asLong(), k -> Optional.ofNullable(HouseTemplate.capture(level, bed, ref.bell()))).orElse(null);
-					if (t == null || t.sizeTier() != requestedTier) {
+					if (t == null || t.sizeTier() != requestedTier
+						|| !templateMeetsHousingBedDemand(type, needsBeds, t.beds())) {
 						continue;
 					}
 					Direction towards = Sites.facingTowards(cand, ref.bell());
@@ -3302,7 +3457,7 @@ public final class Builder {
 						BlockPos anchor = ZoneAwareSites.tolerantAnchor(level, ref, type, candidate, -candidateHalf, candidateHalf,
 							-candidateHalf, candidateHalf, candidateHeadroom);
 						if (anchor == null) continue;
-						Palette palette = detectForPlan(level, ref, c.v(), seed, anchor);
+						Palette palette = detectForNewPlan(level, ref, c.v(), seed, anchor, type);
 						List<Step> candidateSteps = Architect.build(candidateDesign, palette, anchor, candidateDir);
 						List<Step> candidatePlan = candidateSteps;
 						int yardStyle = Paths.yardStyle(level, anchor, candidateDir);
@@ -3343,8 +3498,8 @@ public final class Builder {
 			}
 			variant = Architect.withRoleMarkerVersion(kindOf(type), search.variants[search.variantIndex]);
 			design = designForPlan(type, variant);
-			int half = design.half();
-			int headroom = design.headroom();
+			int half = siteHalf(type, variant, design);
+			int headroom = siteHeadroom(type, variant, design);
 			int min = type.equals(Blueprints.STORAGE) || type.equals(Blueprints.SCHOOL) || Blueprints.special(type) ? 6 : 10;
 			int max = Config.VILLAGE_RADIUS - 8;
 			String selectedType = type;
@@ -3363,7 +3518,7 @@ public final class Builder {
 				if (search.terraced) {
 					// Last-resort pass: rooted natural trees count as clearable vegetation, but only when the site
 					// preparation can really remove every one of them (otherwise the plan would stall or skip steps).
-					BlockPos[] prepBox = civicPrepBox(p, candidateSteps, selectedDesign.headroom());
+					BlockPos[] prepBox = civicPrepBox(p, candidateSteps, siteHeadroom(selectedType, selectedVariant, selectedDesign));
 					NaturalSitePreparation.Status preparable = NaturalSitePreparation.inspect(level, prepBox[0], prepBox[1],
 						MAX_CIVIC_SITE_OBSTACLES).status();
 					if (preparable != NaturalSitePreparation.Status.READY && preparable != NaturalSitePreparation.Status.CLEARABLE) {
@@ -3423,10 +3578,9 @@ public final class Builder {
 			clearSpecialSiteSearchFailure(ref);
 			site = page.site();
 			dir = siteFacing(level, ref, type, site);
-			Palette palette = detectForPlan(level, ref, c.v(), variant >>> 2, site);
-			PALETTES.put(site.asLong(), palette);
+			steps = freshSteps(c, ref, type, variant, style, site, dir);
+			Palette palette = PALETTES.get(site.asLong());
 			constructionPaletteIds = palette.ids();
-			steps = Architect.build(design, palette, site, dir);
 		} else {
 			int min = type.equals(Blueprints.HOUSE) ? houseMinRadiusForPlan
 				: type.equals(Blueprints.WELL) || type.equals(Blueprints.DECOR) ? 5 : type.equals(Blueprints.TOWNHALL) ? 7 : type.equals(Blueprints.STORAGE) || type.equals(Blueprints.SCHOOL) || Blueprints.special(type) ? 6 : 10;
@@ -3488,7 +3642,7 @@ public final class Builder {
 					if (preferred != null) {
 						site = preferred;
 						dir = Sites.facingTowards(site, ref.bell());
-						Palette palette = detectForPlan(level, ref, c.v(), variant >>> 2, site);
+						Palette palette = detectForNewPlan(level, ref, c.v(), variant >>> 2, site, type);
 						PALETTES.put(site.asLong(), palette);
 						constructionPaletteIds = palette.ids();
 						steps = Architect.build(design, palette, site, dir);
@@ -3605,10 +3759,8 @@ public final class Builder {
 				dir = siteFacing(level, ref, type, site);
 			}
 			if (design != null) {
-				Palette palette = detectForPlan(level, ref, c.v(), variant >>> 2, site);
-				PALETTES.put(site.asLong(), palette);
-				constructionPaletteIds = palette.ids();
 				steps = freshSteps(c, ref, type, variant, style, site, dir);
+				constructionPaletteIds = PALETTES.get(site.asLong()).ids();
 			} else if (Landmarks.handles(type)) {
 				Palette palette = detectForPlan(level, ref, c.v(), variant >>> 2, site);
 				PALETTES.put(site.asLong(), palette);
@@ -3627,7 +3779,7 @@ public final class Builder {
 				c.st().buildCheckAt = c.now() + 40;
 				return false;
 			}
-			if (compactStorage(design)) {
+			if (compactStorage(design) && !(Blueprints.STORAGE.equals(type) && storageTemplateAvailable())) {
 				steps = addPaidFirstStorageChest(steps, site, dir, design);
 				if (steps == null) {
 					rejectPlot(ref, site);
@@ -3747,6 +3899,15 @@ public final class Builder {
 		if (source == null && Blueprints.HOUSE.equals(type)
 			&& newHouseTemplatePreview(level, ref, type, designForPlan(type, variant), site, dir) != null) {
 			markTemplatePlan(ref, site, designForPlan(type, variant));
+			constructionPaletteIds = TemplatePalette.ids(PALETTES.get(site.asLong()));
+		}
+		if (source == null && Blueprints.STORAGE.equals(type) && storageTemplateSteps(level, ref, site, dir, false) != null) {
+			markStorageTemplatePlan(ref, site);
+			constructionPaletteIds = TemplatePalette.ids(PALETTES.get(site.asLong()));
+		}
+		if (TemplatePalette.marked(constructionPaletteIds)) {
+			if (de.villagerplus.village.VillageAdmin.rusticStone(ref)) steps = rusticStone(steps, 0);
+			if (WOODLESS_STEM.equals(de.villagerplus.village.VillageAdmin.woodStem(ref))) steps = woodlessStone(steps, 0);
 		}
 		String earlyPalette = source == null ? EARLY_PALETTE_SITES.remove(site.asLong()) : null;
 		if (earlyPalette != null && !ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.<Long>of()).contains(site.asLong())) {
@@ -3800,7 +3961,13 @@ public final class Builder {
 	 * re-evaluated: they keep the palette they were saved with.
 	 */
 	static Palette detectForPlan(ServerLevel level, VillageRef ref, Villager hint, long seed, BlockPos site) {
-		Palette detected = Palette.detect(level, ref.bell(), hint, seed, site);
+		return detectForNewPlan(level, ref, hint, seed, site, "");
+	}
+
+	private static Palette detectForNewPlan(ServerLevel level, VillageRef ref, Villager hint, long seed, BlockPos site, String type) {
+		boolean sampleHouse = Blueprints.HOUSE.equals(type) || Blueprints.STORAGE.equals(type) && storageTemplateAvailable();
+		Palette detected = sampleHouse ? Palette.detectHouse(level, ref.bell(), hint, seed, site)
+			: Palette.detect(level, ref.bell(), hint, seed, site);
 		List<String> missing = detected.unobtainableRoles();
 		if (missing.isEmpty()) {
 			EARLY_PALETTE_SITES.remove(site.asLong());
@@ -3820,6 +3987,9 @@ public final class Builder {
 	/** Build the exact candidate footprint before accepting a zoned site; Palette only changes materials at these coordinates. */
 	private static List<Step> sitingSteps(Ctx c, VillageRef ref, String type, int variant, Architect.Design design, VillageStyle style, BlockPos site, BlockPos facingAnchor) {
 		Direction facing = Sites.facingTowards(site, facingAnchor);
+		if (Blueprints.STORAGE.equals(type) && storageTemplateAvailable()) {
+			return storageTemplateSteps(c.level(), ref, site, facing, false);
+		}
 		if (design != null) {
 			Palette palette = Palette.detect(c.level(), ref.bell(), c.v(), variant >>> 2, site);
 			return Architect.build(design, palette, site, facing);
@@ -3835,10 +4005,20 @@ public final class Builder {
 	private static List<Step> freshSteps(Ctx c, VillageRef ref, String type, int variant, VillageStyle style, BlockPos site, Direction dir) {
 		Architect.Design design = architect(type) ? designForPlan(type, variant) : null;
 		if (design != null) {
-			Palette palette = detectForPlan(c.level(), ref, c.v(), variant >>> 2, site);
+			Palette palette = detectForNewPlan(c.level(), ref, c.v(), variant >>> 2, site, type);
+			boolean storage = Blueprints.STORAGE.equals(type) && storageTemplateAvailable();
+			boolean house = Blueprints.HOUSE.equals(type) && templateEligible(design);
+			if (storage || house) {
+				palette = Supply.withWoodStem(palette, de.villagerplus.village.VillageAdmin.woodStem(ref));
+				List<Step> template = storage ? storageTemplateSteps(c.level(), ref, site, dir, false, palette)
+					: previewTemplateSteps(c.level(), ref, site, dir, templateTypeFor(design), palette);
+				if (template != null && !template.isEmpty()) {
+					PALETTES.put(site.asLong(), palette);
+					return template;
+				}
+			}
 			PALETTES.put(site.asLong(), palette);
-			List<Step> template = newHouseTemplatePreview(c.level(), ref, type, design, site, dir);
-			return template != null ? template : Architect.build(design, palette, site, dir);
+			return Architect.build(design, palette, site, dir);
 		}
 		if (Landmarks.handles(type)) {
 			Palette palette = detectForPlan(c.level(), ref, c.v(), variant >>> 2, site);
@@ -4042,6 +4222,7 @@ public final class Builder {
 			return false;
 		}
 		BlockPos origin = d.planOrigin.get();
+		if (templateRepair(ref, d, origin)) return false;
 		long key = origin.asLong();
 		List<Step> current = STEPS.get(key);
 		if (current == null) {
@@ -4291,7 +4472,7 @@ public final class Builder {
 		}
 		for (Step s : steps) {
 			if (!s.free() && s.linkedTo() == null && ((s.item() != null && stack.is(s.item())) || (s.tag() != null && stack.is(s.tag()))
-				|| (CobbleLike.substitutable(s) && CobbleLike.variant(stack)))) {
+				|| (canSubstituteCobble(d.planType, s) && CobbleLike.variant(stack)))) {
 				return true;
 			}
 		}
@@ -4380,7 +4561,7 @@ public final class Builder {
 		Map<String, Long> remaining = new java.util.TreeMap<>();
 		// Plain cobblestone block steps may be paid with natural stone variants; foundations and crafted shapes may not.
 		int variantSteps = 0;
-		for (Step step : demandWindow) if (CobbleLike.substitutable(step) && !step.optional() && step.cost() > 0) variantSteps += step.cost();
+		for (Step step : demandWindow) if (canSubstituteCobble(type, step) && !step.optional() && step.cost() > 0) variantSteps += step.cost();
 		for (DemandTarget target : targets) {
 			if (target.tag() == null && target.request() == Items.COBBLESTONE && variantSteps > 0) {
 				for (Map.Entry<Item, Integer> request : CobbleLike.demand(available, target.count(), variantSteps, publicStock).entrySet()) {
@@ -4636,7 +4817,7 @@ public final class Builder {
 			}
 			return JobUtil.count(siteStock, stack -> (step.item() != null && stack.is(step.item()))
 				|| (step.tag() != null && stack.is(step.tag()))
-				|| (CobbleLike.substitutable(step) && CobbleLike.variant(stack))) >= step.cost();
+				|| (canSubstituteCobble(ref.data().planType, step) && CobbleLike.variant(stack))) >= step.cost();
 		}
 		return true;
 	}
@@ -4812,15 +4993,21 @@ public final class Builder {
 	}
 
 	private static List<Step> fenceWindows(List<Step> steps, int fromStep, int stockedGlass, int stockedPanes, boolean fullGlassFallback) {
-		Item fence = null;
+		return fenceWindows(steps, fromStep, stockedGlass, stockedPanes, fullGlassFallback, windowFence(steps));
+	}
+
+	private static Item windowFence(List<Step> steps) {
 		for (Step step : steps) {
 			if (step.item() != null && !step.free() && Block.byItem(step.item()).defaultBlockState().is(net.minecraft.tags.BlockTags.WOODEN_FENCES)) {
-				fence = step.item();
-				break;
+				return step.item();
 			}
 		}
-		Item fenceItem = fence;
-		Block fenceBlock = fence == null ? null : Block.byItem(fence);
+		return null;
+	}
+
+	private static List<Step> fenceWindows(List<Step> steps, int fromStep, int stockedGlass, int stockedPanes,
+			boolean fullGlassFallback, Item fenceItem) {
+		Block fenceBlock = fenceItem == null ? null : Block.byItem(fenceItem);
 		List<Step> result = new ArrayList<>(steps.size());
 		int glassLeft = Math.max(0, stockedGlass), panesLeft = Math.max(0, stockedPanes);
 		for (int i = 0; i < steps.size(); i++) {
@@ -4897,6 +5084,18 @@ public final class Builder {
 		return utilityWindowFallbackAllowed(type, sourced, repair);
 	}
 
+	/** A completed utility building may have used the documented wooden-fence substitute for its glass windows. */
+	static boolean repairStepSatisfied(String type, Step step, BlockState current) {
+		if (step.free()) return true;
+		if (step.item() != null && current.is(Block.byItem(step.item()))) return true;
+		return (step.item() == Items.GLASS_PANE || (utilityPlan(type) && step.item() == Items.GLASS))
+			&& current.is(net.minecraft.tags.BlockTags.WOODEN_FENCES);
+	}
+
+	static boolean intentionallyOpen(Built built, Step step) {
+		return built != null && step != null && built.fallbackOpenings().contains(step.pos());
+	}
+
 	/** True when the open wish list still asks for cobblestone or a cobblestone shape (stairs, slabs, walls). */
 	static boolean stoneShort(VillageData d) {
 		for (Item item : PlanSupplyOrder.shortages(d.wanted).keySet()) {
@@ -4906,21 +5105,19 @@ public final class Builder {
 	}
 
 	/** Last resort after a long stall on wood: build the remaining full blocks from cobblestone instead. */
-	private static boolean trySwitchToStoneForWood(ServerLevel level, VillageRef ref) {
+	private static boolean trySwitchToStoneForWood(ServerLevel level, VillageRef ref, Container publicStock, Container siteStock,
+			List<String> cargoManifest, boolean supplierBusy) {
 		VillageData d = ref.data();
 		if (!d.hasPlan() || d.planOrigin.isEmpty() || (!generated(d.planType) && d.planSource.isEmpty())) return false;
 		if (WOODLESS_STEM.equals(de.villagerplus.village.VillageAdmin.woodStem(ref))) return false;
-		boolean needsWood = false;
-		for (Item item : PlanSupplyOrder.shortages(d.wanted).keySet()) {
-			ItemStack probe = new ItemStack(item);
-			if (probe.is(net.minecraft.tags.ItemTags.PLANKS) || probe.is(net.minecraft.tags.ItemTags.LOGS) || stoneForWoodShape(item) != null) needsWood = true;
-		}
-		if (!needsWood) return false;
+		if (PlanSupplyOrder.shortages(d.wanted).keySet().stream().noneMatch(Builder::woodFallbackMaterial)) return false;
+		if (Blueprints.HOUSE.equals(d.planType) && hasHouseWoodSupply(d.wanted, publicStock, siteStock, cargoManifest, supplierBusy)) return false;
 		// Stone is the scarcer trade (three mine lanes, a kit per section) while the idle residents can fell trees in parallel:
 		// while the plan also lacks cobblestone, turning its planks and logs into more cobblestone would only deepen the real shortage
 		// and, because the stem is village-wide, put every later plan on stone as well.
 		if (stoneShort(d)) return false;
 		BlockPos origin = d.planOrigin.get();
+		if (templateRepair(ref, d, origin)) return false;
 		long key = origin.asLong();
 		List<Step> current = STEPS.get(key);
 		if (current == null || current.isEmpty()) return false;
@@ -4951,6 +5148,27 @@ public final class Builder {
 		}
 	}
 
+	private static boolean woodFallbackMaterial(Item item) {
+		ItemStack probe = new ItemStack(item);
+		return probe.is(ItemTags.PLANKS) || probe.is(ItemTags.LOGS) || stoneForWoodShape(item) != null;
+	}
+
+	/** A house keeps its timber palette while a supplier or already acquired matching logs can still serve it. */
+	static boolean hasHouseWoodSupply(List<String> wanted, Container publicStock, Container siteStock, List<String> cargoManifest,
+			boolean supplierBusy) {
+		if (supplierBusy) return true;
+		Set<String> logs = de.villagerplus.job.Woodcutting.demandedLogIds(wanted);
+		Set<Item> targetWood = PlanSupplyOrder.shortages(wanted).keySet().stream().filter(Builder::woodFallbackMaterial)
+			.collect(java.util.stream.Collectors.toSet());
+		if (logs.isEmpty() && targetWood.isEmpty()) return false;
+		java.util.function.Predicate<ItemStack> matchingWood = stack -> targetWood.contains(stack.getItem())
+			|| de.villagerplus.job.Woodcutting.matchesRequestedLog(stack, logs);
+		if ((publicStock != null && JobUtil.count(publicStock, matchingWood) > 0)
+			|| (siteStock != null && JobUtil.count(siteStock, matchingWood) > 0)) return true;
+		return cargoManifest != null && de.villagerplus.job.BuildHaul.inTransit(cargoManifest).keySet().stream()
+			.anyMatch(item -> targetWood.contains(item) || logs.contains(BuiltInRegistries.ITEM.getKey(item).toString()));
+	}
+
 	private static boolean isDecorCloth(Item item) {
 		String path = BuiltInRegistries.ITEM.getKey(item).getPath();
 		return path.endsWith("_wool") || path.endsWith("_carpet");
@@ -4968,6 +5186,7 @@ public final class Builder {
 		}
 		if (!needsSmelted) return false;
 		BlockPos origin = d.planOrigin.get();
+		if (templateRepair(ref, d, origin)) return false;
 		long key = origin.asLong();
 		List<Step> current = STEPS.get(key);
 		if (current == null || current.isEmpty()) return false;
@@ -5002,6 +5221,7 @@ public final class Builder {
 		VillageData d = ref.data();
 		if (!d.hasPlan() || (!generated(d.planType) && d.planSource.isEmpty()) || d.planOrigin.isEmpty()) return false;
 		BlockPos origin = d.planOrigin.get();
+		if (templateRepair(ref, d, origin)) return false;
 		long key = origin.asLong();
 		List<Step> current = STEPS.get(key);
 		if (current == null || current.isEmpty()) return false;
@@ -5013,6 +5233,14 @@ public final class Builder {
 		if (stem.isEmpty()) return false;
 		ConstructionSite previousSite = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.CONSTRUCTION, null);
 		try {
+			Palette templatePalette = previousSite != null && previousSite.origin().equals(origin)
+				? TemplatePalette.saved(previousSite.paletteIds()) : null;
+			if (templatePalette != null) {
+				Palette local = Supply.withWoodStem(templatePalette, stem);
+				ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.CONSTRUCTION,
+					new ConstructionSite(origin, previousSite.temporary(), previousSite.phaseEnds(), previousSite.prepared(),
+						TemplatePalette.ids(local), previousSite.scaffoldingWaived()));
+			}
 			STEPS.remove(key);
 			List<Step> candidate = stepsFor(level, ref, origin, Direction.from2DDataValue(d.planDir), null);
 			List<Step> stable = candidate == null ? null : preservePlanGeometry(current, candidate, d.planStep);
@@ -5157,10 +5385,12 @@ public final class Builder {
 		return HOUSE_TEMPLATE_VILLAGE.equals(templateTypeFor(design)) ? 14 : 10;
 	}
 
-	private static void markTemplatePlan(VillageRef ref, BlockPos origin, Architect.Design design) {
+	static void markTemplatePlan(VillageRef ref, BlockPos origin, Architect.Design design) {
 		List<Long> marked = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.of());
-		if (marked.contains(origin.asLong())) return;
 		List<Long> next = new ArrayList<>(marked);
+		// A site may be reused after demolition (or change from a warehouse plan to a house).
+		// Replace its old shape marker instead of letting a prior positive marker force the small template.
+		next.removeIf(marker -> marker == origin.asLong() || marker == ~origin.asLong());
 		next.add(origin.asLong());
 		if (HOUSE_TEMPLATE_VILLAGE.equals(templateTypeFor(design))) next.add(~origin.asLong());
 		ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.copyOf(next));
@@ -5170,24 +5400,34 @@ public final class Builder {
 	/**
 	 * Reconstruct only explicitly marked template plans; unmarked plans retain their generated design.
 	 */
-	private static List<Step> templateSteps(ServerLevel level, VillageRef ref, BlockPos origin, Direction dir, VillageData d, String type) {
+	private static List<Step> templateSteps(ServerLevel level, VillageRef ref, BlockPos origin, Direction dir, String type,
+			Palette palette) {
 		List<Long> marked = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.TEMPLATE_PLANS, List.of());
 		boolean isMarked = marked.contains(origin.asLong());
 		// An unmarked saved plan was created by the generated-design path. Never change its
 		// footprint on a cache miss, even before its first block has been placed.
 		if (!isMarked) return null;
-		List<Step> steps = previewTemplateSteps(level, ref, origin, dir, type);
+		List<Step> steps = previewTemplateSteps(level, ref, origin, dir, type, palette);
 		if (steps == null || steps.isEmpty()) return null;
 		return steps;
 	}
 
 	/** Preview the exact paid template without marking an unaccepted candidate or altering its saved plan. */
 	static List<Step> previewTemplateSteps(ServerLevel level, VillageRef ref, BlockPos origin, Direction dir, String type) {
+		return previewTemplateSteps(level, ref, origin, dir, type, null);
+	}
+
+	static List<Step> previewTemplateSteps(ServerLevel level, VillageRef ref, BlockPos origin, Direction dir, String type,
+			Palette palette) {
 		Identifier biome = biomeAt(level, origin);
 		HouseTemplate template = TemplateLibrary.get(type, TemplateLibrary.family(biome));
 		if (template == null) return null;
-		VillageStyle finalStyle = VillageStyleCache.detect(level, ref.bell(), null);
 		boolean mirrored = (Long.hashCode(origin.asLong()) & 1) == 1;
+		if (palette != null) {
+			return template.steps(origin, dir, Config.MATERIAL_COST_PERCENT, mirrored,
+				(relative, block) -> TemplatePalette.material(relative, block, palette, biome, HOUSE_TEMPLATE_VILLAGE.equals(type)), true);
+		}
+		VillageStyle finalStyle = VillageStyleCache.detect(level, ref.bell(), null);
 		return template.steps(origin, dir, Config.MATERIAL_COST_PERCENT, mirrored,
 			bl -> Supply.substitute(bl, finalStyle, biome), true);
 	}
@@ -5208,14 +5448,25 @@ public final class Builder {
 		if (steps != null) {
 			return steps;
 		}
+		if (templateRepair(ref, d, origin)) {
+			return recoverTemplateRepair(level, ref, origin, c);
+		}
 		boolean templated = false;
 		if (generated(d.planType) && d.planSource.isEmpty()) {
 			ConstructionSite savedSite = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.CONSTRUCTION, null);
-			Palette savedPalette = savedSite != null && savedSite.origin().equals(origin) ? Palette.ofIds(savedSite.paletteIds()) : null;
-			Palette palette = PALETTES.computeIfAbsent(origin.asLong(), k -> savedPalette != null ? savedPalette
-				: Palette.detect(level, ref.bell(), c == null ? null : c.v(), d.planVariant >>> 2, origin));
-			palette = paletteForPlan(level, origin, palette, biomeAt(level, origin), d.planVariant);
-			if (savedSite != null && savedSite.origin().equals(origin) && !savedSite.paletteIds().equals(palette.ids())) {
+			List<String> paletteIds = savedSite != null && savedSite.origin().equals(origin) ? savedSite.paletteIds() : List.of();
+			Palette templatePalette = TemplatePalette.saved(paletteIds);
+			Palette palette = templatePalette;
+			if (palette != null) {
+				PALETTES.put(origin.asLong(), palette);
+			} else {
+				Palette savedPalette = Palette.ofIds(paletteIds);
+				palette = PALETTES.computeIfAbsent(origin.asLong(), k -> savedPalette != null ? savedPalette
+					: Palette.detect(level, ref.bell(), c == null ? null : c.v(), d.planVariant >>> 2, origin));
+				palette = paletteForPlan(level, origin, palette, biomeAt(level, origin), d.planVariant);
+			}
+			if (savedSite != null && savedSite.origin().equals(origin) && !TemplatePalette.marked(paletteIds)
+				&& !paletteIds.equals(palette.ids())) {
 				ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.CONSTRUCTION,
 					new ConstructionSite(savedSite.origin(), savedSite.temporary(), savedSite.phaseEnds(), savedSite.prepared(), palette.ids(), savedSite.scaffoldingWaived()));
 				ref.dirty();
@@ -5226,7 +5477,7 @@ public final class Builder {
 			ConstructionSite site = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.CONSTRUCTION, null);
 			templated = false;
 			if (d.planType.equals(Blueprints.HOUSE) && planDesign != null && templateEligible(planDesign)) {
-				List<Step> fromTemplate = templateSteps(level, ref, origin, dir, d, templateTypeForPlan(ref, origin, planDesign));
+				List<Step> fromTemplate = templateSteps(level, ref, origin, dir, templateTypeForPlan(ref, origin, planDesign), templatePalette);
 				if (fromTemplate != null && !fromTemplate.isEmpty()) {
 					steps = fromTemplate;
 					templated = true;
@@ -5235,10 +5486,17 @@ public final class Builder {
 					return null;
 				}
 			}
-			if (compactStorage(planDesign)) steps = addPaidFirstStorageChest(steps, origin, dir, planDesign);
+			boolean storageTemplate = Blueprints.STORAGE.equals(d.planType) && storageTemplatePlanMarked(ref, origin);
+			if (storageTemplate) {
+				List<Step> fromTemplate = storageTemplateSteps(level, ref, origin, dir, true, templatePalette);
+				if (fromTemplate != null && !fromTemplate.isEmpty()) steps = fromTemplate;
+				else return null;
+			} else if (compactStorage(planDesign)) {
+				steps = addPaidFirstStorageChest(steps, origin, dir, planDesign);
+			}
 			if (architect(d.planType)) {
 				steps = ConstructionSite.forPlan(steps, origin, planDesign, palette, site);
-				if (compactStorage(planDesign) && site != null && site.origin().equals(origin) && !site.phaseEnds().isEmpty()) {
+				if ((storageTemplate || compactStorage(planDesign)) && site != null && site.origin().equals(origin) && !site.phaseEnds().isEmpty()) {
 					List<Integer> phaseEnds = ConstructionSite.phaseEnds(steps, origin, planDesign, palette);
 					if (!phaseEnds.equals(site.phaseEnds())) {
 						site = new ConstructionSite(site.origin(), site.temporary(), phaseEnds, site.prepared(), site.paletteIds(), site.scaffoldingWaived());
@@ -5285,7 +5543,7 @@ public final class Builder {
 	}
 
 	private static boolean continuePlan(Ctx c, VillageRef ref, Container box, Container siteStock,
-			List<String> cargoManifest, List<Step> preparedSteps, int standSlot, boolean helper) {
+			List<String> cargoManifest, List<Step> preparedSteps, int standSlot, boolean helper, Step emergencyStep) {
 		ServerLevel level = c.level();
 		VillageData d = ref.data();
 		BlockPos origin = d.planOrigin.get();
@@ -5485,7 +5743,8 @@ public final class Builder {
 				}
 			}
 		}
-		if (d.planStep == 0 && needsNaturalHousePreparation(d.planType, d.planVariant, d.planSource.isPresent())) {
+		if (d.planStep == 0 && needsNaturalHousePreparation(d.planType, d.planVariant, d.planSource.isPresent())
+			&& !templateRepair(ref, d, origin)) {
 			if (!houseLotStillSafe(level, ref, origin, dir, prepSteps, steps, d.planVariant, d.planSource.isPresent())) {
 				why = "Hausbauplatz ist inzwischen geschuetzt oder nicht mehr sicher";
 				rejectPlot(ref, origin);
@@ -5659,11 +5918,16 @@ public final class Builder {
 			boolean placed = false;
 			if (!done && replaceable) {
 				Payment payment = null;
+				int emergencyAmount = 0;
 				Block paid = Blocks.AIR;
 				if (s.linkedTo() != null) {
 					paid = level.getBlockState(s.linkedTo()).getBlock();
 				} else if (!s.free()) {
-					payment = paymentFor(s, siteStock);
+					payment = paymentFor(d.planType, s, siteStock);
+					if (payment == null && s == emergencyStep) {
+						payment = emergencyStepPayment(s, siteStock);
+						emergencyAmount = s.cost() - payment.count();
+					}
 					paid = payment == null ? null : payment.block();
 				}
 				if (paid == null) {
@@ -5696,7 +5960,7 @@ public final class Builder {
 					}
 					// Paid with a stand-in stone: the wall shows that stone, not a cobblestone nobody paid for.
 					if (payment != null) ns = CobbleLike.placed(s, paid, ns);
-					if (payment != null) {
+					if (payment != null && payment.count() > 0) {
 						Item paidItem = payment.item();
 						int taken = JobUtil.take(siteStock, stack -> stack.is(paidItem), payment.count());
 						if (taken != payment.count()) {
@@ -5709,13 +5973,19 @@ public final class Builder {
 					}
 					boolean changed = level.setBlock(s.pos(), ns, 3);
 					if (!level.getBlockState(s.pos()).is(ns.getBlock())) {
-						if (payment != null) refund(level, c, siteStock, new ItemStack(payment.item(), payment.count()));
+						if (payment != null && payment.count() > 0) {
+							refund(level, c, siteStock, new ItemStack(payment.item(), payment.count()));
+						}
 						if (!helper) updateWanted(c, ref, d.planType, steps, box, siteStock, cargoManifest, origin, d.planStep, false);
 						if (!helper) d.planProgress = c.now();
 						ref.dirty();
 						PLAN_DIAGNOSTICS.put(origin.asLong(), describeStep(level, s, d.planStep, steps.size())
 							+ (changed ? "; Blockzustand nach Platzierung abgewichen" : "; Platzierung abgelehnt"));
 						return madeProgress;
+					}
+					if (emergencyAmount > 0) {
+						LOGGER.info("Construction {} at {} used emergency material for paid step {}: {} × {}",
+							d.planType, origin.toShortString(), d.planStep, emergencyAmount, BuiltInRegistries.ITEM.getKey(s.item()));
 					}
 					Anim.blockPlace(level, s.pos(), ns, 1.0F, 1.0F);
 					Anim.hold(c, s.item() != null ? s.item() : Items_BRICK());
@@ -5815,6 +6085,74 @@ public final class Builder {
 		return new PlanStall(signature, now, previous.elapsedAt(now));
 	}
 	private static final java.util.Map<Long, PlanStall> PLAN_STALLS = new java.util.HashMap<>();
+	/** Elapsed game ticks since this placement was first observed short of material. */
+	static final long EMERGENCY_MATERIAL_TICKS = 6_000L;
+
+	static VillageData.EmergencyMaterialWait observeEmergencyMaterialWait(VillageData.EmergencyMaterialWait previous,
+			boolean blocked, String signature, long now) {
+		if (!blocked) return null;
+		if (previous == null || previous.blockedSince() < 0 || now < previous.blockedSince()
+			|| !previous.signature().equals(signature)) return new VillageData.EmergencyMaterialWait(signature, now);
+		return previous;
+	}
+
+	static boolean emergencyMaterialDue(VillageData.EmergencyMaterialWait wait, long now) {
+		return wait != null && wait.blockedSince() >= 0 && now >= wait.blockedSince()
+			&& now - wait.blockedSince() >= EMERGENCY_MATERIAL_TICKS;
+	}
+
+	private static Step observeEmergencyStep(Ctx c, VillageRef ref, BlockPos origin, List<Step> steps,
+			Container siteStock, List<String> cargoManifest, boolean siteReady) {
+		VillageData data = ref.data();
+		VillageData.BuildProject project = data.buildProject(origin).orElse(null);
+		if (project == null) return null;
+		VillageData.EmergencyMaterialWait previous = project.haul().emergencyWait().orElse(null);
+		Step step = siteReady || data.planStep >= steps.size() ? null : steps.get(data.planStep);
+		if (step != null && !emergencyPlacementBlocked(c, ref, origin, steps, siteStock, cargoManifest, step)) step = null;
+		String signature = step == null ? "" : data.planType + "|" + data.planDir + "|" + data.planVariant + "|" + data.planStep + "|"
+			+ step.pos().subtract(origin).asLong() + "|" + BuiltInRegistries.ITEM.getKey(step.item());
+		VillageData.EmergencyMaterialWait observed = observeEmergencyMaterialWait(previous, step != null, signature, c.now());
+		if (!java.util.Objects.equals(previous, observed)) {
+			data.putBuildProject(project.withHaul(new VillageData.ProjectHaul(project.siteStock(), project.cargoManifest(),
+				Optional.ofNullable(observed))));
+		}
+		return emergencyMaterialDue(observed, c.now()) ? step : null;
+	}
+
+	private static boolean emergencyPlacementBlocked(Ctx c, VillageRef ref, BlockPos origin, List<Step> steps,
+			Container siteStock, List<String> cargoManifest, Step step) {
+		if (!de.villagerplus.world.LoadedColumns.ready(c.level(), step.pos())) return false;
+		VillageData data = ref.data();
+		if (!emergencyPaymentNeeded(data.planType, step, siteStock, de.villagerplus.job.BuildHaul.inTransit(cargoManifest))) return false;
+		BlockState current = c.level().getBlockState(step.pos());
+		if (current.is(Block.byItem(step.item())) || !(current.canBeReplaced()
+			|| step.pos().getY() < origin.getY() && !current.hasBlockEntity())) return false;
+		ConstructionSite construction = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.CONSTRUCTION, null);
+		if (construction != null && construction.origin().equals(origin) && !construction.prepared()
+			&& !ConstructionSite.missingSetupMaterials(c.level(), construction, steps, origin,
+				Direction.from2DDataValue(data.planDir), siteStock).isEmpty()) return false;
+		for (Map.Entry<Item, Integer> requirement : supportDemand(c, ref, origin, steps, data.planStep).entrySet()) {
+			if (JobUtil.count(siteStock, stack -> stack.is(requirement.getKey())) < requirement.getValue()) return false;
+		}
+		return true;
+	}
+
+	static boolean emergencyPaymentNeeded(String type, Step step, Container siteStock, Map<Item, Integer> inTransit) {
+		if (!(step.item() instanceof net.minecraft.world.item.BlockItem) || step.optional()
+			|| step.linkedTo() != null || step.cost() <= 0 || paymentFor(type, step, siteStock) != null) return false;
+		// Matching freight stays real cargo and may still arrive, but it must not pause the blocked
+		// step's observed-work timer forever. Emergency payment later waives only this placement's
+		// missing portion; the carrier still delivers its stack to site stock for subsequent steps.
+		return true;
+	}
+
+	/** Make a payment for the real stock only. Nothing created by the fallback can be refunded. */
+	static Payment emergencyStepPayment(Step step, Container siteStock) {
+		Item item = step.item();
+		int realAmount = Math.min(step.cost(), JobUtil.count(siteStock, stack -> stack.is(item)));
+		return new Payment(item, realAmount, Block.byItem(item));
+	}
+
 	private static final int HOUSE_SITE_CANDIDATE_BUDGET = 96;
 	private static final long HOUSE_SITE_RETRY_TICKS = 20L;
 	private static final long HOUSE_SITE_REPROBE_TICKS = 1200L;
@@ -6802,15 +7140,6 @@ public final class Builder {
 
 	/** Independent bounded search, leaving navigation range and node-budget settings untouched. */
 	public static net.minecraft.world.level.pathfinder.Path workPath(Ctx c, BlockPos feet) {
-		double distance = c.v().position().distanceTo(net.minecraft.world.phys.Vec3.atBottomCenterOf(feet));
-		if (distance > 192.0) return null;
-		BlockPos from = c.v().blockPosition();
-		int horizontal = Math.abs(from.getX() - feet.getX()) + Math.abs(from.getZ() - feet.getZ());
-		// Straight-line distance understates CTOV streets; budget the walked perimeter, not the chord.
-		int length = (int) Math.min(512, Math.max(96, horizontal + Math.max(48, (int) Math.ceil(distance))));
-		var region = new net.minecraft.world.level.PathNavigationRegion(c.level(),
-			from.offset(-length - 8, -length - 8, -length - 8), from.offset(length + 8, length + 8, length + 8));
-		var finder = new net.minecraft.world.level.pathfinder.PathFinder(c.v().getNavigation().getNodeEvaluator(), length * 32);
 		// A solid goal (chest, log, workstation) can never be stood in, so a path "to" it never counts as reached.
 		// Aim at the open cells next to it instead; vanilla navigation does the same through its reach distance.
 		java.util.Set<BlockPos> goals = new java.util.LinkedHashSet<>();
@@ -6824,6 +7153,20 @@ public final class Builder {
 			}
 		}
 		if (goals.isEmpty()) goals.add(feet);
+		return workPathToStands(c, feet, goals);
+	}
+
+	/** One bounded search over verified standing cells around the same work target. */
+	public static net.minecraft.world.level.pathfinder.Path workPathToStands(Ctx c, BlockPos target, Set<BlockPos> goals) {
+		double distance = c.v().position().distanceTo(net.minecraft.world.phys.Vec3.atBottomCenterOf(target));
+		if (goals.isEmpty() || distance > 192.0) return null;
+		BlockPos from = c.v().blockPosition();
+		int horizontal = Math.abs(from.getX() - target.getX()) + Math.abs(from.getZ() - target.getZ());
+		// Straight-line distance understates CTOV streets; budget the walked perimeter, not the chord.
+		int length = (int) Math.min(512, Math.max(96, horizontal + Math.max(48, (int) Math.ceil(distance))));
+		var region = new net.minecraft.world.level.PathNavigationRegion(c.level(),
+			from.offset(-length - 8, -length - 8, -length - 8), from.offset(length + 8, length + 8, length + 8));
+		var finder = new net.minecraft.world.level.pathfinder.PathFinder(c.v().getNavigation().getNodeEvaluator(), length * 32);
 		return finder.findPath(region, c.v(), goals, length, 0, 1.0F);
 	}
 
@@ -6915,6 +7258,7 @@ public final class Builder {
 			else ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.CONSTRUCTION, remaining);
 		}
 		PREP_RECORD.remove(origin.asLong());
+		PLAN_STALLS.remove(origin.asLong());
 		STAND_BEST.remove(origin.asLong());
 		forgetStandWatch(origin.asLong());
 		PLAN_DIAGNOSTICS.remove(origin.asLong());
@@ -6937,7 +7281,12 @@ public final class Builder {
 				used = Palette.detect(c.level(), ref.bell(), c.v(), d.planVariant >>> 2, origin);
 			}
 			used = paletteForPlan(c.level(), origin, used, biomeAt(c.level(), origin), d.planVariant);
-			list.add(new Built(d.planType, origin, d.planDir, d.planVariant, used.ids()));
+			List<BlockPos> fallbackOpenings = STEPS.getOrDefault(origin.asLong(), List.of()).stream()
+				.filter(step -> step.optional() && (step.item() == Items.GLASS || step.item() == Items.GLASS_PANE))
+				.map(Step::pos).distinct().toList();
+			List<String> paletteIds = construction != null && construction.origin().equals(origin)
+				&& TemplatePalette.marked(construction.paletteIds()) ? construction.paletteIds() : used.ids();
+			list.add(new Built(d.planType, origin, d.planDir, d.planVariant, paletteIds, fallbackOpenings));
 			ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.BUILDINGS, list);
 		}
 		de.villagerplus.village.Journal.add(c.level(),ref,"Bauen",c.mem().name,label(d.planType)+" fertiggestellt",0);
@@ -6976,7 +7325,7 @@ public final class Builder {
 					net.minecraft.world.level.levelgen.structure.BoundingBox bb = Furnisher.boxOf(built);
 					// The compact first shed already bought and placed its chest as a saved plan step.
 					// Do not grant it an unpriced second stock of containers at completion.
-					if (!compactStorage(designForPlan(Blueprints.STORAGE, d.planVariant))) {
+					if (!compactStorage(designForPlan(Blueprints.STORAGE, d.planVariant)) || storageTemplatePlanMarked(ref, origin)) {
 						Furnisher.placeDoubleChests(c.level(), bb, 8);
 					}
 					for (BlockPos chest : Furnisher.collectChests(c.level(), bb)) {
@@ -7023,9 +7372,17 @@ public final class Builder {
 
 	/** Select a complete payment without mutating storage; consumption happens only when the block can be placed. */
 	static Payment paymentFor(Step s, Container box) {
+		return paymentFor("", s, box);
+	}
+
+	static boolean canSubstituteCobble(String planType, Step step) {
+		return !Blueprints.HOUSE.equals(planType) && CobbleLike.substitutable(step);
+	}
+
+	static Payment paymentFor(String planType, Step s, Container box) {
 		// A stand-in stone pays a plain cobblestone block first: the cobblestone itself stays free for foundations and for the
 		// stairs and slabs that only cobblestone can serve.
-		if (CobbleLike.substitutable(s)) {
+		if (canSubstituteCobble(planType, s)) {
 			Item variant = CobbleLike.variantFor(box, s.cost());
 			if (variant != null) return new Payment(variant, s.cost(), Block.byItem(variant));
 		}
@@ -7088,6 +7445,79 @@ public final class Builder {
 	private static final Map<Long, Long> REPAIR_AT = new HashMap<>();
 	private static final Map<Long, Integer> REPAIR_IDX = new HashMap<>();
 	private static final long WALL_KEY = 0x57414C4CL;
+	static record RepairDamage(List<Step> damaged, int paid) {
+		RepairDamage { damaged = List.copyOf(damaged); }
+	}
+
+	static RepairDamage repairDamageForCheck(Built building, List<Step> all,
+			java.util.function.Function<BlockPos, BlockState> stateAt) {
+		List<Step> damaged = new ArrayList<>();
+		int paid = 0;
+		for (Step step : all) {
+			if (intentionallyOpen(building, step)) continue;
+			BlockState current = stateAt.apply(step.pos());
+			if (step.free()) continue;
+			paid++;
+			boolean done = current != null && repairStepSatisfied(building.type(), step, current);
+			if (!done && (current == null || current.isAir() || current.canBeReplaced())) damaged.add(step);
+		}
+		return new RepairDamage(damaged, paid);
+	}
+
+	static RepairDamage storageTemplateRepairDamage(Built building, List<Step> template,
+			java.util.function.Function<BlockPos, BlockState> stateAt, int stockedGlass, int stockedPanes) {
+		RepairDamage repair = repairDamageForCheck(building, template, stateAt);
+		// Only missing windows need material. Use the fence from the entire template even if its railings are intact.
+		List<Step> damaged = fenceWindows(repair.damaged(), 0, stockedGlass, stockedPanes, true, windowFence(template));
+		return new RepairDamage(damaged, repair.paid());
+	}
+
+	private static boolean repairFootprintLoaded(ServerLevel level, List<Step> steps) {
+		Set<Long> checked = new HashSet<>();
+		for (Step step : steps) {
+			BlockPos pos = step.pos();
+			long chunk = net.minecraft.world.level.ChunkPos.pack(pos.getX() >> 4, pos.getZ() >> 4);
+			if (checked.add(chunk) && !de.villagerplus.world.LoadedColumns.ready(level, pos)) return false;
+		}
+		return true;
+	}
+
+	private static boolean templateRepair(VillageRef ref, VillageData data, BlockPos origin) {
+		boolean repair = REPAIRS.contains(origin.asLong())
+			|| data.buildProject(origin).filter(VillageData.BuildProject::active).map(VillageData.BuildProject::repair).orElse(false);
+		if (!repair) return false;
+		return switch (data.planType) {
+			case Blueprints.HOUSE -> houseTemplatePlanMarked(ref, origin);
+			case Blueprints.STORAGE -> storageTemplatePlanMarked(ref, origin);
+			default -> false;
+		};
+	}
+
+	private static List<Step> recoverTemplateRepair(ServerLevel level, VillageRef ref, BlockPos origin, Ctx c) {
+		VillageData data = ref.data();
+		Built building = builtOf(ref).stream().filter(b -> b.type().equals(data.planType) && b.origin().equals(origin)).findFirst().orElse(null);
+		List<Step> remaining = List.of();
+		if (building != null) {
+			List<Step> shape = stepsOfBuilt(level, ref, building, c == null ? null : c.v());
+			if (!repairFootprintLoaded(level, shape)) return null;
+			RepairDamage repair;
+			if (Blueprints.STORAGE.equals(building.type())) {
+				VillageData.BuildProject project = data.buildProject(origin).orElse(null);
+				Container box = Lager.combined(level, ref);
+				Container reserved = project == null ? null : siteStock(project);
+				List<String> cargo = project == null ? List.of() : project.cargoManifest();
+				repair = storageTemplateRepairDamage(building, shape, level::getBlockState,
+					windowStock(box, reserved, cargo, Items.GLASS), windowStock(box, reserved, cargo, Items.GLASS_PANE));
+			} else {
+				repair = repairDamageForCheck(building, shape, level::getBlockState);
+			}
+			if (repair.damaged().size() * 2 <= repair.paid()) remaining = repair.damaged();
+		}
+		// The saved cursor indexed a previous damage list. Only confirmed remaining damage is safe to resume.
+		data.planStep = 0;
+		STEPS.put(origin.asLong(), remaining);
+		return remaining;
+	}
 
 	/** Maurer pruefen reihum ein eigenes Gebaeude bzw. die Stadtmauer und bessern fehlende Bloecke aus. true = Ausbesserung gestartet. */
 	private static boolean startRepair(Ctx c, VillageRef ref) {
@@ -7107,27 +7537,31 @@ public final class Builder {
 		if (!de.villagerplus.world.LoadedColumns.ready(level, b.origin())) {
 			return false;
 		}
-		// Die damals benutzte Palette (gespeichert); nur ohne Eintrag wird neu gelesen (neuere Bauten wuerden sie verfaelschen).
-		Palette palette = Palette.ofIds(b.palette());
-		if (palette == null) {
-			palette = PALETTES.computeIfAbsent(b.origin().asLong(), k -> Palette.detect(level, ref.bell(), c.v()));
-		}
-		palette = paletteForPlan(level, b.origin(), palette, biomeAt(level, b.origin()), b.variant());
-		Direction dir = Direction.from2DDataValue(b.dir());
-		List<Step> all = Architect.build(designForPlan(b.type(), b.variant()), palette, b.origin(), dir);
-		List<Step> damaged = new ArrayList<>();
-		int paid = 0;
-		for (Step s : all) {
-			BlockState cur = level.getBlockState(s.pos());
-			if (s.free()) {
-				continue;
+		boolean templateStorage = Blueprints.STORAGE.equals(b.type()) && storageTemplatePlanMarked(ref, b.origin());
+		boolean templateHouse = Blueprints.HOUSE.equals(b.type()) && houseTemplatePlanMarked(ref, b.origin());
+		List<Step> all;
+		if (templateStorage || templateHouse) {
+			all = stepsOfBuilt(level, ref, b, c.v());
+			if (!repairFootprintLoaded(level, all)) return false;
+		} else {
+			// Keep the recorded palette for older generated buildings.
+			Palette palette = Palette.ofIds(b.palette());
+			if (palette == null) {
+				palette = PALETTES.computeIfAbsent(b.origin().asLong(), k -> Palette.detect(level, ref.bell(), c.v()));
 			}
-			paid++;
-			boolean done = s.linkedTo() != null ? !cur.isAir() : cur.is(Block.byItem(s.item()));
-			if (!done && (cur.isAir() || cur.canBeReplaced())) {
-				damaged.add(s);
-			}
+			palette = paletteForPlan(level, b.origin(), palette, biomeAt(level, b.origin()), b.variant());
+			all = Architect.build(designForPlan(b.type(), b.variant()), palette, b.origin(), Direction.from2DDataValue(b.dir()));
 		}
+		if (all.isEmpty()) return false;
+		RepairDamage repair;
+		if (templateStorage) {
+			Container box = Lager.combined(level, ref);
+			repair = storageTemplateRepairDamage(b, all, level::getBlockState, count(box, Items.GLASS), count(box, Items.GLASS_PANE));
+		} else {
+			repair = repairDamageForCheck(b, all, level::getBlockState);
+		}
+		List<Step> damaged = repair.damaged();
+		int paid = repair.paid();
 		if (damaged.isEmpty()) {
 			return false;
 		}

@@ -28,12 +28,34 @@ public final class CaravanTraderChecks {
 		ModelPart brim = hat.getChild("hat_brim");
 		ModelPart band = hat.getChild("hat_band");
 		ModelPart nose = head.getChild("nose");
+		ModelPart leftEye = head.getChild("left_eye");
+		ModelPart rightEye = head.getChild("right_eye");
 		int checks = 0;
+		checks += check(leftEye != null && rightEye != null
+			&& CaravanTraderModel.EYE_U + CaravanTraderModel.EYE_DEPTH == 9
+			&& CaravanTraderModel.EYE_V + CaravanTraderModel.EYE_DEPTH == 12
+			&& CaravanTraderModel.EYE_V + 1 >= 8 && CaravanTraderModel.EYE_V + 2 <= 18
+			&& CaravanTraderModel.EYE_FRONT_Z < -CaravanTraderModel.HEAD_DEPTH / 2.0F
+			&& CaravanTraderModel.EYE_Y > CaravanTraderModel.HEAD_TOP
+			&& close(CaravanTraderModel.EYE_Y, -6.0F)
+			&& darkEyePixels(), "raised eyes sample dark pixels from the actual front-face UV rectangle");
 		checks += check(de.villagerplus.entity.CaravanTraderEntity.class.getSuperclass()
 				== net.minecraft.world.entity.npc.villager.AbstractVillager.class
 			&& !net.minecraft.world.entity.npc.wanderingtrader.WanderingTrader.class.isAssignableFrom(
 				de.villagerplus.entity.CaravanTraderEntity.class),
 			"caravan trader remains its own villager entity instead of inheriting wandering-trader visuals");
+		java.util.List<String> clickActions = new java.util.ArrayList<>();
+		var emptyClick = CaravanTraderEntity.dispatchTradeInteraction(false,
+			() -> clickActions.add("no-stock-feedback"), () -> clickActions.add("open-trading-screen"));
+		checks += check(emptyClick == net.minecraft.world.InteractionResult.CONSUME
+			&& clickActions.equals(java.util.List.of("no-stock-feedback")),
+			"an empty server-side trader click returns feedback and consumes the interaction");
+		clickActions.clear();
+		var stockedClick = CaravanTraderEntity.dispatchTradeInteraction(true,
+			() -> clickActions.add("no-stock-feedback"), () -> clickActions.add("open-trading-screen"));
+		checks += check(stockedClick == net.minecraft.world.InteractionResult.SUCCESS
+			&& clickActions.equals(java.util.List.of("open-trading-screen")),
+			"a stocked server-side trader click dispatches to the trading-screen opener");
 		Vec3 backRopeAnchor = CaravanTraderEntity.ropeHoldOffset(0.0F, 1.95);
 		Vec3 turnedRopeAnchor = CaravanTraderEntity.ropeHoldOffset(90.0F, 1.95);
 		double fittedShoulderHeight = (CaravanTraderModel.MODEL_BOTTOM_Y - 2.0F)
@@ -415,6 +437,35 @@ public final class CaravanTraderChecks {
 			return input.readInt() == 0x89504E47 && input.readInt() == 0x0D0A1A0A
 				&& input.readInt() == 13 && input.readInt() == 0x49484452
 				&& input.readInt() == 64 && input.readInt() == 64;
+		} catch (IOException invalidPng) {
+			return false;
+		}
+	}
+
+	private static boolean darkEyePixels() {
+		try (var input = CaravanTraderChecks.class.getResourceAsStream("/assets/villagerplus/textures/entity/caravan_trader.png")) {
+			if (input == null) return false;
+			var image = javax.imageio.ImageIO.read(input);
+			if (image == null) return false;
+			for (int x = 9; x <= 10; x++) {
+				int color = image.getRGB(x, 12);
+				if ((color >>> 24) < 128 || ((color >>> 16) & 255) > 100
+					|| ((color >>> 8) & 255) > 100 || (color & 255) > 100) return false;
+			}
+			for (int x = 13; x <= 14; x++) {
+				int color = image.getRGB(x, 12);
+				if ((color >>> 24) < 128 || ((color >>> 16) & 255) > 100
+					|| ((color >>> 8) & 255) > 100 || (color & 255) > 100) return false;
+			}
+			int face = image.getRGB(8, 12);
+			int chin = image.getRGB(8, 16);
+			int oldTopEye = image.getRGB(9, 6);
+			int mouth = image.getRGB(10, 16);
+			if ((face >>> 24) < 128 || ((face >>> 16) & 255) < 120
+				|| (chin >>> 24) < 128 || ((chin >>> 16) & 255) < 120
+				|| ((oldTopEye >>> 16) & 255) < 100 || ((oldTopEye >>> 8) & 255) < 80
+				|| ((mouth >>> 16) & 255) < 100 || ((mouth >>> 8) & 255) > 130) return false;
+			return true;
 		} catch (IOException invalidPng) {
 			return false;
 		}

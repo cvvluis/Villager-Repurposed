@@ -445,6 +445,15 @@ public final class JobManager {
 		}
 		if (v.isBaby()) {
 			School.slowGrowth(v);
+			JobState kidState = state(v);
+			if (!v.isSleeping() && Meals.eatFromAssignedChest(new Ctx(level, v, kidState, mem, village, now))) {
+				Anim.apply(v, kidState, now);
+				return;
+			}
+			if (!v.isSleeping() && LooseItemPickup.offerNearby(new Ctx(level, v, kidState, mem, village, now))) {
+				Anim.apply(v, kidState, now);
+				return;
+			}
 			Phase kidPhase = Phase.of(level.getOverworldClockTime());
 			if (!v.isSleeping() && kidPhase != Phase.NIGHT && !busy(v)) {
 				JobState ks = state(v);
@@ -475,6 +484,16 @@ public final class JobManager {
 		JobState st = state(v);
 		Ctx ctx = new Ctx(level, v, st, mem, village, now);
 		de.villagerplus.dev.G02SupplyTrace.jobSelected(level, v, village, job, phase, st, now);
+		// A compact trading stall may have no usable home route. Eat directly from a nearby player-authorized chest
+		// before weather, navigation, or work-phase early exits can defer the next scheduled meal.
+		if (Meals.eatFromAssignedChest(ctx)) {
+			Anim.apply(v, st, now);
+			return;
+		}
+		if (LooseItemPickup.offerNearby(ctx)) {
+			Anim.apply(v, st, now);
+			return;
+		}
 		boolean badWeather = adverseWeather(level.isRaining(), level.isThundering());
 		if (shouldShelterForWeather(level, phase, job, v.blockPosition())) {
 			pauseForWeather(ctx);

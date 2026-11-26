@@ -1158,31 +1158,30 @@ public final class Plaza {
  }
 
  static BlockPos placeBoardAndFlagpole(ServerLevel level, VillageRef ref, BlockPos plaza, Palette p, boolean pin) {
-  if (ref.data().extra.boardPinned && ref.data().extra.board.isPresent()) {
-   BlockPos pinned = ref.data().extra.board.get();
-   if (level.getBlockState(pinned).getBlock() instanceof DorftafelBlock) {
-    placeFlagpole(level, ref, plaza, pinned, p);
-    return pinned;
-   }
-  }
+  if (ref.data().extra.boardInTransit.isPresent()) return null;
+  BlockPos previous = ref.data().extra.board.orElse(null);
+  BlockState old = de.villagerplus.world.LoadedColumns.state(level, previous);
+  if (old != null && old.getBlock() instanceof DorftafelBlock) Board.rememberOfficial(level, ref, previous, old);
+  if (previous != null && (old == null || (ref.data().extra.boardPinned && old.getBlock() instanceof DorftafelBlock))) return previous;
   BlockPos edge = plaza.offset(0, 0, -(PLAZA_RADIUS + 1));
+  if (old != null && old.is(ModBlocks.DORFTAFEL_GROSS)) {
+   BlockPos anchor = DorftafelBlock.parts(old, previous)[0];
+   if (anchor.getX() == edge.getX() && anchor.getZ() == edge.getZ() && DorftafelBlock.complete(level, previous, old)) return previous;
+  }
   int y = de.villagerplus.world.LoadedColumns.heightOrMinY(level, Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, edge.getX(), edge.getZ());
   edge = new BlockPos(edge.getX(), y, edge.getZ());
   Direction facing = Sites.facingTowards(edge, plaza);
-  if (ref.data().extra.board.isPresent()) {
-   BlockPos b = ref.data().extra.board.get();
-   var bs = level.getBlockState(b);
-   if (bs.getBlock() instanceof DorftafelBlock) {
-    for (BlockPos q : DorftafelBlock.parts(bs, b)) {
-     for (BlockPos t : new BlockPos[] {q, q.above()}) {
-      if (level.getBlockState(t).getBlock() instanceof DorftafelBlock) level.setBlock(t, Blocks.AIR.defaultBlockState(), 3);
-     }
-    }
-   }
+  BlockState expected = ModBlocks.DORFTAFEL_GROSS.defaultBlockState().setValue(DorftafelBlock.FACING, facing);
+  if (!DorftafelBlock.footprintLoaded(level, edge, expected) || level.isOutsideBuildHeight(edge.above())) return previous;
+  if (edge.equals(previous) && DorftafelBlock.complete(level, edge, expected)) return edge;
+  if (old != null && old.getBlock() instanceof DorftafelBlock) {
+   if (!DorftafelBlock.footprintLoaded(level, previous, old)) return previous;
+   DorftafelBlock.removeParts(level, previous, old, null);
   }
-  if (!DorftafelBlock.complete(level, edge, ModBlocks.DORFTAFEL_GROSS.defaultBlockState().setValue(DorftafelBlock.FACING, facing))) {
-   DorftafelBlock.placeAll(level, edge, ModBlocks.DORFTAFEL_GROSS.defaultBlockState().setValue(DorftafelBlock.FACING, facing));
+  if (!DorftafelBlock.complete(level, edge, expected)) {
+   DorftafelBlock.placeAll(level, edge, expected);
   }
+  Board.rememberOfficial(level, ref, edge, expected);
   ref.data().extra.board = Optional.of(edge);
   if (pin) ref.data().extra.boardPinned = false;
   ref.dirty();

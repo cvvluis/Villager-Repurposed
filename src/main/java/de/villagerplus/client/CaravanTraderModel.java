@@ -49,6 +49,13 @@ public final class CaravanTraderModel extends EntityModel<ArmedEntityRenderState
 	// Keep the small human-like nose bridge on the unused skin-colored atlas corner.
 	static final int NOSE_U = 0;
 	static final int NOSE_V = 0;
+	static final int EYE_U = 8;
+	// The front face occupies the standard head UV rectangle at x=8..15, y=8..17.
+	// Keep the eye detail on that face instead of borrowing pixels from the head top.
+	static final int EYE_V = 11;
+	static final float EYE_DEPTH = 1.0F;
+	static final float EYE_FRONT_Z = -4.02F;
+	static final float EYE_Y = -6.0F;
 	static final float NOSE_WIDTH = 1.0F;
 	static final float NOSE_PART_Y = -2.0F;
 	static final float NOSE_BOX_X = -NOSE_WIDTH / 2.0F;
@@ -153,6 +160,10 @@ public final class CaravanTraderModel extends EntityModel<ArmedEntityRenderState
 				.texOffs(0, 0).addBox(-HEAD_WIDTH / 2.0F, HEAD_TOP, -HEAD_DEPTH / 2.0F,
 					HEAD_WIDTH, HEAD_HEIGHT, HEAD_DEPTH, new CubeDeformation(0.0F)),
 			PartPose.ZERO);
+		head.addOrReplaceChild("left_eye", CubeListBuilder.create().texOffs(EYE_U, EYE_V)
+			.addBox(-3.0F, EYE_Y, EYE_FRONT_Z, 2.0F, 1.0F, EYE_DEPTH), PartPose.ZERO);
+		head.addOrReplaceChild("right_eye", CubeListBuilder.create().texOffs(EYE_U, EYE_V)
+			.addBox(1.0F, EYE_Y, EYE_FRONT_Z, 2.0F, 1.0F, EYE_DEPTH), PartPose.ZERO);
 		head.addOrReplaceChild("nose",
 			CubeListBuilder.create().texOffs(NOSE_U, NOSE_V)
 				.addBox(NOSE_BOX_X, NOSE_BOX_Y, NOSE_BOX_Z, NOSE_WIDTH, NOSE_HEIGHT, NOSE_DEPTH),

@@ -236,7 +236,8 @@ public final class BellRelocation {
 	private static List<Built> shiftBuildings(List<Built> buildings, BlockPos delta) {
 		List<Built> out = new ArrayList<>(buildings.size());
 		for (Built built : buildings) {
-			out.add(new Built(built.type(), built.origin().offset(delta), built.dir(), built.variant(), built.palette()));
+			out.add(new Built(built.type(), built.origin().offset(delta), built.dir(), built.variant(), built.palette(),
+				built.fallbackOpenings().stream().map(pos -> pos.offset(delta)).toList()));
 		}
 		return out;
 	}

@@ -133,6 +133,12 @@ public final class Workshop {
 	 * remain invisible to both target crafting and its prerequisite chain.
 	 */
 	private static boolean fetchRecipeInputsFromLager(Ctx c, VillageRef ref, Container chest, Item target) {
+		return fetchRecipeInputsFromLager(c, ref, chest, target, 0, new java.util.HashSet<>());
+	}
+
+	private static boolean fetchRecipeInputsFromLager(Ctx c, VillageRef ref, Container chest, Item target,
+		int depth, java.util.Set<Item> visited) {
+		if (depth > 4 || !visited.add(target)) return false;
 		if (ref.data().extra.lager.isEmpty()) return false;
 		List<Container> stores = de.villagerplus.village.Lager.containers(c.level(), ref.data()).stream()
 			.filter(store -> store != chest).distinct().toList();
@@ -147,7 +153,9 @@ public final class Workshop {
 			CraftingInput input = RecipeCrafting.inputFor(recipe, combined, c.level());
 			if (input == null) continue;
 			ItemStack output = recipe.assemble(input);
-			if (output.isEmpty() || !output.is(target) || JobUtil.count(chest, stack -> stack.is(target)) >= targetDemand(ref, target)) continue;
+			int requested = targetDemand(ref, target);
+			if (output.isEmpty() || !output.is(target)
+				|| (requested > 0 && JobUtil.count(chest, stack -> stack.is(target)) >= requested)) continue;
 
 			List<StackNeed> needs = new ArrayList<>();
 			for (int slot = 0; slot < input.size(); slot++) {
@@ -203,6 +211,26 @@ public final class Workshop {
 			c.st().cooldownUntil = c.now() + 60;
 			c.mem().jobsDone++;
 			return true;
+		}
+
+		// The requested recipe may need an intermediate (e.g. planks for stairs) which is
+		// absent from both the communal chest and the Lager, although its raw recipe inputs
+		// are stored there. Pull one real batch of the deepest available prerequisite; the
+		// regular Workshop/RecipeCrafting path crafts each intermediate on later work ticks.
+		for (RecipeHolder<CraftingRecipe> holder : RecipeIndex.producing(target)) {
+			CraftingRecipe recipe = holder.value();
+			CraftingInput input = RecipeCrafting.inputFor(recipe, combined, c.level());
+			if (input != null) continue;
+			var ingredients = recipe.placementInfo().ingredients();
+			for (var needed : ingredients) {
+				for (RecipeHolder<CraftingRecipe> candidateHolder : RecipeIndex.producing(needed)) {
+					CraftingRecipe candidate = candidateHolder.value();
+					ItemStack preview = RecipeCrafting.preview(candidate);
+					if (preview == null || preview.isEmpty() || preview.is(target) || !needed.test(preview)) continue;
+					if (RecipeCrafting.inputFor(candidate, chest, c.level()) != null) continue;
+					if (fetchRecipeInputsFromLager(c, ref, chest, preview.getItem(), depth + 1, visited)) return true;
+				}
+			}
 		}
 		return false;
 	}

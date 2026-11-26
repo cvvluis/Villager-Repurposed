@@ -3,6 +3,8 @@ package de.villagerplus.block;
 import de.villagerplus.village.VillageMessages;
 import com.mojang.serialization.MapCodec;
 import de.villagerplus.net.BoardData;
+import de.villagerplus.village.Board;
+import de.villagerplus.world.LoadedColumns;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
@@ -15,9 +17,9 @@ import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.stats.Stats;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -147,22 +149,25 @@ public class DorftafelBlock extends BaseEntityBlock {
 	@Override
 	public BlockState getStateForPlacement(BlockPlaceContext ctx) {
 		Direction f = ctx.getHorizontalDirection().getOpposite();
+		BlockState placement = defaultBlockState().setValue(FACING, f);
 		for (int i = 0; i < (wide ? 4 : 3); i++) {
 			BlockPos p = ctx.getClickedPos().relative(f.getCounterClockWise(), i);
-			if ((i > 0 && !ctx.getLevel().getBlockState(p).canBeReplaced(ctx)) || !ctx.getLevel().getBlockState(p.above()).canBeReplaced(ctx)) {
+			if (ctx.getLevel().isOutsideBuildHeight(p.above()) || !ctx.getLevel().getWorldBorder().isWithinBounds(p)
+				|| (ctx.getLevel() instanceof ServerLevel server && !LoadedColumns.ready(server, p))
+				|| (i > 0 && !ctx.getLevel().getBlockState(p).canBeReplaced(ctx))
+				|| !ctx.getLevel().getBlockState(p.above()).canBeReplaced(ctx)) {
 				return null;
 			}
 		}
-		return defaultBlockState().setValue(FACING, f).setValue(PART, Part.LEFT).setValue(HALF, DoubleBlockHalf.LOWER);
+		if (ctx.getLevel() instanceof ServerLevel server && !Board.canPlace(server, ctx.getClickedPos(), placement, ctx.getItemInHand(), ctx.getPlayer())) return null;
+		return placement;
 	}
 
 	/** Setzt alle Teile ab der linken unteren Position (6 beim alten, 8 beim grossen Brett). */
 	public static void placeAll(Level level, BlockPos left, BlockState base) {
 		boolean wide = widthOf(base) == 4;
 		Direction r = base.getValue(FACING).getCounterClockWise();
-		if (base.getBlock() instanceof DorftafelGrossBlock) {
-			base = base.setValue(DorftafelGrossBlock.WOOD, DorftafelGrossBlock.woodFor(level, left));
-		}
+		base = withLocalWood(level, left, base);
 		for (int i = 0; i < (wide ? 4 : 3); i++) {
 			BlockPos p = left.relative(r, i);
 			BlockState s = base.setValue(PART, partAt(wide, i));
@@ -171,38 +176,48 @@ public class DorftafelBlock extends BaseEntityBlock {
 		}
 	}
 
+	static BlockState withLocalWood(Level level, BlockPos left, BlockState base) {
+		return base.getBlock() instanceof DorftafelGrossBlock
+			? base.setValue(DorftafelGrossBlock.WOOD, DorftafelGrossBlock.woodFor(level, left)) : base;
+	}
+
 	/** Sind alle Teile vorhanden? */
-	public static boolean complete(Level level, BlockPos anyPart, BlockState state) {
-		boolean wide = widthOf(state) == 4;
+	public static boolean complete(ServerLevel level, BlockPos anyPart, BlockState state) {
 		BlockPos[] lower = parts(state, anyPart);
 		for (int i = 0; i < lower.length; i++) {
-			for (BlockPos p : new BlockPos[] {lower[i], lower[i].above()}) {
-				BlockState s = level.getBlockState(p);
-				if (!(s.getBlock() instanceof DorftafelBlock) || s.getValue(PART) != partAt(wide, i)) {
-					return false;
-				}
-			}
+			if (!isPart(level, lower[i], state, i, DoubleBlockHalf.LOWER)
+				|| !isPart(level, lower[i].above(), state, i, DoubleBlockHalf.UPPER)) return false;
 		}
 		return true;
 	}
 
-	@Override
-	public void setPlacedBy(Level level, BlockPos pos, BlockState state, LivingEntity placer, ItemStack stack) {
-		if (!level.isClientSide()) {
-			placeAll(level, pos, state);
+	public static boolean footprintLoaded(ServerLevel level, BlockPos pos, BlockState state) {
+		for (BlockPos lower : parts(state, pos)) if (!LoadedColumns.ready(level, lower)) return false;
+		return true;
+	}
+
+	public static boolean isPart(ServerLevel level, BlockPos pos, BlockState state, int column, DoubleBlockHalf half) {
+		BlockState present = LoadedColumns.state(level, pos);
+		return present != null && present.is(state.getBlock()) && present.getValue(FACING) == state.getValue(FACING)
+			&& present.getValue(PART) == partAt(widthOf(state) == 4, column) && present.getValue(HALF) == half;
+	}
+
+	/** Remove only the actual matching parts, leaving players' neighboring blocks intact. */
+	public static void removeParts(ServerLevel level, BlockPos pos, BlockState state, BlockPos except) {
+		BlockPos[] lower = parts(state, pos);
+		for (int i = 0; i < lower.length; i++) {
+			for (DoubleBlockHalf half : DoubleBlockHalf.values()) {
+				BlockPos part = half == DoubleBlockHalf.LOWER ? lower[i] : lower[i].above();
+				if (!part.equals(except) && isPart(level, part, state, i, half)) level.removeBlock(part, false);
+			}
 		}
 	}
 
 	@Override
-	public BlockState playerWillDestroy(Level level, BlockPos pos, BlockState state, Player player) {
-		for (BlockPos low : parts(state, pos)) {
-			for (BlockPos other : new BlockPos[] {low, low.above()}) {
-				if (!other.equals(pos) && level.getBlockState(other).is(this)) {
-					level.setBlock(other, Blocks.AIR.defaultBlockState(), 35);
-				}
-			}
-		}
-		return super.playerWillDestroy(level, pos, state, player);
+	public void playerDestroy(Level level, Player player, BlockPos pos, BlockState state, BlockEntity entity, ItemStack tool) {
+		// The successful break callback removes the rest of the assembly and drops its single block item.
+		player.awardStat(Stats.BLOCK_MINED.get(this));
+		player.causeFoodExhaustion(0.005F);
 	}
 
 	@Override

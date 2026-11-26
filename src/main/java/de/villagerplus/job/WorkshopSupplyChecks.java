@@ -34,14 +34,23 @@ public final class WorkshopSupplyChecks {
 		BlockPos publicPos = at.east(8);
 		BlockPos privatePos = at.east(10);
 		BlockPos lagerCenter = at.east(5);
+		BlockPos communalPos = ref.chestPos(level);
 		Container communal = ref.chest(level);
-		if (communal == null) throw new IllegalStateException("Workshop supply checks need a public village chest");
-		MapCellSnapshot worldBefore = new MapCellSnapshot(level, List.of(publicPos, privatePos,
+		if (communal == null || communalPos == null) throw new IllegalStateException("Workshop supply checks need a public village chest");
+		List<BlockPos> fixtureCells = new ArrayList<>(List.of(publicPos, privatePos,
 			publicPos.below(), privatePos.below(), lagerCenter.below()));
+		for (BlockPos center : List.of(publicPos, communalPos)) for (int dx = -2; dx <= 2; dx++) for (int dz = -2; dz <= 2; dz++) {
+			fixtureCells.add(center.offset(dx, -1, dz));
+			fixtureCells.add(center.offset(dx, 0, dz));
+			fixtureCells.add(center.offset(dx, 1, dz));
+		}
+		MapCellSnapshot worldBefore = new MapCellSnapshot(level, fixtureCells);
 		List<ItemStack> communalBefore = snapshot(communal);
 		Optional<BlockPos> oldLager = ref.data().extra.lager;
 		List<BlockPos> oldLagerChests = List.copyOf(ref.data().extra.lagerChests);
 		List<String> oldWanted = List.copyOf(ref.data().wanted);
+		String oldPlanType = ref.data().planType;
+		Optional<BlockPos> oldPlanOrigin = ref.data().planOrigin;
 		level.setBlock(lagerCenter.below(), Blocks.STONE.defaultBlockState(), 3);
 		Villager worker = EntityTypes.VILLAGER.spawn(level, lagerCenter, EntitySpawnReason.COMMAND);
 		if (worker == null) {
@@ -77,6 +86,83 @@ public final class WorkshopSupplyChecks {
 			check(crafted && JobUtil.count(communal, stack -> stack.is(Items.CRAFTING_TABLE)) == 1
 				&& JobUtil.count(communal, stack -> stack.is(Items.OAK_PLANKS)) == 0,
 				"the transferred recipe ingredients are consumed by the loaded crafting-table recipe");
+			passed++;
+
+			// Exercise the full active-plan workshop path: a setup table demanded by the plan may be
+			// funded from real planks in a registered lager and then crafted into the communal chest.
+			communal.clearContent();
+			publicLager.clearContent();
+			publicLager.setItem(0, new ItemStack(Items.OAK_PLANKS, 4));
+			ref.data().planType = "granary";
+			ref.data().planOrigin = Optional.of(at.east(20));
+			ref.data().wanted.clear();
+			ref.data().wanted.add("minecraft:crafting_table#1");
+			for (BlockPos center : List.of(publicPos, communalPos)) for (int dx = -2; dx <= 2; dx++) for (int dz = -2; dz <= 2; dz++) {
+				BlockPos floor = center.offset(dx, -1, dz);
+				level.setBlock(floor, Blocks.STONE.defaultBlockState(), 3);
+				if (dx != 0 || dz != 0) {
+					level.setBlock(floor.above(), Blocks.AIR.defaultBlockState(), 3);
+					level.setBlock(floor.above(2), Blocks.AIR.defaultBlockState(), 3);
+				}
+			}
+			BlockPos villageChest = communalPos;
+			BlockPos stand = JobUtil.sharedStandSpot(context, villageChest, 3.0);
+			var standPath = stand == null ? null : de.villagerplus.build.Builder.workPath(context, stand);
+			check(stand != null && !stand.equals(villageChest)
+				&& stand.distSqr(villageChest) <= 9.0
+				&& standPath != null && standPath.canReach(),
+				"recipe work selects a reachable adjacent stand instead of routing into the chest block (stand=" + stand
+					+ ", route=" + (standPath == null ? "null" : standPath.canReach()) + ", worker=" + worker.blockPosition()
+					+ ", chest=" + villageChest + ")");
+			passed++;
+			worker.setPos(stand.getX() + 0.5, stand.getY(), stand.getZ() + 0.5);
+			JobManager.state(worker).forgetNoWork("workshop");
+			boolean fetchedForPlan = Workshop.tick(context);
+			JobManager.state(worker).forgetNoWork("workshop");
+			boolean craftedForPlan = Workshop.tick(context);
+			check(fetchedForPlan && craftedForPlan
+				&& JobUtil.count(communal, stack -> stack.is(Items.CRAFTING_TABLE)) == 1
+				&& JobUtil.count(publicLager, stack -> stack.is(Items.OAK_PLANKS)) == 0
+				&& JobUtil.count(communal, stack -> stack.is(Items.OAK_PLANKS)) == 0,
+				"an active plan's missing workbench is crafted through Workshop.tick from real registered-lager inputs");
+			passed++;
+
+			// Natural villages usually deliver logs before crafted planks. The prerequisite chain must turn that real
+			// public input into planks, then into the table requested by the setup plan.
+			communal.clearContent();
+			publicLager.clearContent();
+			communal.setItem(0, new ItemStack(Items.OAK_LOG, 2));
+			JobManager.state(worker).forgetNoWork("workshop");
+			boolean logChainBusy = false;
+			for (int attempt = 0; attempt < 4; attempt++) {
+				JobManager.state(worker).forgetNoWork("workshop");
+				logChainBusy |= Workshop.tick(context);
+				if (JobUtil.count(communal, stack -> stack.is(Items.CRAFTING_TABLE)) > 0) break;
+			}
+			check(logChainBusy && JobUtil.count(communal, stack -> stack.is(Items.CRAFTING_TABLE)) == 1
+				&& JobUtil.count(communal, stack -> stack.is(Items.OAK_LOG)) == 0
+				&& JobUtil.count(communal, stack -> stack.is(Items.OAK_PLANKS)) == 4,
+				"an active setup plan converts delivered logs through real recipes into its missing workbench");
+			passed++;
+
+			// Stairs require planks, so a log-only Lager cannot satisfy the direct recipe-input
+			// fetch. The bounded prerequisite fetch should bring the real logs into the communal
+			// chest; subsequent Workshop ticks craft the loaded intermediate and requested stairs.
+			communal.clearContent();
+			publicLager.clearContent();
+			publicLager.setItem(0, new ItemStack(Items.SPRUCE_LOG, 2));
+			ref.data().wanted.clear();
+			ref.data().wanted.add("minecraft:spruce_stairs#20");
+			boolean stairsBusy = false;
+			for (int attempt = 0; attempt < 8; attempt++) {
+				JobManager.state(worker).forgetNoWork("workshop");
+				stairsBusy |= Workshop.tick(context);
+				if (JobUtil.count(communal, stack -> stack.is(Items.SPRUCE_STAIRS)) > 0) break;
+			}
+			check(stairsBusy && JobUtil.count(communal, stack -> stack.is(Items.SPRUCE_STAIRS)) > 0
+				&& JobUtil.count(publicLager, stack -> stack.is(Items.SPRUCE_LOG)) == 0
+				&& JobUtil.count(communal, stack -> stack.is(Items.SPRUCE_LOG)) == 0,
+				"a real log-only public Lager funds the spruce stairs prerequisite chain");
 			passed++;
 
 			level.setBlock(privatePos.below(), Blocks.STONE.defaultBlockState(), 3);
@@ -142,6 +228,8 @@ public final class WorkshopSupplyChecks {
 			ref.data().extra.lagerChests.addAll(oldLagerChests);
 			ref.data().wanted.clear();
 			ref.data().wanted.addAll(oldWanted);
+			ref.data().planType = oldPlanType;
+			ref.data().planOrigin = oldPlanOrigin;
 			worldBefore.restore(level);
 			restore(communal, communalBefore);
 			ref.dirty();

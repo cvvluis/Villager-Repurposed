@@ -135,7 +135,8 @@ public final class BuildingRelocation {
 		}
 		List<Built> buildings = new ArrayList<>(Builder.builtOf(ref));
 		int index = buildings.indexOf(built);
-		Built moved = new Built(built.type(), built.origin().offset(dx, 0, dz), built.dir(), built.variant(), built.palette());
+		Built moved = new Built(built.type(), built.origin().offset(dx, 0, dz), built.dir(), built.variant(), built.palette(),
+			built.fallbackOpenings().stream().map(pos -> pos.offset(dx, 0, dz)).toList());
 		if (index >= 0) buildings.set(index, moved);
 		ref.bellEntity().setAttached(VillagerPlus.BUILDINGS, List.copyOf(buildings));
 		Map<String, BlockPos> specials = new HashMap<>(ref.bellEntity().getAttachedOrElse(VillagerPlus.SPECIALS, Map.of()));

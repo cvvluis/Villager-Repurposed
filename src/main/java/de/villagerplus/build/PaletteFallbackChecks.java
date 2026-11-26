@@ -9,8 +9,11 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.ai.village.poi.PoiManager;
 import net.minecraft.world.entity.ai.village.poi.PoiTypes;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -32,8 +35,37 @@ public final class PaletteFallbackChecks {
 		int checks = lookAlikeChecks();
 		checks += planChecks();
 		checks += fenceWindowChecks();
+		checks += houseSupplyChecks();
 		checks += fixtureChecks(level, bed);
 		return checks;
+	}
+
+	private static int houseSupplyChecks() {
+		List<String> wanted = List.of("minecraft:spruce_stairs#8");
+		SimpleContainer stock = new SimpleContainer(3);
+		require(!Builder.hasHouseWoodSupply(wanted, stock, null, List.of(), false),
+			"a house with no wood supply can still use the stone fallback");
+		require(Builder.hasHouseWoodSupply(wanted, stock, null, List.of(), true),
+			"an active house supplier keeps the timber palette even after a long stall");
+		stock.setItem(0, new ItemStack(Items.SPRUCE_LOG, 4));
+		require(Builder.hasHouseWoodSupply(wanted, stock, null, List.of(), false)
+			&& Builder.hasHouseWoodSupply(wanted, null, stock, List.of(), false),
+			"matching logs in public stock or in construction stock keep the timber palette");
+		stock.setItem(0, new ItemStack(Items.OAK_LOG, 4));
+		require(!Builder.hasHouseWoodSupply(wanted, stock, null, List.of(), false),
+			"an unrelated log species does not indefinitely defer the last-resort fallback");
+		stock.setItem(0, new ItemStack(Items.SPRUCE_STAIRS, 4));
+		require(Builder.hasHouseWoodSupply(wanted, stock, null, List.of(), false),
+			"crafted wood already waiting for a hauler keeps the planned roof material");
+		Step wall = Step.block(BlockPos.ZERO, Blocks.COBBLESTONE);
+		stock.setItem(0, new ItemStack(Items.GRANITE, 4));
+		require(Builder.paymentFor(Blueprints.HOUSE, wall, stock) == null
+			&& Builder.paymentFor(Blueprints.STORAGE, wall, stock).item() == Items.GRANITE,
+			"a house cannot get a pink spot from unrelated granite stock while utility plans still use it");
+		stock.setItem(1, new ItemStack(Items.COBBLESTONE));
+		require(Builder.paymentFor(Blueprints.HOUSE, wall, stock).item() == Items.COBBLESTONE,
+			"the selected house wall material is requested and paid exactly");
+		return 7;
 	}
 
 	private static int lookAlikeChecks() {
@@ -182,7 +214,10 @@ public final class PaletteFallbackChecks {
 		Map<BlockPos, Cell> before = new LinkedHashMap<>();
 		PoiManager poi = level.getPoiManager();
 		boolean manuallyAddedPoi = false;
+		boolean manuallyAddedTimberPoi = false;
 		BlockPos head = bed.east();
+		BlockPos timberBed = bed.east(20);
+		BlockPos timberHead = timberBed.east();
 		try {
 			if (poi.getType(bed).isPresent() || poi.getType(head).isPresent()) {
 				throw new IllegalStateException("Palette fallback check needs an unused HOME POI fixture at " + bed.toShortString());
@@ -210,9 +245,39 @@ public final class PaletteFallbackChecks {
 			Palette local = Supply.lookAlikePalette(detected, Identifier.withDefaultNamespace("taiga"));
 			require(local.wall() == Blocks.STONE_BRICKS && local.unobtainableRoles().isEmpty(),
 				"the early palette turns the detected deepslate-brick wall into obtainable stone bricks: " + local.ids());
-			return 2;
+			set(level, before, timberBed.below(), Blocks.OAK_PLANKS.defaultBlockState());
+			set(level, before, timberHead.below(), Blocks.OAK_PLANKS.defaultBlockState());
+			set(level, before, timberBed, foot);
+			set(level, before, timberHead, foot.setValue(BedBlock.PART, BedPart.HEAD));
+			for (int y = 0; y <= 3; y++) {
+				for (int x = -2; x <= 2; x++) {
+					for (int z = -2; z <= 2; z++) {
+						if (Math.abs(x) != 2 && Math.abs(z) != 2) continue;
+						Block material = Math.abs(x) == 2 && Math.abs(z) == 2 ? Blocks.STRIPPED_OAK_LOG : Blocks.OAK_PLANKS;
+						set(level, before, timberBed.offset(x, y, z), material.defaultBlockState());
+					}
+				}
+			}
+			set(level, before, timberBed.above(4), Blocks.SPRUCE_STAIRS.defaultBlockState());
+			set(level, before, timberBed.above(5), Blocks.SPRUCE_SLAB.defaultBlockState());
+			set(level, before, timberBed.south(2), Blocks.OAK_DOOR.defaultBlockState());
+			if (poi.getType(timberBed).isEmpty()) {
+				poi.add(timberBed, BuiltInRegistries.POINT_OF_INTEREST_TYPE.getOrThrow(PoiTypes.HOME));
+				manuallyAddedTimberPoi = true;
+			}
+			Palette adjacent = Palette.detectHouse(level, bed, null, 0x51E21, timberBed.east(7));
+			require(adjacent.wall() == Blocks.OAK_PLANKS && adjacent.wall2() == Blocks.OAK_PLANKS
+				&& adjacent.frame() == Blocks.STRIPPED_OAK_LOG && adjacent.roofStair() == Blocks.SPRUCE_STAIRS
+				&& adjacent.roofSlab() == Blocks.SPRUCE_SLAB && adjacent.floor() == Blocks.OAK_PLANKS,
+				"a new house gets its walls, posts and roof from the nearer timber home instead of the larger stone shell: " + adjacent.ids());
+			Palette coherent = Palette.detect(level, bed, null, 0x51E21, timberBed.east(7));
+			require(coherent.wall() == Blocks.OAK_PLANKS && coherent.base() == Blocks.OAK_PLANKS
+				&& coherent.frame() == Blocks.STRIPPED_OAK_LOG && coherent.roofStair() == Blocks.SPRUCE_STAIRS,
+				"general building palettes use one nearest facade instead of mixing roles from the larger stone house: " + coherent.ids());
+			return 4;
 		} finally {
 			if (manuallyAddedPoi) poi.remove(bed);
+			if (manuallyAddedTimberPoi) poi.remove(timberBed);
 			for (BlockPos pos : before.keySet()) level.removeBlockEntity(pos);
 			before.forEach((pos, cell) -> level.setBlock(pos, cell.state(), 3));
 			before.forEach((pos, cell) -> {

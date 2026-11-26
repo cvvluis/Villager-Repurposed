@@ -1,12 +1,13 @@
 package de.villagerplus.village;
 
 import de.villagerplus.VillagerPlus;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionResult;
@@ -22,7 +23,14 @@ import net.minecraft.world.level.block.entity.BlockEntity;
  * Ansehen beim Besitzer (und dessen Nachbarn, die den Klatsch weitertragen), wenn sie sich bedienen oder die Kiste zerstoeren.
  */
 public final class Ownership {
-	private static final Map<UUID, Long> LAST_WARNING = new HashMap<>();
+	private static final long WARNING_COOLDOWN_TICKS = 20L;
+	private static final int MAX_WARNING_KEYS = 512;
+	private record WarningKey(UUID player, GlobalPos chest) { }
+	private static final Map<WarningKey, Long> LAST_WARNING = new LinkedHashMap<>(64, 0.75f, true) {
+		@Override protected boolean removeEldestEntry(Map.Entry<WarningKey, Long> eldest) {
+			return size() > MAX_WARNING_KEYS;
+		}
+	};
 
 	private Ownership() {
 	}
@@ -36,6 +44,16 @@ public final class Ownership {
 
 	public static boolean isOwnedBy(ServerLevel level, BlockPos pos, UUID owner) {
 		return owner != null && owner.equals(ownerAt(level, pos));
+	}
+
+	/** A quick second callback for the same chest is quiet, but opening any other private chest reports its owner. */
+	static boolean shouldSendChestWarning(UUID player, GlobalPos chest, long now, boolean breaking) {
+		if (breaking) return true;
+		WarningKey key = new WarningKey(player, chest);
+		Long last = LAST_WARNING.get(key);
+		if (last != null && now >= last && now - last < WARNING_COOLDOWN_TICKS) return false;
+		LAST_WARNING.put(key, now);
+		return true;
 	}
 
 	public static void register() {
@@ -66,11 +84,7 @@ public final class Ownership {
 			return;
 		}
 		long now = level.getGameTime();
-		Long last = LAST_WARNING.get(player.getUUID());
-		if (!breaking && last != null && now - last < 1200L) {
-			return;
-		}
-		LAST_WARNING.put(player.getUUID(), now);
+		if (!shouldSendChestWarning(player.getUUID(), GlobalPos.of(level.dimension(), pos), now, breaking)) return;
 		villager.getGossips().add(player.getUUID(), breaking ? GossipType.MAJOR_NEGATIVE : GossipType.MINOR_NEGATIVE, breaking ? 10 : 5);
 		String name = villager.hasCustomName() ? villager.getCustomName().getString() : "";
 		VillageMessages.overlay(player, Component.translatable("message.villagerplus.private_chest_of",

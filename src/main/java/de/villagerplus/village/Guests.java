@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.UUID;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
@@ -35,17 +36,19 @@ import net.minecraft.world.phys.AABB;
 public final class Guests {
 	public static final String TAG = "vp_guest";
 
-	private static final class State {
-		final BlockPos bell;
+	static final class State {
+		final GlobalPos destination;
 		final BlockPos spawn;
 		final String home;
+		final Network.GuestOrigin origin;
 		boolean arrived;
 		long leaveAt;
 
-		State(BlockPos bell, BlockPos spawn, String home) {
-			this.bell = bell;
+		State(GlobalPos destination, BlockPos spawn, String home, Network.GuestOrigin origin) {
+			this.destination = destination;
 			this.spawn = spawn;
 			this.home = home;
+			this.origin = origin;
 		}
 	}
 
@@ -93,8 +96,9 @@ public final class Guests {
 		if (pop < 4) {
 			return;
 		}
+		GlobalPos destination = GlobalPos.of(level.dimension(), ref.bell());
 		for (State s : ACTIVE.values()) {
-			if (s.bell.equals(ref.bell())) {
+			if (s.destination.equals(destination)) {
 				return;
 			}
 		}
@@ -114,7 +118,8 @@ public final class Guests {
 		if (at == null) {
 			return;
 		}
-		String town = TOWNS[who.getRandom().nextInt(TOWNS.length)];
+		Network.GuestOrigin origin = Network.nextGuestOrigin(level, ref);
+		String town = origin == null ? TOWNS[who.getRandom().nextInt(TOWNS.length)] : origin.name();
 		ResourceKey<VillagerType> type = TYPES.get(who.getRandom().nextInt(TYPES.size()));
 		int spawned = 0;
 		for (int i = 0; i < count; i++) {
@@ -128,7 +133,7 @@ public final class Guests {
 			guest.addTag(TAG);
 			guest.setCustomName(Component.literal("Gast aus " + town));
 			guest.setCustomNameVisible(false);
-			ACTIVE.put(guest.getUUID(), new State(ref.bell(), at, town));
+			ACTIVE.put(guest.getUUID(), new State(destination, at, town, origin));
 			spawned++;
 		}
 		if (spawned > 0) {
@@ -143,7 +148,7 @@ public final class Guests {
 	 * Laedt Gaeste aus einem verbundenen Nachbardorf ein: Sie erscheinen am Dorfrand von {@code ref} und kommen wie normale Gaeste ins Dorf.
 	 * Gibt die Zahl der erschienenen Gaeste zurueck.
 	 */
-	public static int invite(ServerLevel level, VillageRef ref, Villager who, String fromName, int count) {
+	static int invite(ServerLevel level, VillageRef ref, Villager who, String fromName, Network.GuestOrigin origin, int count) {
 		BlockPos at = null;
 		for (int i = 0; i < 12 && at == null; i++) {
 			BlockPos cand = Sites.candidate(level, ref.bell(), who.getRandom(), 34, 46);
@@ -156,6 +161,7 @@ public final class Guests {
 			return 0;
 		}
 		ResourceKey<VillagerType> type = TYPES.get(who.getRandom().nextInt(TYPES.size()));
+		GlobalPos destination = GlobalPos.of(level.dimension(), ref.bell());
 		int spawned = 0;
 		for (int i = 0; i < count; i++) {
 			Villager guest = EntityTypes.VILLAGER.spawn(level, at.offset(i % 2, 0, i / 2), EntitySpawnReason.EVENT);
@@ -167,7 +173,7 @@ public final class Guests {
 			guest.addTag(TAG);
 			guest.setCustomName(Component.literal("Gast aus " + fromName));
 			guest.setCustomNameVisible(false);
-			ACTIVE.put(guest.getUUID(), new State(ref.bell(), at, fromName));
+			ACTIVE.put(guest.getUUID(), new State(destination, at, fromName, origin));
 			spawned++;
 		}
 		return spawned;
@@ -182,28 +188,26 @@ public final class Guests {
 		for (Iterator<Map.Entry<UUID, State>> it = ACTIVE.entrySet().iterator(); it.hasNext();) {
 			Map.Entry<UUID, State> e = it.next();
 			State s = e.getValue();
+			if (!s.destination.dimension().equals(level.dimension())) continue;
+			BlockPos bell = s.destination.pos();
 			Entity ent = level.getEntity(e.getKey());
 			if (!(ent instanceof Villager guest) || !guest.isAlive()) {
-				if (ent == null && !de.villagerplus.world.LoadedColumns.ready(level, s.bell)) {
+				if (ent == null && !de.villagerplus.world.LoadedColumns.ready(level, bell)) {
 					continue;
 				}
 				remove.add(e.getKey());
 				continue;
 			}
-			var be = de.villagerplus.world.LoadedColumns.ready(level, s.bell) ? level.getBlockEntity(s.bell) : null;
+			var be = de.villagerplus.world.LoadedColumns.ready(level, bell) ? level.getBlockEntity(bell) : null;
 			if (be == null) {
 				continue;
 			}
-			VillageRef ref = new VillageRef(s.bell, be.getAttachedOrCreate(VillagerPlus.VILLAGE), be);
+			VillageRef ref = new VillageRef(bell, be.getAttachedOrCreate(VillagerPlus.VILLAGE), be);
 			BlockPos chest = ref.chestPos(level);
-			BlockPos goal = chest != null ? chest : s.bell;
+			BlockPos goal = chest != null ? chest : bell;
 			if (!s.arrived) {
 				walk(guest, goal);
-				if (guest.blockPosition().distSqr(goal) <= 64.0) {
-					s.arrived = true;
-					s.leaveAt = now + 8000L;
-					gift(level, ref, guest, s);
-				}
+				arrive(level, ref, guest, goal, s, now);
 			} else if (now >= s.leaveAt) {
 				if (settle(level, ref, guest, s)) {
 					remove.add(e.getKey());
@@ -217,6 +221,15 @@ public final class Guests {
 			}
 		}
 		remove.forEach(ACTIVE::remove);
+	}
+
+	static boolean arrive(ServerLevel level, VillageRef ref, Villager guest, BlockPos goal, State state, long now) {
+		if (state.arrived || !guest.isAlive() || !isGuest(guest) || guest.blockPosition().distSqr(goal) > 64.0) return false;
+		state.arrived = true;
+		state.leaveAt = now + 8000L;
+		Network.recordGuestContact(level, ref, state.origin);
+		gift(level, ref, guest, state);
+		return true;
 	}
 
 	private static void walk(Villager v, BlockPos goal) {

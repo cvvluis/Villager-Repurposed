@@ -5,6 +5,7 @@ import de.villagerplus.job.Ctx;
 import de.villagerplus.job.JobManager;
 import de.villagerplus.job.JobUtil;
 import de.villagerplus.job.Workstation;
+import de.villagerplus.village.Housing;
 import de.villagerplus.village.VillageRef;
 import de.villagerplus.village.Villages;
 import java.util.ArrayList;
@@ -38,7 +39,7 @@ public final class CtovLifeChecks {
 		worker.setNoAi(false);
 		int checks = 0;
 		checks += workstation(level, ref, worker);
-		checks += sign(level, ref, worker);
+		checks += sign(level, ref);
 		checks += privateChest(level, ref, worker);
 		return checks;
 	}
@@ -81,21 +82,21 @@ public final class CtovLifeChecks {
 		return 1;
 	}
 
-	private static int sign(ServerLevel level, VillageRef ref, Villager worker) {
-		BlockPos sign = ref.bell().north(2);
-		Villager resident = level.getEntitiesOfClass(Villager.class, new AABB(sign).inflate(40.0), Villager::isAlive).stream()
-			.min(java.util.Comparator.comparingDouble(v -> v.blockPosition().distSqr(sign))).orElse(null);
-		if (resident == null) throw new IllegalStateException("CTOV life: no resident within the house-sign lookup radius");
-		var memory = resident.getAttachedOrCreate(VillagerPlus.MEMORY);
-		if (memory.name == null || memory.name.isBlank()) memory.name = "CTOV-Bewohner";
-		level.setBlock(sign.below(), Blocks.STONE.defaultBlockState(), 3);
-		level.setBlock(sign, de.villagerplus.block.ModBlocks.DORFSCHILD.defaultBlockState(), 3);
-		memory.homeDoor = java.util.Optional.of(sign.south());
-		String text = String.join("\n", de.villagerplus.block.DorfschildBlock.describe(level, sign));
-		check((text.contains("Hier wohnt:") || text.contains("Haus der Familie:")) && text.contains(memory.name),
-			"B04 house sign names the resident (" + text.replace('\n', ' ') + ")");
-		System.out.println("CTOV LIFE PASS sign");
-		return 1;
+	private static int sign(ServerLevel level, VillageRef ref) {
+		var residents = level.getEntitiesOfClass(Villager.class, new AABB(ref.bell()).inflate(80.0),
+			villager -> villager.isAlive() && Housing.hasHome(villager));
+		for (Villager resident : residents) {
+			var memory = resident.getAttachedOrCreate(VillagerPlus.MEMORY);
+			Housing.update(level, resident, memory);
+			BlockPos sign = memory.signPos.orElse(null);
+			if (sign == null) continue;
+			String text = String.join("\n", de.villagerplus.block.DorfschildBlock.describe(level, sign));
+			check((text.contains("Hier wohnt:") || text.contains("Haus der Familie:")) && text.contains(memory.name),
+				"B04 house sign names the resident (" + text.replace('\n', ' ') + ")");
+			System.out.println("CTOV LIFE PASS sign");
+			return 1;
+		}
+		throw new IllegalStateException("CTOV life: no resident with an active bed and house sign near the bell");
 	}
 
 	private static int privateChest(ServerLevel level, VillageRef ref, Villager worker) {

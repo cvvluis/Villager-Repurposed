@@ -9,10 +9,12 @@
     "MaterialStoreDirectSetMixin",
     "CompoundContainerAccessorMixin",
     "MaterialStoreSlotMixin",
+    "VillageChestMenuMixin",
     "JigsawHouseSpacingMixin",
     "SinglePoolElementTemplateAccessor",
     "VillageBellExplosionMixin",
-    "ItemStackRelocationCopyMixin"
+    "ItemStackRelocationCopyMixin",
+    "ItemEntityPickupAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

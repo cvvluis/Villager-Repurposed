@@ -161,8 +161,35 @@ public final class FoodChainChecks {
 			check(JobUtil.count(pantry, s -> s.is(Items.BREAD)) == 5 && JobUtil.count(chest, s -> s.is(Items.BREAD)) == 0,
 				"a registered granary with room still receives the food and the public chest stays free of it"); checks++;
 
+			pantry.clearContent();
+			pantry.setItem(0, new ItemStack(Items.WHEAT, 8));
+			FarmerJob farmer = new FarmerJob();
+			long bakingTime = level.getGameTime() + 5500;
+			carrier.setPos(chestPos.getX() + 0.5, chestPos.getY(), chestPos.getZ() + 2.5);
+			farmer.secondary(new Ctx(level, carrier, new JobState(), memory, ref, bakingTime));
+			check(JobUtil.count(pantry, s -> s.is(Items.WHEAT)) == 8 && JobUtil.count(pantry, s -> s.is(Items.BREAD)) == 0,
+				"the farmer cannot change the granary inventory from the distant village chest"); checks++;
+
+			carrier.setPos(granaryStand.getX() + 0.5, granaryStand.getY(), granaryStand.getZ() + 0.5);
+			JobState farmerState = new JobState();
+			Ctx baker = new Ctx(level, carrier, farmerState, memory, ref, bakingTime + 100);
+			check(farmer.secondary(baker)
+				&& JobUtil.count(pantry, s -> s.is(Items.WHEAT)) == 5
+				&& JobUtil.count(pantry, s -> s.is(Items.BREAD)) == 1
+				&& chest.isEmpty() && carrier.getInventory().isEmpty(),
+				"normal farmer work turns three real wheat in the granary into edible bread stored there"); checks++;
+			ref.bellEntity().setAttached(VillagerPlus.STOCK_POLICIES, Map.of("minecraft:bread", 1));
+			farmer.secondary(new Ctx(level, carrier, new JobState(), memory, ref, bakingTime + 200));
+			check(JobUtil.count(pantry, s -> s.is(Items.WHEAT)) == 5 && JobUtil.count(pantry, s -> s.is(Items.BREAD)) == 1,
+				"the village bread target prevents overproduction and preserves the wheat"); checks++;
+			ref.bellEntity().setAttached(VillagerPlus.STOCK_POLICIES, Map.of());
+
 			// a full granary overflows into the bridge instead of leaving the food in the farmer's pocket
 			for (int slot = 0; slot < pantry.getContainerSize(); slot++) pantry.setItem(slot, new ItemStack(Items.WHEAT, 64));
+			farmer.secondary(new Ctx(level, carrier, new JobState(), memory, ref, bakingTime + 300));
+			check(JobUtil.count(pantry, s -> s.is(Items.WHEAT)) == 64 * pantry.getContainerSize()
+				&& JobUtil.count(pantry, s -> s.is(Items.BREAD)) == 0,
+				"granary baking preserves all wheat when the output has nowhere to go"); checks++;
 			carrier.getInventory().setItem(0, new ItemStack(Items.BREAD, 5));
 			carrier.setPos(chestPos.getX() + 0.5, chestPos.getY(), chestPos.getZ() + 2.5);
 			deliver(level, ref, carrier, memory, level.getGameTime() + 10000);

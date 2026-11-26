@@ -27,6 +27,22 @@ public class VillagerPlus implements ModInitializer {
 	public static final AttachmentType<Boolean> PRIVATE_CHEST_PENDING = AttachmentRegistry.createPersistent(
 		Identifier.fromNamespaceAndPath(MOD_ID, "private_chest_pending"), Codec.BOOL);
 
+	/** The owner's movable miscellaneous inventory has been transferred to this private chest. */
+	public static final AttachmentType<Boolean> PRIVATE_CHEST_PERSONAL_ITEMS = AttachmentRegistry.createPersistent(
+		Identifier.fromNamespaceAndPath(MOD_ID, "private_chest_personal_items"), Codec.BOOL);
+
+	/** Chest explicitly authorized by a player for one resident, plus the player who granted access. */
+	public static final AttachmentType<de.villagerplus.village.ChestAccess> CHEST_ACCESS = AttachmentRegistry.createPersistent(
+		Identifier.fromNamespaceAndPath(MOD_ID, "chest_access"), de.villagerplus.village.ChestAccess.CODEC);
+
+	/** Instance marker prevents a chest replaced at the same block position from inheriting an old villager permission. */
+	public static final AttachmentType<UUID> CHEST_INSTANCE_ID = AttachmentRegistry.createPersistent(
+		Identifier.fromNamespaceAndPath(MOD_ID, "chest_instance_id"), UUIDUtil.CODEC);
+
+	/** Villager selected with the chest access tool while the player completes the second click. */
+	public static final AttachmentType<UUID> CHEST_ACCESS_TARGET = AttachmentRegistry.createPersistent(
+		Identifier.fromNamespaceAndPath(MOD_ID, "chest_access_target"), UUIDUtil.CODEC);
+
 	/** Persists a miner's active one-cell route so interrupted visits can safely return after reload. */
 	public static final AttachmentType<Mining.MineRoute> MINING_ROUTE = AttachmentRegistry.createPersistent(
 		Identifier.fromNamespaceAndPath(MOD_ID, "mining_route"), Mining.MineRoute.CODEC);

@@ -380,14 +380,26 @@ public final class Routine {
   return value ^ (value >>> 31);
  }
 	private static Container homeBox(Ctx c) {
+		Container authorized = de.villagerplus.village.ChestAccess.container(c.level(), c.v());
+		if (authorized != null) return authorized;
+		return privateHomeBox(c);
+	}
+
+	private static Container privateHomeBox(Ctx c) {
 		if (c.mem().homeChest.isPresent() && c.level().getBlockState(c.mem().homeChest.get()).getBlock() instanceof ChestBlock) {
 			return HopperBlockEntity.getContainerAt(c.level(), c.mem().homeChest.get());
 		}
 		return null;
 	}
 
-	private static BlockPos homeSpot(Ctx c) {
-		if (c.mem().homeChest.isPresent() && homeBox(c) != null) {
+static BlockPos homeSpot(Ctx c) {
+		// An explicitly granted chest is the resident's chosen food source. Route to it
+		// even when housing has also recorded an automatically assigned private chest;
+		// Meals.eat only reads the authorized chest while the villager is close to it.
+		var access = c.v().getAttached(de.villagerplus.VillagerPlus.CHEST_ACCESS);
+		if (access != null && de.villagerplus.village.ChestAccess.container(c.level(), c.v()) != null) return access.chest().pos();
+		if (c.mem().homeChest.isPresent() && c.level().getBlockState(c.mem().homeChest.get()).getBlock() instanceof ChestBlock
+			&& HopperBlockEntity.getContainerAt(c.level(), c.mem().homeChest.get()) != null) {
 			return c.mem().homeChest.get();
 		}
 		return c.mem().homeBed.orElse(null);
@@ -404,7 +416,11 @@ public final class Routine {
 		if (!JobUtil.approach(c, spot, 3.5)) {
 			return true;
 		}
-		if (Meals.eat(c, homeBox(c))) {
+		var access = c.v().getAttached(de.villagerplus.VillagerPlus.CHEST_ACCESS);
+		boolean assignedIsPrivateHome = access != null && c.mem().homeChest.isPresent()
+			&& access.chest().dimension().equals(c.level().dimension())
+			&& access.chest().pos().equals(c.mem().homeChest.get());
+		if (Meals.eat(c, assignedIsPrivateHome ? null : privateHomeBox(c))) {
 			c.st().cooldownUntil = c.now() + 60;
 		}
 		return false;
@@ -493,7 +509,10 @@ public final class Routine {
 			return false;
 		}
 		c.setActivity("räumt Besitz in die eigene Kiste");
-		if (!JobUtil.approach(c, c.mem().homeChest.get(), 3.0)) {
+		var access = c.v().getAttached(de.villagerplus.VillagerPlus.CHEST_ACCESS);
+		BlockPos storageSpot = access != null && de.villagerplus.village.ChestAccess.container(c.level(), c.v()) != null
+			? access.chest().pos() : homeSpot(c);
+		if (storageSpot == null || !JobUtil.approach(c, storageSpot, 3.0)) {
 			return true;
 		}
 		Container inv = c.v().getInventory();
@@ -510,16 +529,24 @@ public final class Routine {
 					continue;
 				}
 				ItemStack extra = s.copyWithCount(s.getCount() - keepHere);
-				ItemStack rest = JobUtil.insertRemainder(c, home, extra);
+				ItemStack rest = insertStorage(c, home, extra);
 				s.setCount(keepHere + rest.getCount());
 				continue;
 			}
-			ItemStack rest = JobUtil.insertRemainder(c, home, s.copy());
+			ItemStack rest = insertStorage(c, home, s.copy());
 			inv.setItem(i, rest);
 		}
 		inv.setChanged();
 		home.setChanged();
 		c.st().cooldownUntil = c.now() + 40;
 		return false;
+	}
+
+	/** Explicit chest permission is an owner-authorized container, so village stock filters do not apply. */
+	private static ItemStack insertStorage(Ctx c, Container home, ItemStack moving) {
+		if (de.villagerplus.village.ChestAccess.container(c.level(), c.v()) != null) {
+			return HopperBlockEntity.addItem(null, home, moving, null);
+		}
+		return JobUtil.insertRemainder(c, home, moving);
 	}
 }

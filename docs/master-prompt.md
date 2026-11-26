@@ -1,6 +1,6 @@
 # Binding Functional Scope of the User Master Prompt
 
-Source: the user's complete assignment in this chat dated 29.10.2026. This is a verifiable outline of its requirements. Concept images `image_2`, `image_3`, `image_4` are not available here as image files; their concrete pixel contents are not invented. Latest user corrections: continuous automatic village development, walls around the original village buildings including new buildings, a more strongly decorated village center, a correctly centered village map, a new test world run.
+Source: the user's complete assignment in this chat dated 29.10.2026. This is a verifiable outline of its requirements. Concept images `image_2`, `image_3`, `image_4` are not available here as image files; their concrete pixel contents are not invented. Latest user corrections: continuous automatic village development, walls around the original village buildings including new buildings, a more strongly decorated village center, a correctly centered village map, a new test world run, and village-map contact can be unlocked by an actual visiting guest without the player personally visiting that origin village (26.11.2026).
 
 ## 1. Generation, Buildings, Mine and Identity
 
@@ -17,7 +17,7 @@ Source: the user's complete assignment in this chat dated 29.10.2026. This is a 
 - G11: Physically dismantle disruptive buildings, return the material, level/renaturalize the area and, where appropriate, rebuild suitably.
 - G12: Terraced mine entrances, safe navigation without teleportation glitches or getting stuck.
 - G13: An exhausted mine remains standing, is barricaded and is clearly labeled `[VERSCHLOSSEN - ERSCHÖPFT]` (in-game sign text: "[CLOSED - EXHAUSTED]"); the board/map call it Alte Mine (Old Mine).
-- G14: Procedural biome-dependent village names; unknown neighbors are permanently discovered only after successful trade contact.
+- G14: Procedural biome-dependent village names; unknown neighbors become discoverable after a successful trade, a player/resident visit, or a real guest's arrival. The player need not personally visit a guest's origin village when that guest has already reached their village (owner clarification 26.11.2026).
 - G15: Villages keep developing continuously and according to need without a player build assignment; a wall encloses the original buildings and new buildings.
 
 ## 2. Diplomacy, Roads and Railway

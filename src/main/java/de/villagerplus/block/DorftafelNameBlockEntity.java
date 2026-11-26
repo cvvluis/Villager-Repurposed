@@ -1,9 +1,11 @@
 package de.villagerplus.block;
 
 import de.villagerplus.village.Network;
+import de.villagerplus.village.Board;
 import de.villagerplus.village.VillageRef;
 import de.villagerplus.village.Villages;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.Packet;
@@ -20,8 +22,12 @@ import net.minecraft.world.level.storage.ValueOutput;
 /** Cached, synchronized village name displayed on the physical board. */
 public final class DorftafelNameBlockEntity extends BlockEntity {
 	private static final String VILLAGE_NAME_KEY = "village_name";
+	private static final String VILLAGE_OWNER_KEY = "village_owner";
+	private static final String PLAYER_BOARD_KEY = "player_board";
 	private static final int REFRESH_INTERVAL = 20;
 	private String villageName = "";
+	private GlobalPos villageOwner;
+	private boolean playerBoard;
 	/** Relief map samples (32 x 23): bits 0-3 terrain code, 4-6 height level, 8-12 marker; empty until the first scan. */
 	public static final int MAP_W = 32;
 	public static final int MAP_H = 23;
@@ -44,9 +50,34 @@ public final class DorftafelNameBlockEntity extends BlockEntity {
 		return villageName;
 	}
 
+	public GlobalPos villageOwner() {
+		return villageOwner;
+	}
+
+	public boolean playerBoard() {
+		return playerBoard;
+	}
+
+	public void rememberVillageOwner(GlobalPos owner) {
+		if (owner.equals(villageOwner) && !playerBoard) return;
+		villageOwner = owner;
+		playerBoard = false;
+		setChanged();
+	}
+
+	public void rememberPlayerBoard() {
+		if (playerBoard && villageOwner == null) return;
+		villageOwner = null;
+		playerBoard = true;
+		setChanged();
+	}
+
 	public static void tick(Level level, BlockPos pos, BlockState state, DorftafelNameBlockEntity entity) {
 		if (!(level instanceof ServerLevel serverLevel) || Math.floorMod(serverLevel.getGameTime(), REFRESH_INTERVAL) != 0) {
 			return;
+		}
+		if (entity.villageOwner == null && !entity.playerBoard && Math.floorMod(serverLevel.getGameTime(), RELIEF_INTERVAL) == 0) {
+			Board.retrofitOwner(serverLevel, pos, state, entity);
 		}
 
 		VillageRef village = Villages.villageNear(serverLevel, pos, 96);
@@ -136,6 +167,8 @@ public final class DorftafelNameBlockEntity extends BlockEntity {
 	@Override
 	protected void saveAdditional(ValueOutput output) {
 		output.putString(VILLAGE_NAME_KEY, villageName);
+		if (villageOwner != null) output.store(VILLAGE_OWNER_KEY, GlobalPos.CODEC, villageOwner);
+		if (playerBoard) output.putBoolean(PLAYER_BOARD_KEY, true);
 		if (relief.length > 0) {
 			output.putIntArray(RELIEF_KEY, relief);
 		}
@@ -146,6 +179,8 @@ public final class DorftafelNameBlockEntity extends BlockEntity {
 	protected void loadAdditional(ValueInput input) {
 		super.loadAdditional(input);
 		villageName = input.getStringOr(VILLAGE_NAME_KEY, "");
+		villageOwner = input.read(VILLAGE_OWNER_KEY, GlobalPos.CODEC).orElse(null);
+		playerBoard = villageOwner == null && input.getBooleanOr(PLAYER_BOARD_KEY, false);
 		int[] loaded = input.getIntArray(RELIEF_KEY).orElse(new int[0]);
 		relief = loaded.length == MAP_W * MAP_H ? loaded : new int[0];
 	}

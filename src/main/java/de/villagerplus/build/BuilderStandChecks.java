@@ -2,6 +2,7 @@ package de.villagerplus.build;
 
 import com.mojang.serialization.JsonOps;
 import de.villagerplus.VillagerPlus;
+import de.villagerplus.job.BuildHaul;
 import de.villagerplus.job.Ctx;
 import de.villagerplus.job.JobState;
 import de.villagerplus.job.JobUtil;
@@ -60,7 +61,7 @@ public final class BuilderStandChecks {
 		}
 		Map<String,Object> stagedCacheValues=new LinkedHashMap<>();
 		BlockPos stagedOrigin=floor.east(30).above(13);
-		Villager worker=null,standBlocker=null;int passed=0;
+		Villager worker=null,standBlocker=null,lateCarrier=null;int passed=0;
 		// Builder.workStand/acceptStand only probe a far stand when every chunk of the walk corridor (plus one chunk margin) is
 		// already loaded and never loads chunks itself, so the fixture keeps the whole corridor loaded.
 		List<long[]> forcedByFixture=new ArrayList<>();
@@ -273,6 +274,85 @@ public final class BuilderStandChecks {
 				&&d.planBuilder().equals(Optional.of(worker.getUUID())),
 				"supplying the next block resumes the same owner at the saved cursor and refreshes demand after each payment");passed++;
 
+			// Keep later steps blocked so the fixture can observe the timer across separate placements.
+			List<Step> emergencySteps = new ArrayList<>(staged.subList(0, 4));
+			BlockPos emergencyPos = stagedOrigin.east(4);
+			BlockPos deliveredPos = stagedOrigin.east(5);
+			BlockPos nextMissingPos = stagedOrigin.east(6);
+			emergencySteps.add(new Step(emergencyPos, Items.GLASS_PANE, null, 2, false, null,
+				net.minecraft.world.level.block.Block::defaultBlockState));
+			emergencySteps.add(Step.block(deliveredPos, Blocks.LANTERN));
+			emergencySteps.add(Step.block(nextMissingPos, Blocks.IRON_BLOCK));
+			level.setBlock(deliveredPos.below(), Blocks.STONE.defaultBlockState(), FLAGS);
+			level.setBlock(nextMissingPos.below(), Blocks.STONE.defaultBlockState(), FLAGS);
+			caches.get("STEPS").put(stagedOrigin.asLong(), emergencySteps);
+			addSite(d, stagedOrigin, new ItemStack(Items.GLASS_PANE, 1));
+			var waitingProject = d.buildProject(stagedOrigin).orElseThrow();
+			BlockPos cargoSource = d.chest.orElseThrow();
+			lateCarrier = EntityTypes.VILLAGER.spawn(level, floor.west(6), EntitySpawnReason.COMMAND);
+			if (lateCarrier == null) throw new IllegalStateException("BUILDER STAND CHECK FAILED: carrier spawn");
+			lateCarrier.addTag("vp090_fixture");
+			lateCarrier.setNoAi(true);
+			lateCarrier.setInvulnerable(true);
+			var markCargo = BuildHaul.class.getDeclaredMethod("markForCheck", ItemStack.class, Ctx.class, BlockPos.class, BlockPos.class);
+			markCargo.setAccessible(true);
+			var carrierContext = new Ctx(level, lateCarrier, new JobState(), c.mem(), ref, now + 4L);
+			var carriedPanes = (ItemStack) markCargo.invoke(null, new ItemStack(Items.GLASS_PANE, 2), carrierContext, stagedOrigin, cargoSource);
+			lateCarrier.getInventory().setItem(0, carriedPanes);
+			String lateFreight = lateCarrier.getUUID() + "|minecraft:glass_pane|2|" + cargoSource.asLong();
+			d.putBuildProject(waitingProject.withHaul(new VillageData.ProjectHaul(waitingProject.siteStock(), List.of(lateFreight))));
+			long blockedAt = now + 4L;
+			long due = blockedAt + Builder.EMERGENCY_MATERIAL_TICKS;
+			Builder.tick(new Ctx(level, worker, st, c.mem(), ref, blockedAt), true);
+			var firstWait = d.buildProject(stagedOrigin).orElseThrow().haul().emergencyWait().orElseThrow();
+			check(firstWait.blockedSince() == blockedAt, "the production builder records the first confirmed shortage");passed++;
+			// No builder calls occur during the intervening night or missed work turns.
+			Builder.tick(new Ctx(level, worker, st, c.mem(), ref, due - 1L), true);
+			check(d.planStep == 4 && level.getBlockState(emergencyPos).isAir()
+				&& site(d, stagedOrigin, stack -> stack.is(Items.GLASS_PANE)) == 1,
+				"the production builder leaves the placement and its real partial payment alone before the emergency timeout");passed++;
+			var savedEmergency = VillageData.CODEC.encodeStart(JsonOps.INSTANCE, d).getOrThrow();
+			var reloadedEmergency = VillageData.CODEC.parse(JsonOps.INSTANCE, savedEmergency).getOrThrow();
+			d.putBuildProject(reloadedEmergency.buildProject(stagedOrigin).orElseThrow());
+			Builder.tick(new Ctx(level, worker, st, c.mem(), ref, due), true);
+			check(d.planStep == 5 && level.getBlockState(emergencyPos).is(Blocks.GLASS_PANE)
+				&& level.getBlockState(deliveredPos).isAir()
+				&& site(d, stagedOrigin, stack -> stack.is(Items.GLASS_PANE)) == 0
+				&& site(d, stagedOrigin, stack -> stack.is(Items.DIRT)) == 64
+				&& JobUtil.count(box, stack -> stack.is(Items.GLASS_PANE)) == 0
+				&& d.buildProject(stagedOrigin).orElseThrow().cargoManifest().equals(List.of(lateFreight))
+				&& lateCarrier.getInventory().getItem(0).is(Items.GLASS_PANE)
+				&& lateCarrier.getInventory().getItem(0).getCount() == 2,
+				"at the deadline after save/reload, one placement consumes the real pane and waives one pane without changing either stock or late freight");passed++;
+
+			long lanternBlockedAt = due + 1L;
+			Builder.tick(new Ctx(level, worker, st, c.mem(), ref, lanternBlockedAt), true);
+			var lanternWait = d.buildProject(stagedOrigin).orElseThrow().haul().emergencyWait().orElseThrow();
+			check(lanternWait.blockedSince() == lanternBlockedAt && !lanternWait.signature().equals(firstWait.signature()),
+				"a subsequent missing step starts a new clock");passed++;
+			addSite(d, stagedOrigin, new ItemStack(Items.LANTERN, 1));
+			long lanternDue = lanternBlockedAt + Builder.EMERGENCY_MATERIAL_TICKS;
+			Builder.tick(new Ctx(level, worker, st, c.mem(), ref, lanternDue), true);
+			check(d.planStep == 6 && level.getBlockState(deliveredPos).is(Blocks.LANTERN)
+				&& level.getBlockState(nextMissingPos).isAir()
+				&& site(d, stagedOrigin, stack -> stack.is(Items.LANTERN)) == 0
+				&& d.buildProject(stagedOrigin).orElseThrow().haul().emergencyWait().isEmpty(),
+				"stock delivered before the deadline pays normally and clears the previous shortage");passed++;
+			long nextBlockedAt = lanternDue + 1L;
+			Builder.tick(new Ctx(level, worker, st, c.mem(), ref, nextBlockedAt), true);
+			check(d.buildProject(stagedOrigin).orElseThrow().haul().emergencyWait().orElseThrow().blockedSince() == nextBlockedAt
+				&& level.getBlockState(nextMissingPos).isAir(),
+				"the next missing block receives a fresh wait after normal payment");passed++;
+			Builder.cancel(ref, nextBlockedAt);
+			var emergencyCleanup = d.buildProject(stagedOrigin).orElseThrow();
+			check(emergencyCleanup.cleanupOnly() && emergencyCleanup.haul().emergencyWait().isEmpty()
+				&& emergencyCleanup.siteStock().size() == 1
+				&& emergencyCleanup.siteStock().getFirst().is(Items.DIRT)
+				&& emergencyCleanup.siteStock().getFirst().getCount() == 64
+				&& emergencyCleanup.cargoManifest().equals(List.of(lateFreight)),
+				"aborting after an emergency placement preserves the real surplus and freight without creating a refund for the virtual unit");passed++;
+
+			now = nextBlockedAt;
 			Palette supportPalette=new Palette(Blocks.STONE,Blocks.STONE,Blocks.OAK_PLANKS,Blocks.DIRT,Blocks.STONE,
 				Blocks.STONE_STAIRS,Blocks.STONE_SLAB,Blocks.GLASS,Blocks.OAK_PLANKS,Blocks.OAK_DOOR,Blocks.OAK_FENCE);
 			List<Step> supportSteps=java.util.Collections.nCopies(100,Step.block(stagedOrigin,Blocks.COBBLESTONE));
@@ -370,6 +450,10 @@ public final class BuilderStandChecks {
 			Builder.clearBuildCrewSnapshotForCheck(level,ref);
 			for(long[] cc:forcedByFixture)level.setChunkForced((int)cc[0],(int)cc[1],false);
 			if(standBlocker!=null){standBlocker.discard();de.villagerplus.village.Villages.forget(standBlocker.getUUID());}
+			if (lateCarrier != null) {
+				lateCarrier.discard();
+				de.villagerplus.village.Villages.forget(lateCarrier.getUUID());
+			}
 			if(worker!=null){Builder.clearCrewRuntimeCachesForCheck(level,worker.getUUID());worker.discard();de.villagerplus.village.Villages.forget(worker.getUUID());}
 			world.forEach((p,state)->level.setBlock(p,state,FLAGS));
 			box.clearContent();for(int i=0;i<stock.size();i++)box.setItem(i,stock.get(i));
@@ -400,7 +484,7 @@ public final class BuilderStandChecks {
 		var p=d.buildProject(origin).orElseThrow();
 		List<ItemStack> rows=new ArrayList<>(p.haul().siteStock());rows.add(stack);
 		d.putBuildProject(new VillageData.BuildProject(p.type(),p.origin(),p.dir(),p.step(),p.variant(),p.source(),p.progress(),p.owner(),
-			p.ownerUnavailableSince(),p.wanted(),new VillageData.ProjectHaul(rows,p.haul().cargoManifest()),p.materialWait(),p.construction(),
+			p.ownerUnavailableSince(),p.wanted(),new VillageData.ProjectHaul(rows,p.haul().cargoManifest(),p.haul().emergencyWait()),p.materialWait(),p.construction(),
 			p.bounds(),p.repair(),p.cleanupOnly()));
 		d.syncPrimaryProjectView();
 	}

@@ -100,7 +100,7 @@ public record VillageStyle(Block wall, Block floor, Block roof, Block stairs, Bl
 
 	// --- Standardstil je Dorftyp ----------------------------------------------------------------
 
-	private static VillageStyle defaults(Villager hint) {
+	public static VillageStyle defaults(Villager hint) {
 		String type = "plains";
 		if (hint != null) {
 			type = hint.getVillagerData().type().unwrapKey().map(k -> k.identifier().getPath()).orElse("plains");

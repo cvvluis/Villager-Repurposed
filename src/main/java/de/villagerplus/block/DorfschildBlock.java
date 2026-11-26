@@ -5,6 +5,7 @@ import com.mojang.serialization.MapCodec;
 import de.villagerplus.VillagerMemory;
 import de.villagerplus.VillagerPlus;
 import de.villagerplus.job.JobManager;
+import de.villagerplus.village.Housing;
 import de.villagerplus.village.Names;
 import de.villagerplus.village.Wellbeing;
 import java.util.List;
@@ -95,8 +96,13 @@ public class DorfschildBlock extends Block {
 	/** Name, Funktion, Bewohner und Status der am Schild gemeldeten Hausbewohner. */
 	public static java.util.List<String> describe(ServerLevel level, BlockPos pos) {
 		java.util.List<String> lines = new java.util.ArrayList<>();
-		List<Villager> residents = level.getEntitiesOfClass(Villager.class, new AABB(pos).inflate(40.0),
-			v -> v.isAlive() && v.getAttachedOrCreate(VillagerPlus.MEMORY).homeDoor.map(d -> d.distSqr(pos) <= 16).orElse(false));
+		List<Villager> nearby = level.getEntitiesOfClass(Villager.class, new AABB(pos).inflate(40.0), Villager::isAlive);
+		List<Villager> residents = Housing.residentsWithBeds(level, nearby, memory -> memory.signPos.filter(pos::equals).isPresent());
+		// Older signs can exist before any resident has saved the sign position.
+		if (residents.isEmpty()) {
+			residents = Housing.residentsWithBeds(level, nearby,
+				memory -> memory.signPos.isEmpty() && memory.homeDoor.map(door -> door.distSqr(pos) <= 16).orElse(false));
+		}
 		if (residents.isEmpty()) {
 			lines.add("Dieses Haus steht leer.");
 			return lines;

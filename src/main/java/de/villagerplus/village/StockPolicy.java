@@ -19,6 +19,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.CompoundContainer;
 import net.minecraft.world.Container;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -134,7 +135,7 @@ public final class StockPolicy {
 	}
 
 	/** Raw metal drops stay public for recipe-driven SmithSmelting, but are not building stock. */
-	private static boolean isRawSmeltingSupply(Item item) {
+	public static boolean isRawSmeltingSupply(Item item) {
 		if (item instanceof net.minecraft.world.item.BlockItem) return false;
 		Identifier id = BuiltInRegistries.ITEM.getKey(item);
 		return id.getNamespace().equals("minecraft") && RAW_SMELTING_SUPPLIES.contains(id.getPath());
@@ -251,6 +252,19 @@ public final class StockPolicy {
 
 	/** True only inside {@link #insertFoodBridge}: the registered public material chests then accept food on this controlled path. */
 	private static boolean foodBridgeOpen;
+	private static final ThreadLocal<Container> PLAYER_CHEST_INPUT = new ThreadLocal<>();
+
+	/** Restricts manual intake to the real chest used by the current server-side menu click. */
+	public static void withPlayerChestInput(Container chest, Runnable click) {
+		Container previous = PLAYER_CHEST_INPUT.get();
+		PLAYER_CHEST_INPUT.set(chest);
+		try {
+			click.run();
+		} finally {
+			if (previous == null) PLAYER_CHEST_INPUT.remove();
+			else PLAYER_CHEST_INPUT.set(previous);
+		}
+	}
 
 	/** Food count the public material chests may hold on the pre-granary bridge: about a dozen portions per resident, at least 48. */
 	public static int foodBridgeRoom(ServerLevel level, VillageRef ref) {
@@ -273,7 +287,7 @@ public final class StockPolicy {
 	 * store harvested food at all (the material chests refuse it), so the farmers' bread and crops stayed in their pockets while
 	 * residents starved. The caller passes an already resolved village chest or lager chest (JobUtil.communalDeliveryChest).
 	 * Real stacks only, bounded by {@link #foodBridgeRoom} and the saved
-	 * stock policy; direct hopper/player insertion and {@link #insertVillage} keep refusing food.
+	 * stock policy; hopper insertion and {@link #insertVillage} keep refusing food in material stores.
 	 */
 	public static ItemStack insertFoodBridge(ServerLevel level, VillageRef ref, Container destination, ItemStack offered) {
 		if (offered.isEmpty() || destination == null || category(offered.getItem()) != Category.FOOD) return offered.copy();
@@ -363,7 +377,37 @@ public final class StockPolicy {
 		if (foodBridgeOpen && category(offered.getItem()) == Category.FOOD) return false;
 
 		BlockState state = level.getBlockState(pos);
-		if (!(state.getBlock() instanceof ChestBlock) || level.getBlockEntity(pos) == null) return false;
+		VillageRef ref = publicChestVillage(level, pos, state);
+		if (ref == null) return false;
+		if (matchesCenterChest(ref, pos, state)) return !isPlayerChestInput(level, pos);
+		return matchesRegisteredMaterialStorePosition(pos, state, ref.data().extra.lagerChests);
+	}
+
+	/** Identifies registered public material storage independently of the current insertion context. */
+	public static boolean isRegisteredMaterialStore(ServerLevel level, BlockPos pos) {
+		if (!de.villagerplus.world.LoadedColumns.ready(level, pos)) return false;
+		BlockState state = level.getBlockState(pos);
+		VillageRef ref = publicChestVillage(level, pos, state);
+		return ref != null && (matchesCenterChest(ref, pos, state)
+			|| matchesRegisteredMaterialStorePosition(pos, state, ref.data().extra.lagerChests));
+	}
+
+	private static boolean matchesCenterChest(VillageRef ref, BlockPos pos, BlockState state) {
+		BlockPos center = ref.data().chest.orElse(null);
+		return center != null && matchesRegisteredMaterialStorePosition(pos, state, List.of(center));
+	}
+
+	private static boolean isPlayerChestInput(ServerLevel level, BlockPos pos) {
+		Container chest = PLAYER_CHEST_INPUT.get();
+		if (chest == null) return false;
+		var entity = level.getBlockEntity(pos);
+		return chest == entity || chest instanceof CompoundContainer pair
+			&& entity instanceof Container half && pair.contains(half);
+	}
+
+	/** Resolves only nearby loaded public chests, with both loaded halves checked for ownership. */
+	private static VillageRef publicChestVillage(ServerLevel level, BlockPos pos, BlockState state) {
+		if (!(state.getBlock() instanceof ChestBlock) || level.getBlockEntity(pos) == null) return null;
 		BlockPos connectedHalf = null;
 		boolean connectedHalfLoaded = false;
 		if (state.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
@@ -375,21 +419,16 @@ public final class StockPolicy {
 					|| otherState.getValue(ChestBlock.FACING) != state.getValue(ChestBlock.FACING)
 					|| otherState.getValue(ChestBlock.TYPE) == ChestType.SINGLE
 					|| otherState.getValue(ChestBlock.TYPE) == type
-					|| level.getBlockEntity(connectedHalf) == null) return false;
+					|| level.getBlockEntity(connectedHalf) == null) return null;
 				connectedHalfLoaded = true;
 			}
 		}
 
 		// A split-ownership pair is private if either real half that is currently loaded has an owner.
 		if (Ownership.ownerAt(level, pos) != null
-			|| connectedHalfLoaded && Ownership.ownerAt(level, connectedHalf) != null) return false;
+			|| connectedHalfLoaded && Ownership.ownerAt(level, connectedHalf) != null) return null;
 
-		VillageRef ref = Villages.villageNear(level, pos, 256);
-		if (ref == null) return false;
-		List<BlockPos> registered = new ArrayList<>(ref.data().extra.lagerChests.size() + 1);
-		ref.data().chest.ifPresent(registered::add);
-		registered.addAll(ref.data().extra.lagerChests);
-		return matchesRegisteredMaterialStorePosition(pos, state, registered);
+		return Villages.villageNear(level, pos, 256);
 	}
 
 	/** Matches a loaded chest half against persistent registrations without inspecting or loading its partner chunk. */

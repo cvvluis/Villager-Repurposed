@@ -78,9 +78,18 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 
 	public static Palette detect(ServerLevel level, BlockPos bell, Villager hint, long seed, BlockPos site) {
 
-		Palette found = layered(level, bell, detectAt(level, bell, hint, site), site);
+		BlockPos at = site != null ? site : bell;
+		List<BlockPos> nearbyHomes = houses(level, at, 8);
+		// A palette is a set of roles from one facade, not a vote across neighboring houses. Mixing
+		// several homes can pair one house's wall with another house's foundation and roof. Pick the
+		// nearest home as a coherent source, with the original village-style fallback when no home is
+		// available near the site.
+		List<BlockPos> sourceHome = nearbyHomes.isEmpty() ? List.of() : List.of(nearbyHomes.get(0));
+		Palette found = sourceHome.isEmpty()
+			? layered(level, bell, detectAt(level, bell, hint, site), site)
+			: layered(level, detectAt(level, bell, hint, sourceHome, false), sourceHome, false);
 
-		if (houses(level, site != null ? site : bell, 8).size() >= 3 || !VANILLA_WALLS.contains(net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(found.wall).toString())) {
+		if (!sourceHome.isEmpty() || !VANILLA_WALLS.contains(net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(found.wall).toString())) {
 
 			return found;
 
@@ -88,6 +97,16 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 
 		return curate(found, biomeKind(level, bell), seed);
 
+	}
+
+	/** Read a new home's roles from its closest loaded neighboring home as one palette. */
+	static Palette detectHouse(ServerLevel level, BlockPos bell, Villager hint, long seed, BlockPos site) {
+		List<BlockPos> beds = de.villagerplus.world.LoadedPoi.positionsInRange(level, poi -> poi.is(PoiTypes.HOME),
+			site, 64, PoiManager.Occupancy.ANY).stream()
+			.sorted(java.util.Comparator.comparingDouble((BlockPos pos) -> pos.distSqr(site)).thenComparingLong(BlockPos::asLong))
+			.limit(1).toList();
+		Palette nearby = layered(level, detectAt(level, bell, hint, beds, true), beds, true);
+		return beds.isEmpty() ? curate(nearby, biomeKind(level, bell), seed) : nearby;
 	}
 
 	/** Kuratierte Mischung fuer die Stilart (desert, savanna, snow, taiga, plains) nach Seed; unbekannte Art = unveraendert. */
@@ -319,7 +338,10 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 		BlockPos at = site != null ? site : bell;
 
 		List<BlockPos> beds = houses(level, at, 8);
+		return layered(level, p, beds, false);
+	}
 
+	private static Palette layered(ServerLevel level, Palette p, List<BlockPos> beds, boolean loadedOnly) {
 		Map<Block, Integer> row0 = new HashMap<>();
 
 		Map<Block, Integer> low = new HashMap<>();
@@ -330,11 +352,11 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 
 			for (BlockPos q : BlockPos.betweenClosed(bed.offset(-6, -1, -6), bed.offset(6, 5, 6))) {
 
-				BlockState s = level.getBlockState(q);
+				BlockState s = loadedOnly ? de.villagerplus.world.LoadedColumns.state(level, q) : level.getBlockState(q);
 
 				int rel = q.getY() - bed.getY();
 
-				if (s.isAir() || furnishingOnly(s.getBlock()) || VillageStyle.natural(s) || s.is(BlockTags.LOGS) || s.getBlock() instanceof StairBlock
+				if (s == null || s.isAir() || furnishingOnly(s.getBlock()) || VillageStyle.natural(s) || s.is(BlockTags.LOGS) || s.getBlock() instanceof StairBlock
 
 					|| s.getBlock() instanceof BedBlock || !s.isCollisionShapeFullBlock(level, q)) {
 
@@ -344,7 +366,7 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 
 				if (rel <= 0) {
 
-					if (outerRing(level, q)) {
+					if (outerRing(level, q, loadedOnly)) {
 
 						row0.merge(s.getBlock(), 1, Integer::sum);
 
@@ -384,12 +406,20 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 	/** Aussenkante (Sockel): neben dem Block liegt gewachsener Boden oder Luft ueber Boden - kein Innenboden. */
 
 	private static boolean outerRing(ServerLevel level, BlockPos p) {
+		return outerRing(level, p, false);
+	}
 
+	private static boolean outerRing(ServerLevel level, BlockPos p, boolean loadedOnly) {
 		for (net.minecraft.core.Direction d : net.minecraft.core.Direction.Plane.HORIZONTAL) {
 
-			BlockState n = level.getBlockState(p.relative(d));
+			BlockPos neighbor = p.relative(d);
+			BlockState n = loadedOnly ? de.villagerplus.world.LoadedColumns.state(level, neighbor) : level.getBlockState(neighbor);
+			if (n == null) continue;
+			BlockState under = n.isAir()
+				? loadedOnly ? de.villagerplus.world.LoadedColumns.state(level, neighbor.below()) : level.getBlockState(neighbor.below())
+				: null;
 
-			if (VillageStyle.natural(n) || (n.isAir() && VillageStyle.natural(level.getBlockState(p.relative(d).below())))) {
+			if (VillageStyle.natural(n) || (under != null && VillageStyle.natural(under))) {
 
 				return true;
 
@@ -596,8 +626,11 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 	}
 
 	private static Palette detectAt(ServerLevel level, BlockPos bell, Villager hint, BlockPos site) {
+		return detectAt(level, bell, hint, houses(level, site != null ? site : bell, 8), false);
+	}
 
-		VillageStyle def = VillageStyle.detect(level, bell, hint);
+	private static Palette detectAt(ServerLevel level, BlockPos bell, Villager hint, List<BlockPos> beds, boolean loadedOnly) {
+		VillageStyle def = loadedOnly ? VillageStyle.defaults(hint) : VillageStyle.detect(level, bell, hint);
 		// VillageStyle supplies fallbacks as well as detected values. A bookshelf can still be returned by that
 		// fallback path when the sampled home contains shelves but no other valid wall, so sanitize it here too.
 		Block fallbackWall = furnishingOnly(def.wall()) ? Blocks.COBBLESTONE : def.wall();
@@ -619,15 +652,22 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 
 		Map<Block, Integer> fences = new HashMap<>();
 
-		List<BlockPos> beds = houses(level, site != null ? site : bell, 8);
+		Map<Block, Integer> doors = new HashMap<>();
+		Map<Block, Integer> floors = new HashMap<>();
 
 		for (BlockPos bed : beds) {
+			if (loadedOnly) {
+				BlockState below = de.villagerplus.world.LoadedColumns.state(level, bed.below());
+				if (below != null && !below.isAir() && !VillageStyle.natural(below) && !furnishingOnly(below.getBlock())) {
+					floors.merge(below.getBlock(), 1, Integer::sum);
+				}
+			}
 
 			for (BlockPos p : BlockPos.betweenClosed(bed.offset(-8, -1, -8), bed.offset(8, 8, 8))) {
 
-				BlockState s = level.getBlockState(p);
+				BlockState s = loadedOnly ? de.villagerplus.world.LoadedColumns.state(level, p) : level.getBlockState(p);
 
-				if (s.isAir()) {
+				if (s == null || s.isAir()) {
 
 					continue;
 
@@ -675,7 +715,9 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 
 					}
 
-				} else if (!(b instanceof DoorBlock) && s.isCollisionShapeFullBlock(level, p)) {
+				} else if (b instanceof DoorBlock door) {
+					if (loadedOnly && door.type().canOpenByHand()) doors.merge(b, 1, Integer::sum);
+				} else if (s.isCollisionShapeFullBlock(level, p)) {
 
 					if (rel <= 0) {
 
@@ -713,7 +755,8 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 
 		Block window = top(windows, null, Blocks.GLASS_PANE);
 
-		return new Palette(wall, wall2, frame, base, roofFull, roofStair, roofSlab, window, fallbackFloor, def.door(), def.fence());
+		return new Palette(wall, wall2, frame, base, roofFull, roofStair, roofSlab, window, top(floors, null, fallbackFloor),
+			top(doors, null, def.door()), loadedOnly ? top(fences, null, def.fence()) : def.fence());
 
 	}
 
@@ -788,7 +831,7 @@ public record Palette(Block wall, Block wall2, Block frame, Block base, Block ro
 
 	public static Palette ofIds(List<String> ids) {
 
-		if (ids == null || ids.size() != 11) {
+		if (ids == null || (ids.size() != 11 && !TemplatePalette.marked(ids))) {
 
 			return null;
 

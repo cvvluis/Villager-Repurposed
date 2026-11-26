@@ -59,17 +59,33 @@ public class VillageData {
 		}
 	}
 
+	/** First observed game tick of a blocked paid placement. The timer confers no inventory credit. */
+	public record EmergencyMaterialWait(String signature, long blockedSince) {
+		public static final Codec<EmergencyMaterialWait> CODEC = RecordCodecBuilder.create(i -> i.group(
+			Codec.STRING.fieldOf("signature").forGetter(EmergencyMaterialWait::signature),
+			// Older counters measured intermittent observations, so they cannot supply an elapsed start time.
+			Codec.LONG.optionalFieldOf("blocked_since", -1L).forGetter(EmergencyMaterialWait::blockedSince)
+		).apply(i, EmergencyMaterialWait::new));
+	}
+
 	/** A single resumable project. The origin is its stable identity and its construction attachment key. */
-	public record ProjectHaul(List<ItemStack> siteStock, List<String> cargoManifest) {
+	public record ProjectHaul(List<ItemStack> siteStock, List<String> cargoManifest,
+			Optional<EmergencyMaterialWait> emergencyWait) {
 		public static final Codec<ProjectHaul> CODEC = RecordCodecBuilder.create(i -> i.group(
 			ItemStack.CODEC.listOf().optionalFieldOf("site_stock", List.of()).forGetter(ProjectHaul::siteStock),
-			Codec.STRING.listOf().optionalFieldOf("cargo_manifest", List.of()).forGetter(ProjectHaul::cargoManifest)
+			Codec.STRING.listOf().optionalFieldOf("cargo_manifest", List.of()).forGetter(ProjectHaul::cargoManifest),
+			EmergencyMaterialWait.CODEC.optionalFieldOf("emergency_wait").forGetter(ProjectHaul::emergencyWait)
 		).apply(i, ProjectHaul::new));
+
+		public ProjectHaul(List<ItemStack> siteStock, List<String> cargoManifest) {
+			this(siteStock, cargoManifest, Optional.empty());
+		}
 
 		public ProjectHaul {
 			siteStock = siteStock == null ? List.of() : siteStock.stream().filter(stack -> stack != null && !stack.isEmpty())
 				.map(ItemStack::copy).toList();
 			cargoManifest = cargoManifest == null ? List.of() : List.copyOf(cargoManifest);
+			emergencyWait = emergencyWait == null ? Optional.empty() : emergencyWait;
 		}
 
 		public static ProjectHaul empty() { return new ProjectHaul(List.of(), List.of()); }
@@ -122,6 +138,11 @@ public class VillageData {
 
 		public long id() {
 			return origin.asLong();
+		}
+
+		public BuildProject withHaul(ProjectHaul next) {
+			return new BuildProject(type, origin, dir, step, variant, source, progress, owner, ownerUnavailableSince,
+				wanted, next, materialWait, construction, bounds, repair, cleanupOnly);
 		}
 	}
 
@@ -183,6 +204,10 @@ public class VillageData {
 			Codec.BOOL.optionalFieldOf("board_pinned", false),
 			extra -> com.mojang.datafixers.util.Pair.of(extra.boardPinned, Codec.BOOL.optionalFieldOf("board_pinned", false)),
 			(extra, pinned) -> { extra.boardPinned = pinned; return extra; }
+		).dependent(
+			net.minecraft.core.UUIDUtil.CODEC.optionalFieldOf("board_in_transit"),
+			extra -> com.mojang.datafixers.util.Pair.of(extra.boardInTransit, net.minecraft.core.UUIDUtil.CODEC.optionalFieldOf("board_in_transit")),
+			(extra, token) -> { extra.boardInTransit = token; return extra; }
 		).codec();
 
 		/** Small persisted cursor for resuming the step-wise house site search after reload. Absent in older saves. */
@@ -286,6 +311,8 @@ public class VillageData {
 		public Optional<HouseSiteSearch> houseSiteSearch = Optional.empty();
 		/** Manuelle Dorftafel-Position: automatische Suche und Plaza-Umzug respektieren sie. */
 		public boolean boardPinned = false;
+		/** Nonempty while the official board is being carried by a player. */
+		public Optional<java.util.UUID> boardInTransit = Optional.empty();
 
 		public Extra() {
 			this(Optional.empty(), 0L, 0L, 0L, List.of(), 0, 0L, Optional.empty(), Optional.empty(), List.of(), Optional.empty(), List.of(), List.of(), 0L,

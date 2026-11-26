@@ -67,6 +67,17 @@ public final class WoodcuttingCycleChecks {
 			&& Woodcutting.demandedLogIds(List.of("minecraft:stripped_oak_log#8", "minecraft:oak_wood#3"))
 				.equals(Set.of("minecraft:oak_log")),
 			"stripped-log shortages now source their exact natural log while wood blocks remain outside tree supply");
+		Set<String> anyTree = Woodcutting.demandedLogIds(List.of("minecraft:crafting_table#1"));
+		var workbenchStock = new SimpleContainer(4);
+		check(anyTree.equals(Set.of(Woodcutting.ANY_NATURAL_LOG))
+			&& Woodcutting.matchesRequestedLog(Blocks.BIRCH_LOG, anyTree)
+			&& Woodcutting.matchesRequestedLog(new ItemStack(Items.SPRUCE_LOG), anyTree)
+			&& !Woodcutting.matchesRequestedLog(Blocks.OAK_WOOD, anyTree)
+			&& Woodcutting.planLogShortfall(List.of("minecraft:crafting_table#1"), workbenchStock) == 1,
+			"a missing crafting table can be funded by one natural log of any species");
+		workbenchStock.setItem(0, new ItemStack(Items.OAK_PLANKS, 4));
+		check(Woodcutting.planLogShortfall(List.of("minecraft:crafting_table#1"), workbenchStock) == 0,
+			"public planks already able to craft a table suppress redundant generic-log demand");
 		check(Woodcutting.demandedLogIds(List.of("minecraft:stone_bricks#31", "minecraft:glass_pane#8")).isEmpty(),
 			"non-wood shortages do not create a wood source request");
 		check(Woodcutting.strippingSource(Items.STRIPPED_BIRCH_LOG) == Items.BIRCH_LOG
@@ -125,7 +136,7 @@ public final class WoodcuttingCycleChecks {
 		check(Woodcutting.canFitAllDrops(enoughRoom, competingDrops)
 			&& enoughRoom.getItem(0).getCount() == 62 && enoughRoom.getItem(1).isEmpty(),
 			"aggregate drop simulation accepts a complete batch when all stacks fit and leaves the source inventory unchanged");
-		return 24;
+		return 26;
 	}
 
 	private static void check(boolean value, String message) {

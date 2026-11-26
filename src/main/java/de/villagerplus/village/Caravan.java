@@ -1535,7 +1535,7 @@ public final class Caravan {
 	}
 
 	private static void prepareBackedMerchantOffers(ServerLevel level, State state, CaravanTraderEntity trader) {
-		if (trader.backedTradeOffersInitialized()) return;
+		if (trader.backedTradeOffersInitialized() && (!trader.getOffers().isEmpty() || trader.hasBackedTradeStock())) return;
 		List<ItemStack> reserved = new ArrayList<>();
 		int perTrade = trader.itemsPerTrade();
 		for (Item item : merchantGoods(trader.tradeSpecialty())) {
@@ -1546,8 +1546,16 @@ public final class Caravan {
 			int moved = takeMerchantCargo(level, state, item, amount);
 			if (moved > 0) reserved.add(new ItemStack(item, moved));
 		}
+		if (reserved.isEmpty()) return;
 		trader.installBackedTradeOffers(reserved);
 		persistVisitState(level, state);
+	}
+
+	/** A player can trade as soon as this active caravan has real, unreserved stock on its loaded pack animals. */
+	public static void preparePlayerTrade(ServerLevel level, CaravanTraderEntity trader) {
+		State state = ACTIVE.get(trader.getUUID());
+		if (state == null || !state.dimension.equals(level.dimension()) || level.getEntity(state.trader) != trader) return;
+		prepareBackedMerchantOffers(level, state, trader);
 	}
 
 	/** The porter escorts the loaded donkey; its real inventory is debited only at the reached depot. */

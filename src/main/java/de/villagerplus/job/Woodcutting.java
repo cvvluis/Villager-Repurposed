@@ -50,6 +50,8 @@ public final class Woodcutting {
 	private static final int RESERVED_CANOPY_MAX_HEIGHT = 32;
 	private static final int RESERVED_CANOPY_SEARCH_COLUMNS = 3_000;
 	private static final int RESERVED_ROAD_SAMPLES = 64;
+	/** Plan demand that can be funded by any one natural tree species, for recipe inputs such as a crafting table. */
+	static final String ANY_NATURAL_LOG = "villagerplus:any_natural_log";
 
 	private Woodcutting() {
 	}
@@ -560,6 +562,10 @@ public final class Woodcutting {
 			long count = positiveCount(fields);
 			Set<String> logs = demandedLogIds(List.of(request));
 			if (logs.isEmpty()) continue;
+			if (logs.contains(ANY_NATURAL_LOG)) {
+				directLogs.merge(ANY_NATURAL_LOG, count, Long::sum);
+				continue;
+			}
 			String naturalLog = logs.iterator().next();
 			Item requestedItem = BuiltInRegistries.ITEM.getOptional(net.minecraft.resources.Identifier.parse(fields[0])).orElse(null);
 			Item logItem = BuiltInRegistries.ITEM.getOptional(net.minecraft.resources.Identifier.parse(naturalLog)).orElse(null);
@@ -587,6 +593,14 @@ public final class Woodcutting {
 		long remainingSticks = JobUtil.count(box, stack -> stack.is(Items.STICK));
 		Map<String, Integer> shortages = new java.util.LinkedHashMap<>();
 		for (String naturalLog : species) {
+			if (ANY_NATURAL_LOG.equals(naturalLog)) {
+				long need = directLogs.getOrDefault(ANY_NATURAL_LOG, 0L);
+				long available = JobUtil.count(box, stack -> isNaturalLog(stack.getItem()))
+					+ JobUtil.count(box, stack -> stack.is(ItemTags.PLANKS)) / 4L;
+				long missing = Math.max(0L, need - available);
+				if (missing > 0L) shortages.put(ANY_NATURAL_LOG, (int)Math.min(Integer.MAX_VALUE, missing));
+				continue;
+			}
 			Item logItem = BuiltInRegistries.ITEM.getOptional(net.minecraft.resources.Identifier.parse(naturalLog)).orElse(null);
 			Item plankItem = planksForLog(naturalLog);
 			if (logItem == null) continue;
@@ -1125,6 +1139,11 @@ public final class Woodcutting {
 			}
 			var item = BuiltInRegistries.ITEM.getOptional(id).orElse(null);
 			if (item == null) continue;
+			if (item == Items.CRAFTING_TABLE) {
+				// A table accepts any plank species; do not make the tree selector demand a specific plan palette.
+				result.add(ANY_NATURAL_LOG);
+				continue;
+			}
 			if (isNaturalLog(item)) {
 				result.add(id.toString());
 				continue;
@@ -1155,13 +1174,13 @@ public final class Woodcutting {
 	/** A candidate or saved cursor is usable only when its exact log item is still requested. */
 	public static boolean matchesRequestedLog(Block log, Set<String> demandedLogs) {
 		return log.defaultBlockState().is(BlockTags.OVERWORLD_NATURAL_LOGS)
-			&& demandedLogs.contains(BuiltInRegistries.ITEM.getKey(log.asItem()).toString());
+			&& (demandedLogs.contains(ANY_NATURAL_LOG) || demandedLogs.contains(BuiltInRegistries.ITEM.getKey(log.asItem()).toString()));
 	}
 
 	/** Carried construction supply must be a natural log of an exact species the active plan can use. */
 	public static boolean matchesRequestedLog(ItemStack stack, Set<String> demandedLogs) {
 		return !stack.isEmpty() && isNaturalLog(stack.getItem())
-			&& demandedLogs.contains(BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+			&& (demandedLogs.contains(ANY_NATURAL_LOG) || demandedLogs.contains(BuiltInRegistries.ITEM.getKey(stack.getItem()).toString()));
 	}
 
 	private static boolean isNaturalLog(net.minecraft.world.item.Item item) {

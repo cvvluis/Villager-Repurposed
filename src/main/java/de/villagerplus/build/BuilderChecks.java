@@ -1,6 +1,8 @@
 package de.villagerplus.build;
 
+import com.mojang.serialization.JsonOps;
 import de.villagerplus.Config;
+import de.villagerplus.job.JobUtil;
 import de.villagerplus.village.VillageData;
 import java.util.HashMap;
 import java.util.List;
@@ -16,6 +18,7 @@ import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 
 /** Focused checks for housing demand and persistent construction material requests. */
@@ -46,6 +49,27 @@ public final class BuilderChecks {
 			"a quarry worker keeps small cobblestone batches until the planned delivery buffer is reached"); checks++;
 		check(Builder.HOUSE_CLEARANCE_RETRY_TICKS == 0L,
 			"a successful one-block house-lot clearance does not add a 20-tick pause before the next work pulse"); checks++;
+		Step paneWindow = Step.block(BlockPos.ZERO, Blocks.GLASS_PANE);
+		check(Builder.repairStepSatisfied(Blueprints.HOUSE, paneWindow, Blocks.OAK_FENCE.defaultBlockState())
+			&& Builder.repairStepSatisfied(Blueprints.GRANARY, Step.block(BlockPos.ZERO, Blocks.GLASS), Blocks.OAK_FENCE.defaultBlockState())
+			&& !Builder.repairStepSatisfied(Blueprints.HOUSE, Step.block(BlockPos.ZERO, Blocks.GLASS), Blocks.OAK_FENCE.defaultBlockState())
+			&& !Builder.repairStepSatisfied(Blueprints.HOUSE, paneWindow, Blocks.OAK_PLANKS.defaultBlockState())
+			&& !Builder.repairStepSatisfied(Blueprints.HOUSE, Step.block(BlockPos.ZERO, Blocks.STONE), Blocks.OAK_FENCE.defaultBlockState()),
+			"maintenance accepts the documented wooden-fence substitute for glass windows without masking other missing blocks"); checks++;
+		BlockPos openWindow = new BlockPos(9, 70, -4);
+		Built builtWithOpenWindow = new Built(Blueprints.STORAGE, BlockPos.ZERO, 0, 0, List.of("spruce", "cobblestone"), List.of(openWindow));
+		Built restoredBuilt = Built.CODEC.parse(JsonOps.INSTANCE,
+			Built.CODEC.encodeStart(JsonOps.INSTANCE, builtWithOpenWindow).getOrThrow()).getOrThrow();
+		Built legacyBuilt = Built.CODEC.parse(JsonOps.INSTANCE,
+			Built.CODEC.encodeStart(JsonOps.INSTANCE, new Built(Blueprints.STORAGE, BlockPos.ZERO, 0, 0, List.of())).getOrThrow()).getOrThrow();
+		check(restoredBuilt.fallbackOpenings().equals(List.of(openWindow))
+			&& legacyBuilt.fallbackOpenings().isEmpty()
+			&& Builder.intentionallyOpen(restoredBuilt, Step.block(openWindow, Blocks.GLASS_PANE))
+			&& !Builder.intentionallyOpen(restoredBuilt, Step.block(openWindow.east(), Blocks.GLASS_PANE))
+			&& !Builder.repairStepSatisfied(Blueprints.STORAGE, Step.block(openWindow.east(), Blocks.GLASS_PANE), Blocks.AIR.defaultBlockState())
+			&& !Builder.repairStepSatisfied(Blueprints.STORAGE, Step.block(openWindow, Blocks.STONE), Blocks.AIR.defaultBlockState()),
+			"saved intentional openings survive the Built codec and suppress only their own window repair request"); checks++;
+		checks += emergencyMaterialChecks();
 		var waitingVillage = new de.villagerplus.village.VillageRef(new net.minecraft.core.BlockPos(29_812_345, 72, -29_812_345), null, null);
 		var otherVillage = new de.villagerplus.village.VillageRef(new net.minecraft.core.BlockPos(29_812_346, 72, -29_812_345), null, null);
 		Builder.clearSpecialSiteSearchFailure(waitingVillage);
@@ -264,6 +288,11 @@ public final class BuilderChecks {
 			"capacity-only extra sheds still wait behind the early civic chain"); checks++;
 		check(!Builder.shouldExpandStorageUnderPressure(null, null, false),
 			"storage expansion requires an actual capacity shortage"); checks++;
+		check(!Builder.templateMeetsHousingBedDemand(Blueprints.HOUSE, true, 1)
+			&& Builder.templateMeetsHousingBedDemand(Blueprints.HOUSE, true, 2)
+			&& Builder.templateMeetsHousingBedDemand(Blueprints.HOUSE, false, 1)
+			&& Builder.templateMeetsHousingBedDemand(Blueprints.STORAGE, true, 0),
+			"housing expansion skips one-bed templates only while a village needs beds"); checks++;
 		int cap = de.villagerplus.Config.MAX_VILLAGERS;
 		check(Builder.needsHouse(cap, 0, cap - 1), "a capped village replaces housing when existing residents outnumber beds"); checks++;
 		check(Builder.needsHouse(cap, 1, cap), "a capped village replaces housing when a resident lacks HOME and no spare bed exists"); checks++;
@@ -324,11 +353,11 @@ public final class BuilderChecks {
 		Architect.Design catalogDesign = HouseDesignCatalog.designForPlanVariant(catalogVariant);
 		int mirroredTemplate = 1;
 		int oldSubstitutedGenerated = 2;
-		check((catalogVariant & 1) != 0 && (catalogVariant & 2) == 0
+		check((catalogVariant & 1) != 0 && (catalogVariant & 2) != 0
 			&& HouseDesignCatalog.usesCatalog(catalogVariant, false)
 			&& !HouseDesignCatalog.usesCatalog(catalogVariant, true)
 			&& Builder.designForPlan(Blueprints.HOUSE, catalogVariant).equals(catalogDesign),
-			"new source-free houses use the bit-0 catalog marker while saved template plans keep that bit as mirror state"); checks++;
+			"new houses carry the two-resident catalog version while saved template plans keep bit 0 as mirror state"); checks++;
 		check(Builder.siteHalf(Blueprints.HOUSE, catalogVariant, catalogDesign) == HouseDesignCatalog.siteHalf(catalogDesign)
 			&& Builder.siteHeadroom(Blueprints.HOUSE, catalogVariant, catalogDesign) == HouseDesignCatalog.siteHeadroom(catalogDesign),
 			"house placement reserves the catalog's full porch/path footprint and actual roof clearance"); checks++;
@@ -495,6 +524,61 @@ public final class BuilderChecks {
 		return total;
 	}
 
+	private static int emergencyMaterialChecks() {
+		int checks = 0;
+		String signature = "granary|0|7|13|0|minecraft:spruce_stairs";
+		String freight = UUID.randomUUID() + "|minecraft:spruce_stairs|2|" + new BlockPos(4, 64, 4).asLong();
+		var wait = Builder.observeEmergencyMaterialWait(null, true, signature, 1_000L);
+		var haul = new VillageData.ProjectHaul(List.of(), List.of(freight), Optional.of(wait));
+		var nbt = VillageData.ProjectHaul.CODEC.encodeStart(net.minecraft.nbt.NbtOps.INSTANCE, haul).getOrThrow();
+		var restored = VillageData.ProjectHaul.CODEC.parse(net.minecraft.nbt.NbtOps.INSTANCE, nbt).getOrThrow();
+		var resumed = Builder.observeEmergencyMaterialWait(restored.emergencyWait().orElseThrow(), true, signature, 6_999L);
+		check(resumed.blockedSince() == 1_000L && restored.siteStock().isEmpty()
+			&& restored.cargoManifest().equals(List.of(freight)),
+			"a save/reload preserves the initial shortage tick and matching in-transit freight"); checks++;
+		check(!Builder.emergencyMaterialDue(resumed, 6_999L) && Builder.emergencyMaterialDue(
+				Builder.observeEmergencyMaterialWait(resumed, true, signature, 7_000L), 7_000L),
+			"elapsed time reaches the emergency deadline even after a gap with no builder observations"); checks++;
+		check(Builder.observeEmergencyMaterialWait(wait, true, signature + "|next", 7_000L).blockedSince() == 7_000L
+			&& Builder.observeEmergencyMaterialWait(wait, true, signature, 999L).blockedSince() == 999L,
+			"a different placement or a rolled-back game clock starts a fresh wait"); checks++;
+		var legacy = VillageData.ProjectHaul.CODEC.parse(net.minecraft.nbt.NbtOps.INSTANCE, new net.minecraft.nbt.CompoundTag()).getOrThrow();
+		check(legacy.emergencyWait().isEmpty(),
+			"older project saves start without an emergency material wait"); checks++;
+		var oldCounterTag = new net.minecraft.nbt.CompoundTag();
+		oldCounterTag.putString("signature", signature);
+		oldCounterTag.putLong("observed_at", 6_999L);
+		oldCounterTag.putLong("active_ticks", 5_999L);
+		var oldCounter = VillageData.EmergencyMaterialWait.CODEC.parse(net.minecraft.nbt.NbtOps.INSTANCE, oldCounterTag).getOrThrow();
+		var migrated = Builder.observeEmergencyMaterialWait(oldCounter, true, signature, 7_000L);
+		check(!Builder.emergencyMaterialDue(oldCounter, 7_000L) && migrated.blockedSince() == 7_000L,
+			"legacy active-work counters begin anew on the first confirmed shortage"); checks++;
+
+		var siteStock = new SimpleContainer(4);
+		var step = new Step(BlockPos.ZERO, Items.SPRUCE_STAIRS, null, 2, false, null, Block::defaultBlockState);
+		check(Builder.emergencyPaymentNeeded(Blueprints.GRANARY, step, siteStock, Map.of())
+			&& Builder.emergencyPaymentNeeded(Blueprints.GRANARY, step, siteStock, Map.of(Items.SPRUCE_STAIRS, 2))
+			&& !Builder.emergencyPaymentNeeded(Blueprints.GRANARY,
+				new Step(BlockPos.ZERO, Items.SPRUCE_STAIRS, null, 2, true, null, Block::defaultBlockState),
+				siteStock, Map.of()),
+			"a matching in-transit load does not pause an unpaid required block step's emergency timer"); checks++;
+		var beforeDelivery = Builder.observeEmergencyMaterialWait(wait, true, signature, 6_999L);
+		siteStock.setItem(0, new ItemStack(Items.SPRUCE_STAIRS, 2));
+		check(!Builder.emergencyPaymentNeeded(Blueprints.GRANARY, step, siteStock, Map.of(Items.SPRUCE_STAIRS, 2))
+			&& Builder.observeEmergencyMaterialWait(beforeDelivery,
+				Builder.emergencyPaymentNeeded(Blueprints.GRANARY, step, siteStock, Map.of(Items.SPRUCE_STAIRS, 2)),
+				signature, 8_000L) == null
+			&& Builder.observeEmergencyMaterialWait(null, true, signature, 8_200L).blockedSince() == 8_200L,
+			"real site delivery makes normal payment ready and clears the blocked-step timer"); checks++;
+		siteStock.clearContent();
+		siteStock.setItem(0, new ItemStack(Items.SPRUCE_STAIRS, 1));
+		Builder.Payment payment = Builder.emergencyStepPayment(step, siteStock);
+		check(payment.block() == Blocks.SPRUCE_STAIRS && payment.count() == 1
+			&& JobUtil.count(siteStock, stack -> stack.is(Items.SPRUCE_STAIRS)) == 1,
+			"emergency placement pays the amount genuinely present and creates no stack for the missing amount"); checks++;
+		return checks;
+	}
+
 	private static int abortKeepsProjectMaterials() {
 		int checks = 0;
 		VillageData data = new VillageData();
@@ -509,8 +593,9 @@ public final class BuilderChecks {
 		VillageData.BuildProject first = new VillageData.BuildProject(Blueprints.SCHOOL, firstOrigin, 1, 17, 5,
 			Optional.of(firstOrigin.west()), 700L, Optional.of(firstOwner), 0L, List.of("minecraft:oak_planks#9"),
 			new VillageData.ProjectHaul(List.of(new net.minecraft.world.item.ItemStack(Items.OAK_PLANKS, 7),
-				new net.minecraft.world.item.ItemStack(Items.SCAFFOLDING, 2)), List.of(cargo)), Optional.empty(),
-			Optional.of(trackedSite), Optional.of(new VillageData.PlanBounds(110, 130, -90, -70)), false, false);
+				new net.minecraft.world.item.ItemStack(Items.SCAFFOLDING, 2)), List.of(cargo),
+				Optional.of(new VillageData.EmergencyMaterialWait("school|step17|oak_planks", 750L))),
+			Optional.empty(), Optional.of(trackedSite), Optional.of(new VillageData.PlanBounds(110, 130, -90, -70)), false, false);
 		VillageData.BuildProject second = new VillageData.BuildProject(Blueprints.TOOLSHED, secondOrigin, 3, 4, 2,
 			Optional.empty(), 650L, Optional.of(secondOwner), 0L, List.of("minecraft:cobblestone#6"),
 			VillageData.ProjectHaul.empty(), Optional.empty(), Optional.empty(),
@@ -525,8 +610,9 @@ public final class BuilderChecks {
 			&& cleanup.cargoManifest().equals(List.of(cargo)),
 			"abort snapshot retains the project owner, footprint, site blocks, and exact carrier manifest"); checks++;
 		check(cleanup != null && cleanup.siteStock().stream().mapToInt(stack -> stack.getCount()).sum() == 9
-			&& first.siteStock().stream().mapToInt(stack -> stack.getCount()).sum() == 9,
-			"abort snapshot conserves every real site-stock item"); checks++;
+			&& first.siteStock().stream().mapToInt(stack -> stack.getCount()).sum() == 9
+			&& first.haul().emergencyWait().isPresent() && cleanup.haul().emergencyWait().isEmpty(),
+			"abort snapshot refunds only real site stock and drops the elapsed emergency wait"); checks++;
 		data.clearPlan();
 		if (cleanup != null) data.putBuildProject(cleanup);
 		data.syncPrimaryProjectView();

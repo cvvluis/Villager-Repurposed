@@ -8,8 +8,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
@@ -46,6 +48,16 @@ public final class LagerOwnershipChecks {
 		if (worker == null) throw new IllegalStateException("Could not create lager ownership worker fixture");
 		int[] passed = {0};
 		try {
+			UUID inspector = UUID.randomUUID();
+			GlobalPos firstPrivateChest = GlobalPos.of(level.dimension(), origin);
+			GlobalPos secondPrivateChest = GlobalPos.of(level.dimension(), origin.east());
+			check(passed, Ownership.shouldSendChestWarning(inspector, firstPrivateChest, 100L, false)
+				&& !Ownership.shouldSendChestWarning(inspector, firstPrivateChest, 101L, false)
+				&& Ownership.shouldSendChestWarning(inspector, secondPrivateChest, 101L, false)
+				&& Ownership.shouldSendChestWarning(UUID.randomUUID(), firstPrivateChest, 101L, false)
+				&& Ownership.shouldSendChestWarning(inspector, firstPrivateChest, 120L, false)
+				&& Ownership.shouldSendChestWarning(inspector, firstPrivateChest, 120L, true),
+				"owner notices are throttled only for a rapid repeat on the same chest, not across chests or players");
 			worker.addTag("vp090_fixture");
 			worker.setInvulnerable(true);
 			worker.setNoAi(true);

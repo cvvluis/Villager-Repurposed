@@ -169,7 +169,8 @@ public final class CaravanTraderEntity extends AbstractVillager {
 
 	/** Replaces legacy/unbacked offers with finite offers backed by stock already removed from caravan cargo. */
 	public void installBackedTradeOffers(List<ItemStack> realStock) {
-		if (this.backedTradeOffersInitialized) return;
+		// A prior visit may have saved an initialized but empty offer list; allow a later real cargo delivery to wake it.
+		if (this.backedTradeOffersInitialized && (!this.backedTradeStock.isEmpty() || !this.getOffers().isEmpty())) return;
 		MerchantOffers offers = new MerchantOffers();
 		int itemsPerTrade = this.itemsPerTrade();
 		int emeraldPrice = Math.max(1, (int) Math.round(4 * (1 - this.tradeRelation / 400.0)));
@@ -255,10 +256,26 @@ public final class CaravanTraderEntity extends AbstractVillager {
 			return super.mobInteract(player, hand);
 		}
 		if (this.level().isClientSide()) return InteractionResult.SUCCESS;
+		if (this.level() instanceof ServerLevel level && this.getOffers().isEmpty()) {
+			de.villagerplus.village.Caravan.preparePlayerTrade(level, this);
+		}
 		if (!this.backedTradeOffersInitialized || !this.backedOffersCovered()) this.disableUnbackedOffers();
-		if (this.getOffers().isEmpty()) return InteractionResult.CONSUME;
-		this.setTradingPlayer(player);
-		this.openTradingScreen(player, this.getDisplayName(), 1);
+		return dispatchTradeInteraction(!this.getOffers().isEmpty(),
+			() -> de.villagerplus.village.VillageMessages.overlay(player,
+				net.minecraft.network.chat.Component.translatable("message.villagerplus.caravan_no_stock")),
+			() -> {
+				this.setTradingPlayer(player);
+				this.openTradingScreen(player, this.getDisplayName(), 1);
+			});
+	}
+
+	/** Shared server-side result dispatch so the stock and no-stock click paths can be checked without a client connection. */
+	public static InteractionResult dispatchTradeInteraction(boolean hasOffers, Runnable noStockFeedback, Runnable openTradingScreen) {
+		if (!hasOffers) {
+			noStockFeedback.run();
+			return InteractionResult.CONSUME;
+		}
+		openTradingScreen.run();
 		return InteractionResult.SUCCESS;
 	}
 
