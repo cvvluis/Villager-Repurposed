@@ -6,6 +6,7 @@
 #   label         world folder run/<label>, must match ^vp-natural111-[a-z0-9-]+$
 #   continue-tag  continue the EXISTING world run/<label> (new log run/<label>-<tag>.log)
 # Environment: PYTHON (default python3), GRADLE_ARGS (extra gradle arguments), VP_SERVER_PORT (25565), VP_RCON_PORT (25575),
+#              VP_RCON_TIMEOUT (seconds, default 120 for cold terrain generation),
 #              VP_FORCELOAD="x1 z1 x2 z2;x1 z1 x2 z2" (default: taiga + jungle village of seed 4242)
 # Prerequisites: JDK 25 on JAVA_HOME, run/eula.txt containing eula=true (YOUR decision, see tools/cloud/README.md).
 # Run it in the background and read the log: a run of 10 sprints takes about 5-10 minutes.
@@ -21,6 +22,8 @@ port="${VP_SERVER_PORT:-25565}"
 rport="${VP_RCON_PORT:-25575}"
 forceload="${VP_FORCELOAD:-40 -440 190 -290;1430 -475 1575 -310}"
 export VP_RCON_PORT="$rport"
+# Cold terrain generation during forceload can outlast the interactive RCON timeout.
+export VP_RCON_TIMEOUT="${VP_RCON_TIMEOUT:-120}"
 unset VP_AUTOTEST
 
 [[ "$label" =~ ^vp-natural111-[a-z0-9-]+$ ]] || { echo "invalid label: $label" >&2; exit 2; }

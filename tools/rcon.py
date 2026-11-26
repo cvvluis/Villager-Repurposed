@@ -21,7 +21,8 @@ def recv(s):
 def main():
     cmds = sys.argv[1:]
     # Parallel worktrees use different ports: set VP_RCON_PORT (default 25575).
-    s = socket.create_connection(('127.0.0.1', int(os.environ.get('VP_RCON_PORT', '25575'))), timeout=30)
+    timeout = float(os.environ.get('VP_RCON_TIMEOUT', '30'))
+    s = socket.create_connection(('127.0.0.1', int(os.environ.get('VP_RCON_PORT', '25575'))), timeout=timeout)
     s.sendall(pkt(1, 3, 'vptest'))
     rid, _, _ = recv(s)
     if rid == -1:
