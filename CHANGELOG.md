@@ -4,6 +4,8 @@ Versions below target Fabric, Minecraft 26.2 and Java 25. The artifact is named 
 
 ## Unreleased
 
+- **Stranded villagers leave their old walk target behind.** Returning a villager to the village now clears the stale Vanilla walk target so navigation cannot immediately resume it. The strand-rescue fixture verifies the reset. Three fresh runs still completed only one civic building by the end of the sprint sequence.
+- **Development-server construction cadence samples.** Enable `VP_CADENCE_PROBE=1` to record active project cursors, wanted materials, site stock and cargo every 100 ticks. `cadence.py` reports closed gaps and open tails in scheduled work-window ticks.
 - **Natural-run tooling tolerates cold chunk generation.** The run driver allows 120 seconds for an RCON response by default and exposes `VP_RCON_TIMEOUT` for slower hosts. Direct RCON calls retain the 30-second default.
 
 - **A/B check of the 0.11.3 -> main changes (no code change).** Six fresh natural runs (seed 4242, 30 x 2,400 ticks, n=3 per variant) show no regression from the perf-soak, strand-pit and toolshed-chain merges: `Langweg ... unreachable` 45/64/58 (0.11.3) vs 47/38/32 (main); rescues rise 4-10 -> 15-22 per run by design (TrapGuard). Adds `tools/cloud/ab-metrics.sh` (one-line metrics per natural-run log).

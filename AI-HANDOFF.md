@@ -20,7 +20,21 @@ One of three runs finished a civic building by the driver's final tick. Zero of 
 
 - The second run ended with 34 spruce stairs still wanted by the granary, 36 spruce planks and two spruce logs in the central chest, and no granary cargo in transit. The third granary wanted 20 cobblestone stairs while the central chest held 60 cobblestone and no granary cargo was in transit. These snapshots show raw stock alongside unfilled shape requests. They do not establish how long the stock was available.
 - The opt-in cadence probe recorded 48 project samples in one 2,400-tick continuation of a copy of ref1. Storage remained at step 151 for 1,800 scheduled working-window ticks with seven spruce logs and 18 stairs wanted. This copy is excluded from the fresh run count.
-- A new `strandrescue` assertion reproduced the old walk target surviving a rescue. Clearing the vanilla walk target turned the check green (41 checks), with `deepstrand` also passing (17) and a clean build. Affected natural runs are in progress. Saved beds for the repeatedly rescued residents in ref1 were outside the observed trap coordinates, so moving beds is not supported by that snapshot.
+- A new `strandrescue` assertion reproduced the old walk target surviving a rescue. Clearing the vanilla walk target turned the check green (41 checks), with `deepstrand` also passing (17) and a clean build. Saved beds for the repeatedly rescued residents in ref1 were outside the observed trap coordinates, so moving beds is not supported by that snapshot.
+
+### Rescue comparison
+
+Three more fresh worlds used the same seed, force-load region and sprint method, with the walk target reset and the sampled cadence probe enabled. Zero of the first two worlds completed a civic build. The third completed storage at tick 51,942 and later completed six repair placements on the same building. Only the initial build counts. The baseline finished one civic build by the final sprint in three runs, and the treatment also finished one in three. The strict 72,000-tick result was 0/3 versus 1/3.
+
+| Run | Final tick | Granary | Storage | Mine sections | Mine gaps median / max (working ticks) | Unreachable routes / rescues | Mean sprint ms/tick |
+| --- | ---: | --- | --- | --- | --- | --- | ---: |
+| rescue1 | 72,760 | 315/440 | 172/266 | 25 | 204 / 3,116 | 40 / 14 | 3.42 |
+| rescue2 | 72,765 | 271/441 | 159/266 | 23 | 195 / 3,719 | 38 / 19 | 3.92 |
+| rescue3 | 72,795 | 259/433 | 266/266 at tick 51,942 | 19 | 70 / 7,073 | 55 / 10 | 4.03 |
+
+Rescue counts were 14/19/10 versus 36/18/20 on main. The small, timing-sensitive samples do not establish a repeatable natural reduction or greater civic throughput. The sampled closed build gaps had medians of 1,500/1,400/1,150 scheduled work ticks, and maxima of 4,100/5,300/4,500. Open tails reached 9,381/3,600/7,800 ticks. These figures cover sampled project cursor advances, with up to 100 ticks of sample uncertainty. The reference runs have no comparable build-cursor trace.
+
+Next, isolate recipe-input delivery to the paid site workshop as a separate change. Verify that a split batch can arrive without consuming another project's priority stock. Keep measuring completion and the longest working-window gap in fresh worlds before calling first-civic construction reliable.
 
 ### D05 caravan journey reproduction
 

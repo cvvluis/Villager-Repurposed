@@ -6,6 +6,8 @@ Main at `1613fbf` passed the Java 25 clean build, release JAR reference check, a
 
 G02 remains partial. Three fresh seed 4242 reference worlds on that commit yielded one completed granary (tick 72,724, before the driver's final tick 72,838) and two unfinished granaries (356/433 and 282/441). No civic plan completed by game tick 72,000. The two unfinished granaries had shaped-block requests with raw inputs present in the central chest at the end of each run. The full milestone sequence remains unproven. See `AI-HANDOFF.md` for the run metrics.
 
+Clearing the stale Vanilla walk target on strand rescue passed `strandrescue` (41) and `deepstrand` (17). The rescue comparison completed one new civic build in three fresh seed 4242 worlds, with storage finishing at tick 51,942. The same seed and a small sample leave natural reliability open.
+
 The D05 journey fixture again timed out at 3,500 ticks on main. The farthest isolated candidate reached road cursor 50 and still timed out while one pack donkey repeatedly started navigation outside the trader's resume radius. The candidate stayed isolated and phase 2 remains unverified.
 
 ## Verification update — 2026-11-24
