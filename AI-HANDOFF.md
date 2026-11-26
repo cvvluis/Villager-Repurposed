@@ -22,6 +22,11 @@ One of three runs finished a civic building by the driver's final tick. Zero of 
 - The opt-in cadence probe recorded 48 project samples in one 2,400-tick continuation of a copy of ref1. Storage remained at step 151 for 1,800 scheduled working-window ticks with seven spruce logs and 18 stairs wanted. This copy is excluded from the fresh run count.
 - A new `strandrescue` assertion reproduced the old walk target surviving a rescue. Clearing the vanilla walk target turned the check green (41 checks), with `deepstrand` also passing (17) and a clean build. Affected natural runs are in progress. Saved beds for the repeatedly rescued residents in ref1 were outside the observed trap coordinates, so moving beds is not supported by that snapshot.
 
+### D05 caravan journey reproduction
+
+- `caravanjourney1` timed out after 3,500 ticks on main (`1613fbf`, fresh allowlisted fixture, seed 8675309). Road cursor 83, zero lane samples, trader waiting for two idle donkeys outside the three-block resume radius.
+- Four local attempts tested exact non-home path goals, holding the merchant during pack waits, accounting for the donkey's final-node tolerance, and validating the current path node at the donkey's actual body position. The last attempt reached cursor 50 but still timed out with zero lane samples. A donkey remained about 3.7 blocks away while navigation repeatedly started and stopped. These experiments stayed on an isolated branch. Phase 2 and affected candidate groups were not reached. D05 stays partial.
+
 ## Verification update — 2026-11-25
 
 Strict classification remains **17 implemented / 30 partial / 15 unverified (62 total)**. No requirement is promoted. The code and synchronized handoff/audit are published together in the current main revision. The already published 0.11.2 playtest below is still built from its older pinned source commit and does not include this continuation's mine fixes.
