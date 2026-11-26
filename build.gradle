@@ -71,6 +71,7 @@ tasks.named('jar', Jar).configure {
 		if (name.startsWith('de/villagerplus/dev/')) {
 			return !(name == 'de/villagerplus/dev/G02SupplyTrace.class'
 				|| name.startsWith('de/villagerplus/dev/G02SupplyTrace$')
+				|| name == 'de/villagerplus/dev/NaturalCadenceProbe.class'
 				|| name == 'de/villagerplus/dev/AutoTest.class'
 				|| name.startsWith('de/villagerplus/dev/AutoTest$'))
 		}

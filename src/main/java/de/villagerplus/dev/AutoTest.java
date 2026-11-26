@@ -209,6 +209,7 @@ public final class AutoTest {
 
 	public static void register() {
 		if (!FabricLoader.getInstance().isDevelopmentEnvironment()) return;
+		if (Boolean.getBoolean("villagerplus.devCadence")) NaturalCadenceProbe.register();
 		String configured = System.getenv("VP_AUTOTEST");
 		if (configured == null || configured.isBlank()) configured = System.getProperty("vp.autotest");
 		if (configured == null || configured.isBlank()) configured = readModeFile();

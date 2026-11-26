@@ -23,6 +23,7 @@ from collections import Counter
 
 DAY = 24000
 OFFSET = 992  # natural-run.sh: 'time set 1000' at game tick ~8
+VPCADENCE_SAMPLE_TICKS = 100
 
 
 DAYTIME = {}  # game tick -> day time (from the probe's d= field); empty = fall back to OFFSET
@@ -116,15 +117,130 @@ def stats(label, events, t_end):
     return gaps + [tail]
 
 
+def cadence_work_ticks(start_tick, end_tick, start_day_time):
+    """Game ticks in the configured WORK_A/WORK_B clock windows (not worker-active time)."""
+    boundaries = (0, 1000, 2800, 3300, 5000, 6500, 8300, 8800, 10500, 24000)
+    total = 0
+    cursor = start_tick
+    while cursor < end_tick:
+        day_time = (start_day_time + cursor - start_tick) % DAY
+        boundary = next((value for value in boundaries if value > day_time), DAY)
+        span = min(end_tick - cursor, boundary - day_time)
+        if in_work_window(day_time):
+            total += span
+        cursor += span
+    return total
+
+
+def parse_vpcadence(paths, until=None):
+    records = []
+    for path in paths:
+        with open(path, errors="replace") as stream:
+            for line in stream:
+                marker = line.find("VPCADENCE ")
+                if marker < 0:
+                    continue
+                fields = {}
+                for token in line[marker + len("VPCADENCE "):].split():
+                    if "=" in token:
+                        key, value = token.split("=", 1)
+                        fields[key] = value
+                try:
+                    tick = int(fields["tick"])
+                    day = int(fields["day"])
+                    origin = fields["origin"]
+                    record = (tick, day, fields.get("dim", "?"), fields.get("bell", "?"),
+                        fields.get("type", "?"), origin, int(fields["step"]), fields.get("wanted", "-"),
+                        fields.get("site", "-"), fields.get("cargo", "-"), fields.get("phase", "?"))
+                except (KeyError, ValueError):
+                    continue
+                if until is None or tick <= until:
+                    records.append(record)
+    records.sort(key=lambda row: (row[0], row[2], row[3], row[5]))
+    return records
+
+
+def report_vpcadence(records):
+    if not records:
+        print("\n(no VPCADENCE records; set VP_CADENCE_PROBE=1 for opt-in sampled civic construction progress)")
+        return
+    print(f"\nVPCADENCE sampled construction progress: {len(records)} project samples")
+    print("  Semantics: cursor changes are observed between 100-tick samples, not exact placement timestamps; WORK ticks count configured clock windows, not active worker time.")
+    closed, initial, tails = vpcadence_gaps(records)
+    if closed:
+        intervals = sorted(event[0] for event in closed)
+        p90 = intervals[int(.9 * (len(intervals) - 1))]
+        print(f"  closed gaps between cursor advances: {len(closed)}; median {statistics.median(intervals):.0f}, p90 {p90}, max {max(intervals)} WORK ticks")
+        for dt, start, end, key, step, wanted, site, cargo in sorted(closed, key=lambda item: item[0], reverse=True)[:8]:
+            print(f"    {key[2]} {key[3]}: step={step} observed at {end}, {dt} WORK ticks since previous advance at {start}; wanted={wanted}; site={site}; cargo={cargo}")
+    else:
+        print("  no closed gap between cursor advances")
+    if initial:
+        for dt, start, end, key, step in sorted(initial, reverse=True)[:8]:
+            print(f"  first observed advance: {key[2]} {key[3]} step={step} at {end}, {dt} WORK ticks since first sample {start} (left-censored; plan may have started earlier)")
+    if tails:
+        print(f"  open tails at each project's last active sample: longest {max(tail[0] for tail in tails)} WORK ticks")
+        for dt, start, end, key, step, wanted, site, cargo in sorted(tails, key=lambda item: item[0], reverse=True)[:8]:
+            print(f"    {key[2]} {key[3]}: step={step} unchanged for {dt} WORK ticks from {start} through last sample {end}; wanted={wanted}; site={site}; cargo={cargo}")
+
+
+def vpcadence_gaps(records):
+    """Return closed inter-advance gaps, left-censored first advances, and current open tails.
+
+    A missing 100-tick sample, game-clock discontinuity, or cursor decrease starts a new
+    segment. No interval is joined across a segment boundary.
+    """
+    active = {}
+    closed = []
+    initial = []
+    for row in records:
+        tick, day, dimension, bell, kind, origin, step, wanted, site, cargo, _phase = row
+        key = (dimension, bell, kind, origin)
+        state = active.get(key)
+        if state is not None:
+            prior = state["sample"]
+            tick_gap = tick - prior[0]
+            clock_reset = day - prior[1] != tick_gap
+            cursor_reset = step < prior[6]
+            missing_sample = tick_gap != VPCADENCE_SAMPLE_TICKS
+            if tick_gap <= 0 or clock_reset or cursor_reset or missing_sample:
+                state = None
+        if state is None:
+            active[key] = {"sample": row, "baseline": (tick, day), "advance": None}
+            continue
+        if step > state["sample"][6]:
+            advance = (tick, day)
+            if state["advance"] is not None:
+                start_tick, start_day = state["advance"]
+                closed.append((cadence_work_ticks(start_tick, tick, start_day), start_tick, tick,
+                    key, step, wanted, site, cargo))
+            else:
+                start_tick, start_day = state["baseline"]
+                initial.append((cadence_work_ticks(start_tick, tick, start_day), start_tick, tick, key, step))
+            state["advance"] = advance
+        state["sample"] = row
+
+    tails = []
+    for key, state in active.items():
+        sample = state["sample"]
+        start = state["advance"] or state["baseline"]
+        dt = cadence_work_ticks(start[0], sample[0], start[1])
+        tails.append((dt, start[0], sample[0], key, sample[6], sample[7], sample[8], sample[9]))
+    return closed, initial, tails
+
+
 def main(paths, until=None):
     sections, samples, plan_events, traces = parse(paths)
+    cadence_records = parse_vpcadence(paths, until)
     if until is not None:
         sections = [x for x in sections if x[0] <= until]
         samples = [x for x in samples if x[0] <= until]
         traces = [x for x in traces if x[0] <= until]
         plan_events = [x for x in plan_events if x[0] is None or x[0] <= until]
-    t_end = until if until is not None else max([s[0] for s in sections] + [s[0] for s in samples] + [0])
+    t_end = until if until is not None else max([s[0] for s in sections] + [s[0] for s in samples]
+        + [r[0] for r in cadence_records] + [0])
     print(f"== CADENCE over {len(paths)} log(s), last tick seen {t_end} ({t_end / DAY:.1f} days)")
+    report_vpcadence(cadence_records)
     print(f"mine sections dug: {len(sections)} (cursor {sections[-1][1] if sections else 0}), "
           f"{len(sections) / max(1e-9, t_end / DAY):.2f} per day")
     if sections:

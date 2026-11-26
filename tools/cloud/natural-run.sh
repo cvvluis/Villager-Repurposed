@@ -7,7 +7,8 @@
 #   continue-tag  continue the EXISTING world run/<label> (new log run/<label>-<tag>.log)
 # Environment: PYTHON (default python3), GRADLE_ARGS (extra gradle arguments), VP_SERVER_PORT (25565), VP_RCON_PORT (25575),
 #              VP_RCON_TIMEOUT (seconds, default 120 for cold terrain generation),
-#              VP_FORCELOAD="x1 z1 x2 z2;x1 z1 x2 z2" (default: taiga + jungle village of seed 4242)
+#              VP_FORCELOAD="x1 z1 x2 z2;x1 z1 x2 z2" (default: taiga + jungle village of seed 4242),
+#              VP_CADENCE_PROBE=1 (dev-only VPCADENCE samples every 100 ticks)
 # Prerequisites: JDK 25 on JAVA_HOME, run/eula.txt containing eula=true (YOUR decision, see tools/cloud/README.md).
 # Run it in the background and read the log: a run of 10 sprints takes about 5-10 minutes.
 set -euo pipefail
@@ -25,6 +26,9 @@ export VP_RCON_PORT="$rport"
 # Cold terrain generation during forceload can outlast the interactive RCON timeout.
 export VP_RCON_TIMEOUT="${VP_RCON_TIMEOUT:-120}"
 unset VP_AUTOTEST
+if [[ "${VP_CADENCE_PROBE:-}" == "1" ]]; then
+  export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:+$JAVA_TOOL_OPTIONS }-Dvillagerplus.devCadence=true"
+fi
 
 [[ "$label" =~ ^vp-natural111-[a-z0-9-]+$ ]] || { echo "invalid label: $label" >&2; exit 2; }
 [[ -z "$cont" || "$cont" =~ ^[a-z0-9]+$ ]] || { echo "invalid continue tag: $cont" >&2; exit 2; }
