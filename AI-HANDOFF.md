@@ -62,6 +62,8 @@ Build gaps in the table cover granary and storage cursors, including active repa
 
 The integrated workbench revision passed another Java 25 clean build and 652-class jar reference check. The in-world `constructioncontinuation` bundle passed all 37 groups (3,916 checks), and `buildingrelocation` passed 17. The strict audit classification remains unchanged.
 
+The 0.11.4 release candidate's local packaged jar booted a separate Fabric Loader 0.20.1 / Minecraft 26.2 server with Fabric API, detected a vanilla taiga village and completed 2,400 sprint ticks with 49 forced chunks. The server saved and stopped normally. This verifies a headless packaged-jar startup and village tick smoke, with no game client or full modpack.
+
 ### D05 caravan journey reproduction
 
 - `caravanjourney1` timed out after 3,500 ticks on main (`1613fbf`, fresh allowlisted fixture, seed 8675309). Road cursor 83, zero lane samples, trader waiting for two idle donkeys outside the three-block resume radius.
