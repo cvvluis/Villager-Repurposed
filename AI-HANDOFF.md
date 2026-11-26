@@ -6,6 +6,22 @@
 - A fresh seed 4242 run with 100 forced chunks exceeded the 30-second RCON timeout during initial chunk generation, before any sprint. The driver now allows 120 seconds by default via `VP_RCON_TIMEOUT`. A local delayed-response test verified the configurable timeout and a fresh seed 4242 restart reached tick sprints. Aborted startup attempts are excluded from natural-run counts. Existing worlds were retained.
 - Strict audit stays at 17 implemented / 30 partial / 15 unverified. The natural-build check requires three fresh runs on the same revision and separate reporting of civic completion, mine cadence and stand rescues. No client or full-modpack verification.
 
+### Natural reference at 1613fbf
+
+Three fresh CTOV taiga worlds used seed 4242, the same 100 forced chunks and 30 sprints of 2,400 ticks. There was no player, fixture setup or item grant. The final game tick includes ordinary ticks between sprints. Final unfinished cursors and stock came from read-only inspection of the saved worlds.
+
+| Run | Final tick | Granary | Storage | Mine sections | Mine gaps median / max (working ticks) | Unreachable routes / rescues | Mean sprint ms/tick |
+| --- | ---: | --- | --- | ---: | --- | --- | ---: |
+| ref1 | 72,838 | 440/440 at tick 72,724 | 151/266 | 27 | 162 / 3,880 | 35 / 36 | 7.16 |
+| ref2 | 72,832 | 356/433 | 212/266 | 27 | 60 / 2,536 | 38 / 18 | 3.83 |
+| ref3 | 72,735 | 282/441 | 141/266 | 21 | 100 / 5,050 | 53 / 20 | 4.02 |
+
+One of three runs finished a civic building by the driver's final tick. Zero of three finished within 72,000 elapsed game ticks. The first run had higher host contention during early sprints. The mine cadence figures use the legacy clock-window approximation. No build-cursor cadence probe was active in these three runs.
+
+- The second run ended with 34 spruce stairs still wanted by the granary, 36 spruce planks and two spruce logs in the central chest, and no granary cargo in transit. The third granary wanted 20 cobblestone stairs while the central chest held 60 cobblestone and no granary cargo was in transit. These snapshots show raw stock alongside unfilled shape requests. They do not establish how long the stock was available.
+- The opt-in cadence probe recorded 48 project samples in one 2,400-tick continuation of a copy of ref1. Storage remained at step 151 for 1,800 scheduled working-window ticks with seven spruce logs and 18 stairs wanted. This copy is excluded from the fresh run count.
+- A new `strandrescue` assertion reproduced the old walk target surviving a rescue. Clearing the vanilla walk target turned the check green (41 checks), with `deepstrand` also passing (17) and a clean build. Affected natural runs are in progress. Saved beds for the repeatedly rescued residents in ref1 were outside the observed trap coordinates, so moving beds is not supported by that snapshot.
+
 ## Verification update — 2026-11-25
 
 Strict classification remains **17 implemented / 30 partial / 15 unverified (62 total)**. No requirement is promoted. The code and synchronized handoff/audit are published together in the current main revision. The already published 0.11.2 playtest below is still built from its older pinned source commit and does not include this continuation's mine fixes.

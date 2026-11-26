@@ -4,6 +4,8 @@
 
 Main at `1613fbf` passed the Java 25 clean build, release JAR reference check, and all 33 requested headless groups (4,670 checks). G05's previously failing `equipment` group passed 141 checks in this run, with `smithanvil` 33 and `stockpolicy` 64 also passing. The natural toolshed and repair cycle still needs observation. The strict count remains 17 implemented, 30 partial and 15 unverified.
 
+G02 remains partial. Three fresh seed 4242 reference worlds on that commit yielded one completed granary (tick 72,724, before the driver's final tick 72,838) and two unfinished granaries (356/433 and 282/441). No civic plan completed by game tick 72,000. The two unfinished granaries had shaped-block requests with raw inputs present in the central chest at the end of each run. The full milestone sequence remains unproven. See `AI-HANDOFF.md` for the run metrics.
+
 ## Verification update — 2026-11-24
 
 Strict classification remains **17 implemented / 30 partial / 15 unverified (62 total)**. No requirement is promoted. Code is published on main; this documentation branch intentionally retains its older code. Current evidence below supersedes the historical notes.
