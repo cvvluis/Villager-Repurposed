@@ -8,6 +8,8 @@ G02 remains partial. Three fresh seed 4242 reference worlds on that commit yield
 
 Clearing the stale Vanilla walk target on strand rescue passed `strandrescue` (41) and `deepstrand` (17). The rescue comparison completed one new civic build in three fresh seed 4242 worlds, with storage finishing at tick 51,942. The same seed and a small sample leave natural reliability open.
 
+B02 remains partial. Waiving unobtainable scaffolding now preserves paid workbench preparation. `constructionsite` (26) covers the waiver, payment, blocked positions and safe retrofit. A saved-world comparison (`n=1` per variant) confirmed two real workbenches added to active sites with their cursors preserved. Two of three fresh bench-only runs completed a granary at ticks 54,476 and 56,177, with one stalled run and long working-window gaps still present. G02 and the strict count remain unchanged.
+
 The D05 journey fixture again timed out at 3,500 ticks on main. The farthest isolated candidate reached road cursor 50 and still timed out while one pack donkey repeatedly started navigation outside the trader's resume radius. The candidate stayed isolated and phase 2 remains unverified.
 
 ## Verification update — 2026-11-24

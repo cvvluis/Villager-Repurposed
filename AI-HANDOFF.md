@@ -46,6 +46,20 @@ On the copied ref3 control, another 4 × 2,400 sprint ticks moved the granary fr
 
 Matched ref3 copies with the published rescue code as the common base advanced from granary/storage 282/141 to 282/220 on the control and 326/248 on the workbench treatment after four sprints. The treatment persisted one actual `minecraft:crafting_table` at each site. The control still had no benches. Neither copy completed a civic building. This establishes the saved-world retrofit in the treatment (`n=1` per variant). Fresh-world cadence and reliability are separate measurements.
 
+### Paid workbench preparation
+
+Both scaffold waivers now persist an optional per-site flag, so the existing preparation still requests, pays for and records a crafting table. A phased active site can also retrofit a paid table without changing its cursor. New tables require loaded supported air and a dry adjacent stand outside planned blocks. A missing safe position leaves a phased build able to continue. The copy comparison above verifies both table blocks after save.
+
+The clean Java 25 build, jar reference check and 26 `constructionsite` checks passed before the natural trials. Three fresh bench-only runs used the same seed 4242, force-load region and 30 × 2,400 sprint protocol.
+
+| Run | Final tick | Granary | Storage | Build median / max / open tail (working ticks) | Mine sections | Unreachable routes / rescues | Mean sprint ms/tick |
+| --- | ---: | --- | --- | --- | ---: | --- | ---: |
+| bench1 | 72,888 | 438/438 at tick 54,476 | 220/266 | 800 / 3,000 / 3,200 | 24 | 42 / 16 | 5.03 |
+| bench2 | 72,758 | 441/441 at tick 56,177 | 204/266 | 700 / 6,800 / 1,200 | 25 | 60 / 17 | 4.36 |
+| bench3 | 72,862 | 319/437 | 160/266 | 1,150 / 6,300 / 8,700 | 18 | 48 / 11 | 4.35 |
+
+Two of three built a granary by tick 72,000. The prior rescue-only sample completed one storage building by that horizon and one by the end of the sprints. The stalled third run still had both placed benches, four spruce stairs in granary transit, and open demands for stairs/stone and storage glass. Its longest mine gap was 16,237 estimated working ticks. The bench fix removes one cause of missing on-site crafting. Long waits remain and the same-seed sample does not establish reliable natural completion. A guarded stair-input comparison is still separate.
+
 ### D05 caravan journey reproduction
 
 - `caravanjourney1` timed out after 3,500 ticks on main (`1613fbf`, fresh allowlisted fixture, seed 8675309). Road cursor 83, zero lane samples, trader waiting for two idle donkeys outside the three-block resume radius.

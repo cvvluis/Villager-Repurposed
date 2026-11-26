@@ -4,6 +4,7 @@ Versions below target Fabric, Minecraft 26.2 and Java 25. The artifact is named 
 
 ## Unreleased
 
+- **Construction sites keep their workbench when scaffolding is unavailable.** Villagers still pay for and place the table, and can retrofit an active site without restarting the plan. In three fresh seed 4242 dev-server runs, two granaries completed before tick 57,000. The third stalled, so reliable natural completion remains open.
 - **Stranded villagers leave their old walk target behind.** Returning a villager to the village now clears the stale Vanilla walk target so navigation cannot immediately resume it. The strand-rescue fixture verifies the reset. Three fresh runs still completed only one civic building by the end of the sprint sequence.
 - **Development-server construction cadence samples.** Enable `VP_CADENCE_PROBE=1` to record active project cursors, wanted materials, site stock and cargo every 100 ticks. `cadence.py` reports closed gaps and open tails in scheduled work-window ticks.
 - **Natural-run tooling tolerates cold chunk generation.** The run driver allows 120 seconds for an RCON response by default and exposes `VP_RCON_TIMEOUT` for slower hosts. Direct RCON calls retain the 30-second default.
