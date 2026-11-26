@@ -216,7 +216,7 @@ public final class RailTransportDispatchChecks {
 		}
 	}
 
-	private static List<net.minecraft.world.level.ChunkPos> leaseChunks(BlockPos home, BlockPos peer) {
+	static List<net.minecraft.world.level.ChunkPos> leaseChunks(BlockPos home, BlockPos peer) {
 		List<net.minecraft.world.level.ChunkPos> chunks = new ArrayList<>();
 		for (int cx = (home.getX() - 24) >> 4; cx <= (peer.getX() + 24) >> 4; cx++) {
 			for (int cz = (home.getZ() - 24) >> 4; cz <= (home.getZ() + 24) >> 4; cz++) {
@@ -227,7 +227,7 @@ public final class RailTransportDispatchChecks {
 	}
 
 	/** Renews the expiring entity-ticking lease on every fixture chunk; it lapses by itself after cleanup. */
-	private static void leaseChunks(ServerLevel level, Fixture fixture) {
+	static void leaseChunks(ServerLevel level, Fixture fixture) {
 		for (net.minecraft.world.level.ChunkPos chunk : fixture.leased) {
 			level.getChunkSource().addTicketWithRadius(Anchor.VILLAGER_WORK, chunk, 2);
 		}
@@ -247,7 +247,7 @@ public final class RailTransportDispatchChecks {
 		fixture.targetIronBefore = StockPolicy.communalCount(level, fixture.peer, Items.IRON_INGOT);
 	}
 
-	private static VillageRef createVillage(ServerLevel level, Fixture fixture, BlockPos bell, boolean home) {
+	static VillageRef createVillage(ServerLevel level, Fixture fixture, BlockPos bell, boolean home) {
 		place(level, fixture, bell.below(), Blocks.STONE.defaultBlockState());
 		place(level, fixture, bell, Blocks.BELL.defaultBlockState());
 		if (!(level.getBlockEntity(bell) instanceof BellBlockEntity entity)) {
@@ -325,7 +325,7 @@ public final class RailTransportDispatchChecks {
 		return ref;
 	}
 
-	private static void stockMetallurgy(Container center, Container warehouse) {
+	static void stockMetallurgy(Container center, Container warehouse) {
 		center.setItem(0, new ItemStack(Items.IRON_INGOT, RailResources.MIN_IRON_INGOTS / 2));
 		center.setItem(1, new ItemStack(Items.GOLD_INGOT, RailResources.MIN_GOLD_INGOTS / 2));
 		center.setItem(2, new ItemStack(Items.REDSTONE, RailResources.MIN_REDSTONE / 2));
@@ -336,7 +336,7 @@ public final class RailTransportDispatchChecks {
 		warehouse.setChanged();
 	}
 
-	private static void linkAndApprove(ServerLevel level, VillageRef home, VillageRef peer) {
+	static void linkAndApprove(ServerLevel level, VillageRef home, VillageRef peer) {
 		String dimension = Network.dim(level);
 		TradeNetwork.Link outward = new TradeNetwork.Link(dimension, peer.bell(), "Dispatch fixture", Roads.METROPOLIS, true, Roads.RAIL_POP, 0);
 		TradeNetwork.Link inward = new TradeNetwork.Link(dimension, home.bell(), "Dispatch fixture", Roads.METROPOLIS, true, Roads.RAIL_POP, 0);
@@ -346,7 +346,7 @@ public final class RailTransportDispatchChecks {
 		Network.save(peer.bellEntity(), peerNetwork);
 	}
 
-	private static void placeTrack(ServerLevel level, Fixture fixture, BlockPos home, BlockPos peer) {
+	static void placeTrack(ServerLevel level, Fixture fixture, BlockPos home, BlockPos peer) {
 		BlockState rail = Blocks.RAIL.defaultBlockState().setValue(RailBlock.SHAPE, RailShape.EAST_WEST);
 		for (int x = home.getX() + 3; x <= peer.getX() - 3; x++) {
 			BlockPos pos = new BlockPos(x, home.getY(), home.getZ());
@@ -357,7 +357,7 @@ public final class RailTransportDispatchChecks {
 		}
 	}
 
-	private static void spawnResidents(ServerLevel level, Fixture fixture, VillageRef village) {
+	static void spawnResidents(ServerLevel level, Fixture fixture, VillageRef village) {
 		for (int i = 0; i < Roads.RAIL_POP; i++) {
 			BlockPos spawn = village.bell().offset((i % 4) - 2, 0, 5 + (i / 4) * 2);
 			Villager villager = EntityTypes.VILLAGER.spawn(level, spawn, EntitySpawnReason.COMMAND);
@@ -370,7 +370,7 @@ public final class RailTransportDispatchChecks {
 		}
 	}
 
-	private static boolean permittedAndConnected(ServerLevel level, VillageRef home, VillageRef peer) {
+	static boolean permittedAndConnected(ServerLevel level, VillageRef home, VillageRef peer) {
 		if (!RailTransport.permitted(level, home, peer)) return false;
 		BlockPos homeStation = Specials.get(home, Blueprints.STATION);
 		BlockPos peerStation = Specials.get(peer, Blueprints.STATION);
@@ -380,7 +380,7 @@ public final class RailTransportDispatchChecks {
 		return homeStation != null && peerStation != null;
 	}
 
-	private static String readinessDetails(ServerLevel level, VillageRef village) {
+	static String readinessDetails(ServerLevel level, VillageRef village) {
 		int population = Villages.residents(level, village, de.villagerplus.Config.VILLAGE_RADIUS, Villager::isAlive).size();
 		boolean centralStorage = RailResources.hasCentralStorage(level, village);
 		boolean metallurgyStock = RailResources.hasMetallurgyStock(level, village);
@@ -400,7 +400,7 @@ public final class RailTransportDispatchChecks {
 			+ ", station=" + station + ", kitchen=" + kitchen + ", school=" + school + "]";
 	}
 
-	private static void placeChest(ServerLevel level, Fixture fixture, BlockPos pos) {
+	static void placeChest(ServerLevel level, Fixture fixture, BlockPos pos) {
 		place(level, fixture, pos.below(), Blocks.STONE.defaultBlockState());
 		// The fixture can revisit a coordinate containing a private/adjacent generated chest from an earlier run.
 		// Clear neighboring chest blocks through the same snapshot path so this one is an isolated public container.
@@ -413,7 +413,7 @@ public final class RailTransportDispatchChecks {
 		place(level, fixture, pos, Blocks.CHEST.defaultBlockState());
 	}
 
-	private static void place(ServerLevel level, Fixture fixture, BlockPos pos, BlockState state) {
+	static void place(ServerLevel level, Fixture fixture, BlockPos pos, BlockState state) {
 		level.getChunkAt(pos);
 		fixture.cells.computeIfAbsent(pos.immutable(), p -> {
 			BlockEntity current = level.getBlockEntity(p);
@@ -426,7 +426,7 @@ public final class RailTransportDispatchChecks {
 		level.setBlock(pos, state, 3);
 	}
 
-	private static int count(Container box, Item item) {
+	static int count(Container box, Item item) {
 		int total = 0;
 		for (int slot = 0; slot < box.getContainerSize(); slot++) {
 			ItemStack stack = box.getItem(slot);
@@ -462,19 +462,19 @@ public final class RailTransportDispatchChecks {
 		if (!ok) throw new IllegalStateException("Rail dispatch: " + message);
 	}
 
-	private record Cell(BlockState state, net.minecraft.nbt.CompoundTag data) { }
+	record Cell(BlockState state, net.minecraft.nbt.CompoundTag data) { }
 	private record Observation(long tick, java.util.UUID routeId, boolean freightCart, Trip trip,
 		java.util.UUID cartId, int stationStockAfter, int stationStockBefore, int sourceIronAfter,
 		int targetIronAfter, Item firstLoadedItem) { }
 
-	private static final class Fixture {
-		private final Map<BlockPos, Cell> cells = new LinkedHashMap<>();
-		private final List<Villager> residents = new ArrayList<>();
-		private List<net.minecraft.world.level.ChunkPos> leased = List.of();
+	static final class Fixture {
+		final Map<BlockPos, Cell> cells = new LinkedHashMap<>();
+		final List<Villager> residents = new ArrayList<>();
+		List<net.minecraft.world.level.ChunkPos> leased = List.of();
 		private boolean prepared;
-		private VillageRef home;
-		private VillageRef peer;
-		private Container stationInventory;
+		VillageRef home;
+		VillageRef peer;
+		Container stationInventory;
 		private int stationStockBefore;
 		private int sourceIronBefore;
 		private int targetIronBefore;
@@ -488,6 +488,6 @@ public final class RailTransportDispatchChecks {
 		private long firstBoundary;
 		private Observation observation;
 
-		private Fixture(long started) { this.started = started; }
+		Fixture(long started) { this.started = started; }
 	}
 }

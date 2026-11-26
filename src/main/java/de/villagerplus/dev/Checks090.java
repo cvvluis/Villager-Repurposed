@@ -651,6 +651,16 @@ public final class Checks090 {
    if(count<0) { source.sendSuccess(()->Component.literal("VP090 livestockherding PREPARING entity-ticking fixture; retry after server ticks"),false);return -1; }
    source.sendSuccess(()->Component.literal("VP090 livestockherding PASS "+count+" checks"),false);return count;
   }
+  if(mode.startsWith("railjourney")&&mode.length()==12) {
+   int count=de.villagerplus.village.RailJourneyChecks.run(level,mode.charAt(11)-'0');
+   if(count<0)return -1;
+   source.sendSuccess(()->Component.literal("VP090 "+mode+" PASS "+count+" checks"),false);return count;
+  }
+  if(mode.startsWith("caravanjourney")&&mode.length()==15) {
+   int count=de.villagerplus.village.CaravanJourneyChecks.run(level,mode.charAt(14)-'0');
+   if(count<0)return -1;
+   source.sendSuccess(()->Component.literal("VP090 "+mode+" PASS "+count+" checks"),false);return count;
+  }
   if(mode.equals("railtransport")) {
    int count=de.villagerplus.village.RailTransportChecks.run();
    source.sendSuccess(()->Component.literal("VP090 railtransport PASS "+count+" checks"),false);return count;
