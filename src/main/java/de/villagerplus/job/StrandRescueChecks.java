@@ -11,6 +11,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.ai.memory.MemoryModuleType;
+import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -293,9 +295,12 @@ public final class StrandRescueChecks {
 			require(!JobManager.rescueStranded(ctx(level, worker, state, memory, ref, t1 + 400L)) && atPit(worker, pit),
 				"a worker inside its mining window is exempt from the idle-trap rescue"); checks++;
 			state.miningUntil = 0L;
+			worker.getBrain().setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(pit, 0.45F, 1));
 			require(JobManager.rescueStranded(ctx(level, worker, state, memory, ref, t1 + 800L))
 				&& Math.abs(worker.getX() - origin.getX()) <= 6 && worker.getY() >= origin.getY() - 1,
 				"a resident idling in the pit without any route request is returned to the street after the grace"); checks++;
+			require(worker.getBrain().getMemory(MemoryModuleType.WALK_TARGET).isEmpty(),
+				"the rescue clears the stale vanilla walk target into the pit"); checks++;
 			TrapGuard.enabled = false;
 
 			return checks;

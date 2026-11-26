@@ -1053,6 +1053,8 @@ public final class JobManager {
 		clearDeepWatch(c.v().getUUID());
 		TrapGuard.forget(c.v().getUUID());
 		c.v().getNavigation().stop();
+		// Vanilla can otherwise restart the old walk immediately after the teleport.
+		c.v().getBrain().eraseMemory(MemoryModuleType.WALK_TARGET);
 		c.v().teleportTo(arrival.getX() + 0.5, arrival.getY(), arrival.getZ() + 0.5);
 		c.st().builderRelocations++;
 		c.v().resetFallDistance();
