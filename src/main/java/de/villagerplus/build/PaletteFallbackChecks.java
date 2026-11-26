@@ -80,6 +80,38 @@ public final class PaletteFallbackChecks {
 		List<Step> noFence = Builder.fenceWindows(List.of(glass), 0);
 		require(noFence.get(0).item() == Blocks.GLASS_PANE.asItem() && noFence.get(0).optional(),
 			"without a fence block in the plan the window is an optional opening"); checks++;
+		Step fullGlass = Step.block(o.east(5), Blocks.GLASS);
+		List<Step> savedStorage = new java.util.ArrayList<>();
+		for (int i = 0; i < 266; i++) savedStorage.add(cobble);
+		savedStorage.set(155, fullGlass);
+		for (int i = 160; i < 164; i++) savedStorage.set(i, fullGlass);
+		savedStorage.set(164, fence);
+		List<Step> resumed = Builder.fenceWindowsForCheck(savedStorage, 160, 0, 0);
+		require(resumed.size() == 266 && resumed.subList(0, 160).equals(savedStorage.subList(0, 160))
+			&& resumed.get(160).item() == Blocks.SPRUCE_FENCE.asItem() && resumed.get(163).item() == Blocks.SPRUCE_FENCE.asItem(),
+			"a reloaded storage cursor keeps its 160-step placed prefix and substitutes the four unpaid full-glass windows"); checks++;
+		List<Step> stocked = Builder.fenceWindowsForCheck(savedStorage, 160, 2, 0);
+		require(stocked.get(160).item() == Blocks.GLASS.asItem() && stocked.get(161).item() == Blocks.GLASS.asItem()
+			&& stocked.get(162).item() == Blocks.SPRUCE_FENCE.asItem() && stocked.get(155) == fullGlass,
+			"full glass already in public stock stays assigned to the first matching windows"); checks++;
+		List<Step> fullyStocked = Builder.fenceWindowsForCheck(savedStorage, 160, 4, 0);
+		require(fullyStocked.subList(160, 164).stream().allMatch(step -> step.item() == Blocks.GLASS.asItem()),
+			"all four paid glass blocks remain glass when the village has four available"); checks++;
+		Step costlyGlass = new Step(o.east(6), Blocks.GLASS.asItem(), null, 2, false, null,
+			ignored -> Blocks.GLASS.defaultBlockState());
+		List<Step> costAllocated = Builder.fenceWindowsForCheck(List.of(costlyGlass, fullGlass, fence), 0, 1, 0);
+		require(costAllocated.get(0).item() == Blocks.SPRUCE_FENCE.asItem()
+			&& costAllocated.get(1).item() == Blocks.GLASS.asItem(),
+			"stock is allocated by each step's cost instead of incorrectly funding a partial block"); checks++;
+		List<Step> legacyPaneFallback = Builder.fenceWindowsForCheck(List.of(glass, fullGlass, fence), 0, 0, 0, false);
+		require(legacyPaneFallback.get(0).item() == Blocks.SPRUCE_FENCE.asItem()
+			&& legacyPaneFallback.get(1).item() == Blocks.GLASS.asItem(),
+			"existing pane fallback remains enabled while full-glass substitution stays disabled for sourced/repair paths"); checks++;
+		require(Builder.utilityWindowFallbackAllowedForCheck(Blueprints.STORAGE, false, false)
+			&& !Builder.utilityWindowFallbackAllowedForCheck(Blueprints.STORAGE, true, false)
+			&& !Builder.utilityWindowFallbackAllowedForCheck(Blueprints.STORAGE, false, true)
+			&& !Builder.utilityWindowFallbackAllowedForCheck(Blueprints.HOUSE, false, false),
+			"the glass-to-fence fallback is limited to generated, non-repair utility plans"); checks++;
 		require(Builder.fenceWindows(List.of(cobble, fence), 0).equals(List.of(cobble, fence)), "a plan without windows is unchanged"); checks++;
 		de.villagerplus.village.VillageData wishes = new de.villagerplus.village.VillageData();
 		wishes.wanted.add("minecraft:spruce_log#3");

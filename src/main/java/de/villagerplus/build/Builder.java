@@ -1329,7 +1329,8 @@ public final class Builder {
 									d.planProgress = c.now();
 									ref.dirty();
 									supplierBusy = true;
-								} else if (trySwitchToRusticStone(c.level(), ref) || trySwitchToLocalWood(c.level(), ref) || trySwitchToFenceWindows(c.level(), ref)
+								} else if (trySwitchToRusticStone(c.level(), ref) || trySwitchToLocalWood(c.level(), ref)
+									|| trySwitchToFenceWindows(c.level(), ref, siteStock, cargoManifest)
 									|| trySwitchToStoneForWood(c.level(), ref)) {
 									PLAN_STALLS.remove(stallKey);
 									d.planProgress = c.now();
@@ -3758,8 +3759,9 @@ public final class Builder {
 			LOGGER.info("Villagers: Repurposed: Bauplan {} startet mit beschaffbarer Palette (Dorfpalette hat unbeschaffbar: {}; Palette jetzt: {})",
 				type, earlyPalette, constructionPaletteIds);
 		}
-		if (steps != null && source == null && utilityPlan(type) && (box == null || JobUtil.count(box, stack -> stack.is(Items.GLASS_PANE)) == 0)) {
-			steps = fenceWindows(steps, 0);
+		if (steps != null && source == null && utilityPlan(type) && !REPAIRS.contains(site.asLong())) {
+			steps = fenceWindows(steps, 0, windowStock(box, siteStock, cargoManifest, Items.GLASS),
+				windowStock(box, siteStock, cargoManifest, Items.GLASS_PANE), true);
 		}
 		if (!type.equals(Blueprints.FARM)) {
 			// Der Auftrag wird sofort festgelegt (ein Haus, ein Platz); fehlendes Material wird waehrenddessen beschafft.
@@ -4223,6 +4225,15 @@ public final class Builder {
 	/** The window conversion a real utility plan gets while the public chest holds no glass pane, for fixtures that seed the plan cache by hand. */
 	public static List<Step> fenceWindowsForCheck(List<Step> steps) {
 		return fenceWindows(steps, 0);
+	}
+
+	public static List<Step> fenceWindowsForCheck(List<Step> steps, int fromStep, int stockedGlass, int stockedPanes) {
+		return fenceWindows(steps, fromStep, stockedGlass, stockedPanes, true);
+	}
+
+	public static List<Step> fenceWindowsForCheck(List<Step> steps, int fromStep, int stockedGlass, int stockedPanes,
+			boolean fullGlassFallback) {
+		return fenceWindows(steps, fromStep, stockedGlass, stockedPanes, fullGlassFallback);
 	}
 
 	/** Run the real caravan callback against a supplied in-flight plan, restoring the transient cache afterward. */
@@ -4792,11 +4803,15 @@ public final class Builder {
 	}
 
 	/**
-	 * Glass panes become wooden fences from {@code fromStep} on (or optional openings when the plan holds no fence block): the village
+	 * Glass panes and full glass blocks become wooden fences from {@code fromStep} on (or optional openings when the plan holds no fence block): the village
 	 * has no sand, furnace or glass maker, so a window waited for glass that only a caravan could bring, and a finished shell stood
 	 * unbuilt for days for its last four panes. A decorative hay bale (nine wheat) becomes an optional step for the same reason.
 	 */
 	static List<Step> fenceWindows(List<Step> steps, int fromStep) {
+		return fenceWindows(steps, fromStep, 0, 0, false);
+	}
+
+	private static List<Step> fenceWindows(List<Step> steps, int fromStep, int stockedGlass, int stockedPanes, boolean fullGlassFallback) {
 		Item fence = null;
 		for (Step step : steps) {
 			if (step.item() != null && !step.free() && Block.byItem(step.item()).defaultBlockState().is(net.minecraft.tags.BlockTags.WOODEN_FENCES)) {
@@ -4807,13 +4822,17 @@ public final class Builder {
 		Item fenceItem = fence;
 		Block fenceBlock = fence == null ? null : Block.byItem(fence);
 		List<Step> result = new ArrayList<>(steps.size());
+		int glassLeft = Math.max(0, stockedGlass), panesLeft = Math.max(0, stockedPanes);
 		for (int i = 0; i < steps.size(); i++) {
 			Step step = steps.get(i);
 			if (i < fromStep || step.free() || step.optional() || step.linkedTo() != null || step.cost() <= 0 || step.tag() != null
-				|| (step.item() != Items.GLASS_PANE && step.item() != Items.HAY_BLOCK)) {
+				|| (step.item() != Items.GLASS_PANE && step.item() != Items.HAY_BLOCK
+					&& (!fullGlassFallback || step.item() != Items.GLASS))) {
 				result.add(step);
 				continue;
 			}
+			if (step.item() == Items.GLASS && glassLeft >= step.cost()) { glassLeft -= step.cost(); result.add(step); continue; }
+			if (step.item() == Items.GLASS_PANE && panesLeft >= step.cost()) { panesLeft -= step.cost(); result.add(step); continue; }
 			if (step.item() == Items.HAY_BLOCK || fenceBlock == null) {
 				result.add(new Step(step.pos(), step.item(), null, step.cost(), true, step.linkedTo(), step.make()));
 				continue;
@@ -4828,20 +4847,54 @@ public final class Builder {
 	}
 
 	/** After a long stall on glass panes (nobody in the village can make glass) the remaining windows are built from wood instead. */
-	private static boolean trySwitchToFenceWindows(ServerLevel level, VillageRef ref) {
+	private static boolean trySwitchToFenceWindows(ServerLevel level, VillageRef ref, Container siteStock, List<String> cargoManifest) {
 		VillageData d = ref.data();
-		if (!d.hasPlan() || d.planOrigin.isEmpty() || (!generated(d.planType) && d.planSource.isEmpty())) return false;
+		if (!d.hasPlan() || d.planOrigin.isEmpty()) return false;
 		var missing = PlanSupplyOrder.shortages(d.wanted);
-		if (!missing.containsKey(Items.GLASS_PANE) && !missing.containsKey(Items.HAY_BLOCK)) return false;
+		boolean existingFallback = (generated(d.planType) || d.planSource.isPresent())
+			&& (missing.containsKey(Items.GLASS_PANE) || missing.containsKey(Items.HAY_BLOCK));
+		boolean fullGlassFallback = missing.containsKey(Items.GLASS) && utilityWindowFallbackAllowed(d);
+		if (!existingFallback && !fullGlassFallback) return false;
 		long key = d.planOrigin.get().asLong();
 		List<Step> current = STEPS.get(key);
 		if (current == null || current.isEmpty()) return false;
-		List<Step> converted = fenceWindows(current, d.planStep);
+		Container box = de.villagerplus.village.Lager.combined(level, ref);
+		List<Step> converted = fenceWindows(current, d.planStep,
+			windowStock(box, siteStock, cargoManifest, Items.GLASS),
+			windowStock(box, siteStock, cargoManifest, Items.GLASS_PANE), fullGlassFallback);
 		if (converted.equals(current)) return false;
 		STEPS.put(key, converted);
 		d.wanted.clear();
 		LOGGER.info("Villagers: Repurposed: Bauplan {} baut die Fenster ab jetzt aus Holz (kein Glas im Dorf herstellbar)", d.planType);
 		return true;
+	}
+
+	private static boolean utilityWindowFallbackAllowed(VillageData d) {
+		if (d.planOrigin.isEmpty()) return false;
+		long key = d.planOrigin.get().asLong();
+		boolean repair = REPAIRS.contains(key) || REPAIRS.contains(key ^ WALL_KEY)
+			|| d.buildProject(d.planOrigin.get()).map(VillageData.BuildProject::repair).orElse(false);
+		return utilityWindowFallbackAllowed(d.planType, d.planSource.isPresent(), repair);
+	}
+
+	private static boolean utilityWindowFallbackAllowed(String type, boolean sourced, boolean repair) {
+		return utilityPlan(type) && !sourced && !repair;
+	}
+
+	private static int windowStock(Container publicStock, Container localStock, List<String> cargoManifest, Item item) {
+		long total = count(publicStock, item) + count(localStock, item);
+		if (cargoManifest != null && !cargoManifest.isEmpty()) {
+			total += de.villagerplus.job.BuildHaul.inTransit(cargoManifest).getOrDefault(item, 0);
+		}
+		return (int) Math.min(Integer.MAX_VALUE, total);
+	}
+
+	private static int count(Container stock, Item item) {
+		return stock == null ? 0 : JobUtil.count(stock, stack -> stack.is(item));
+	}
+
+	static boolean utilityWindowFallbackAllowedForCheck(String type, boolean sourced, boolean repair) {
+		return utilityWindowFallbackAllowed(type, sourced, repair);
 	}
 
 	/** True when the open wish list still asks for cobblestone or a cobblestone shape (stairs, slabs, walls). */
@@ -5217,11 +5270,15 @@ public final class Builder {
 		}
 		if (steps != null && de.villagerplus.village.VillageAdmin.rusticStone(ref)) steps = rusticStone(steps, 0);
 		if (steps != null && WOODLESS_STEM.equals(de.villagerplus.village.VillageAdmin.woodStem(ref))) steps = woodlessStone(steps, 0);
-		// Storage and granary do not need glazing, and nobody in a young village can make glass: their windows are wooden from the start
-		// unless the public chest already holds panes.
-		if (steps != null && utilityPlan(d.planType)
-			&& (ref.chest(level) == null || JobUtil.count(ref.chest(level), stack -> stack.is(Items.GLASS_PANE)) == 0)) {
-			steps = fenceWindows(steps, 0);
+		// Preserve the old pane/hay utility-plan fallback. Full blocks change only on generated, non-repair utility plans.
+		if (steps != null && utilityPlan(d.planType)) {
+			Container box = de.villagerplus.village.Lager.combined(level, ref);
+			VillageData.BuildProject project = d.buildProject(origin).orElse(null);
+			Container reservedSiteStock = project == null ? null : siteStock(project);
+			List<String> reservedCargo = project == null ? List.of() : c == null ? project.cargoManifest()
+				: de.villagerplus.job.BuildHaul.manifest(c, origin, project.cargoManifest());
+			steps = fenceWindows(steps, d.planStep, windowStock(box, reservedSiteStock, reservedCargo, Items.GLASS),
+				windowStock(box, reservedSiteStock, reservedCargo, Items.GLASS_PANE), utilityWindowFallbackAllowed(d));
 		}
 		STEPS.put(origin.asLong(), steps);
 		return steps;
