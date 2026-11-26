@@ -100,7 +100,7 @@ public final class RoadMaintenanceChecks {
    level.getBlockEntity(depot).removeAttached(VillagerPlus.OWNER);
    level.setBlock(damaged.below(),Blocks.AIR.defaultBlockState(),3);st.roadScanAt=0;
    check(!RoadBuilderJob.maintain(c)&&box.getItem(0).getCount()==7&&level.getBlockState(damaged).is(Blocks.GRASS_BLOCK),"unsupported ground cannot receive falling gravel");checks++;
-   checks+=gravelLoopChecks(level,at,groundY,ref,damaged,box,v,now+5);
+   checks+=gravelLoopChecks(level,at,groundY,ref,peerRef,damaged,box,v,now+5);
    checks+=bridgeRepairChecks(level,at,groundY,ref,other,key,box,v,mem,now+10);
    return checks;
   } finally {v.discard();var be=level.getBlockEntity(ref.chestPos(level));if(be!=null)be.removeAttached(VillagerPlus.OWNER);}
@@ -112,7 +112,7 @@ public final class RoadMaintenanceChecks {
   * the road builder withdraws it and places it. Every removed gravel block must be accounted for as stock,
   * cargo, flint (the vanilla 10% drop) or placed road surface; nothing is created or lost.
   */
- private static int gravelLoopChecks(ServerLevel level,BlockPos at,int groundY,VillageRef ref,BlockPos damaged,
+ private static int gravelLoopChecks(ServerLevel level,BlockPos at,int groundY,VillageRef ref,VillageRef peerRef,BlockPos damaged,
                                      Container box,net.minecraft.world.entity.npc.villager.Villager builder,long now) {
   int checks=0;
   level.setBlock(damaged.below(),Blocks.STONE.defaultBlockState(),3);
@@ -161,6 +161,104 @@ public final class RoadMaintenanceChecks {
     "J06->J08 balance: quarried blocks == placed + stock + cargo + flint");checks++;
    check(GravelQuarry.roadGravelTarget(true)==GravelQuarry.ROAD_CONSTRUCTION_BATCH&&GravelQuarry.roadGravelTarget(false)==1,
     "road construction asks for a bounded gravel batch, a repair for one block");checks++;
+
+   // Exercise the separate live construction demand: unlike the one-block repair above, a new gravel lane needs eight.
+   box.clearContent();builder.getInventory().clearContent();mason.getInventory().clearContent();
+   mason.getInventory().setItem(0,new ItemStack(Items.IRON_SHOVEL));
+   for(BlockPos src:sources)level.setBlock(src,Blocks.AIR.defaultBlockState(),3);
+   BlockPos constructionTarget=at.offset(30,0,0);
+   level.getChunkAt(constructionTarget);
+   level.setBlock(constructionTarget.below(),Blocks.STONE.defaultBlockState(),3);
+   level.setBlock(constructionTarget,Blocks.GRASS_BLOCK.defaultBlockState(),3);
+   level.setBlock(constructionTarget.above(),Blocks.AIR.defaultBlockState(),3);
+   level.setBlock(constructionTarget.above(2),Blocks.AIR.defaultBlockState(),3);
+   Roads.Repair constructionTask=new Roads.Repair(constructionTarget,Blocks.GRAVEL.defaultBlockState());
+   check(Roads.repairable(level,constructionTask),"the gravel construction lane is a valid live paving task");checks++;
+   BlockPos[] constructionSources=new BlockPos[20];
+   for(int i=0;i<constructionSources.length;i++) {
+    int x=at.getX()+6+i,z=at.getZ()+3;
+    level.getChunkAt(new BlockPos(x,groundY,z));
+    int sourceY=level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,x,z)-1;
+    BlockPos src=new BlockPos(x,sourceY,z);constructionSources[i]=src;
+    level.setBlock(src.below(),Blocks.STONE.defaultBlockState(),3);
+    level.setBlock(src,Blocks.GRAVEL.defaultBlockState(),3);
+    level.setBlock(src.above(),Blocks.AIR.defaultBlockState(),3);level.setBlock(src.above(2),Blocks.AIR.defaultBlockState(),3);
+   }
+   int validConstructionSources=0;
+   for(BlockPos src:constructionSources)if(GravelQuarry.naturalSource(level,src))validConstructionSources++;
+   check(validConstructionSources==constructionSources.length,
+    "construction quarry fixture supplies exposed, locally height-matched sources [valid="+validConstructionSources+"/"+constructionSources.length+"]");checks++;
+   JobState constructionMasonState=new JobState();
+   constructionMasonState.roadRepair=constructionTask;constructionMasonState.roadBuilding=true;
+   int publicGravelBeforeConstruction=StockPolicy.communalCount(level,ref,Items.GRAVEL);
+   int shovelBeforeConstruction=JobUtil.count(mason.getInventory(),s->s.is(Items.IRON_SHOVEL));
+   boolean firstQuarryWork=false;
+   String firstQuarryActivity="";
+   BlockPos firstQuarryTarget=null,firstMasonPosition=null;
+   check(constructionTask.removal()==null&&constructionTask.paving().is(Blocks.GRAVEL)
+    &&constructionMasonState.roadBuilding&&publicGravelBeforeConstruction==0&&shovelBeforeConstruction==1,
+    "construction demand fixture is initialized [removal="+constructionTask.removal()+", paving="
+     +constructionTask.paving().getBlock()+", roadBuilding="+constructionMasonState.roadBuilding
+     +", publicGravel="+publicGravelBeforeConstruction+", ironShovel="+shovelBeforeConstruction+"]");checks++;
+   mason.teleportTo(constructionSources[0].getX()+.5,constructionSources[0].getY()+1,constructionSources[0].getZ()+.5);
+   int constructionStart=0;
+   while(constructionStart<2400
+    &&(gravelOf(box)<GravelQuarry.ROAD_CONSTRUCTION_BATCH||gravelOf(mason.getInventory())>0)) {
+    Ctx work=new Ctx(level,mason,constructionMasonState,mmem,ref,now+5000+constructionStart*6L);
+    if(gravelOf(mason.getInventory())>0) {
+     BlockPos stand=JobUtil.sharedStandSpot(work,depot,4.0);
+     if(stand!=null)mason.teleportTo(stand.getX()+.5,stand.getY(),stand.getZ()+.5);
+    } else {
+     for(BlockPos src:constructionSources)if(GravelQuarry.naturalSource(level,src)) {
+      constructionMasonState.target=src;
+      mason.teleportTo(src.getX()+.5,src.getY()+1,src.getZ()+.5);break;
+     }
+    }
+    boolean quarryWorked=GravelQuarry.work(work);
+    if(constructionStart==0) {
+     firstQuarryWork=quarryWorked;firstQuarryActivity=constructionMasonState.activity;
+     firstQuarryTarget=constructionMasonState.target;firstMasonPosition=mason.blockPosition();
+    }
+    constructionStart++;
+   }
+   int constructionRemoved=0;
+   for(BlockPos src:constructionSources)if(!level.getBlockState(src).is(Blocks.GRAVEL))constructionRemoved++;
+   int constructionFlint=flintOf(mason.getInventory())+flintOf(box);
+   check(constructionStart<2400&&gravelOf(box)==GravelQuarry.ROAD_CONSTRUCTION_BATCH
+    &&gravelOf(mason.getInventory())==0&&constructionRemoved>=GravelQuarry.ROAD_CONSTRUCTION_BATCH
+    &&constructionRemoved==gravelOf(box)+gravelOf(mason.getInventory())+constructionFlint,
+    "J06 construction demand: real quarry drops fill the eight-gravel public batch with flint accounted"
+     +" [ticks="+constructionStart+", stock="+gravelOf(box)+", carried="+gravelOf(mason.getInventory())
+     +", removed="+constructionRemoved+", flint="+constructionFlint+", validSources="+validConstructionSources
+     +", publicBefore="+publicGravelBeforeConstruction+", ironShovel="+shovelBeforeConstruction
+     +", task="+constructionTask.action()+"/"+constructionTask.removal()+"/"+constructionTask.paving().getBlock()
+     +", roadBuilding="+constructionMasonState.roadBuilding+", firstWork="+firstQuarryWork
+     +", firstActivity="+firstQuarryActivity+", firstTarget="+firstQuarryTarget+", firstPosition="+firstMasonPosition+"]");checks++;
+
+   JobState constructionBuilderState=new JobState();
+   constructionBuilderState.roadRepair=constructionTask;constructionBuilderState.roadBuilding=true;
+   builder.teleportTo(depot.getX()+.5,depot.getY(),depot.getZ()+1.5);
+   Ctx constructionBuilder=new Ctx(level,builder,constructionBuilderState,
+    builder.getAttachedOrCreate(VillagerPlus.MEMORY),ref,now+20000);
+   check(RoadBuilderJob.construct(constructionBuilder)&&gravelOf(box)==7
+    &&gravelOf(builder.getInventory())==1,
+    "the active road builder collects one physical block from the funded construction batch");checks++;
+   builder.teleportTo(constructionTarget.getX()+.5,constructionTarget.getY()+1,constructionTarget.getZ()+.5);
+   constructionBuilder=new Ctx(level,builder,constructionBuilderState,constructionBuilder.mem(),ref,now+20001);
+   Map<String,Long> savedConstructionRoads=new HashMap<>(ref.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of()));
+   Map<String,Long> savedPeerConstructionRoads=new HashMap<>(peerRef.bellEntity().getAttachedOrElse(VillagerPlus.ROADS,Map.of()));
+   boolean constructionPlaced;
+   try { constructionPlaced=RoadBuilderJob.construct(constructionBuilder); }
+   finally {
+    ref.bellEntity().setAttached(VillagerPlus.ROADS,Map.copyOf(savedConstructionRoads));ref.dirty();
+    peerRef.bellEntity().setAttached(VillagerPlus.ROADS,Map.copyOf(savedPeerConstructionRoads));peerRef.dirty();
+   }
+   check(constructionPlaced&&level.getBlockState(constructionTarget).is(Blocks.GRAVEL)
+    &&gravelOf(box)==7&&gravelOf(builder.getInventory())==0,
+    "the road builder places the quarried center lane from its real cargo");checks++;
+   check(constructionRemoved==1+gravelOf(box)+gravelOf(builder.getInventory())
+    +gravelOf(mason.getInventory())+constructionFlint,
+    "J06->J08 construction balance: quarried blocks equal placed gravel, public stock, cargo, and flint");checks++;
   } finally {
    mason.discard();
    box.clearContent();builder.getInventory().clearContent();
@@ -350,7 +448,7 @@ public final class RoadMaintenanceChecks {
  private record Cell(BlockState state,CompoundTag data) { }
  private static Map<BlockPos,Cell> captureOuterFixture(ServerLevel level,BlockPos at,int surfaceY) {
   Map<BlockPos,Cell> before=new LinkedHashMap<>();
-  captureBox(level,before,at.getX()-1,at.getX()+43,surfaceY-8,surfaceY+4,at.getZ()-3,at.getZ()+3);
+  captureBox(level,before,at.getX()-1,at.getX()+43,surfaceY-8,surfaceY+16,at.getZ()-3,at.getZ()+7);
   captureBox(level,before,at.getX()+79,at.getX()+84,surfaceY-2,surfaceY+4,at.getZ()-1,at.getZ()+1);
   return before;
  }
