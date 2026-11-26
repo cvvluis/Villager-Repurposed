@@ -1,5 +1,11 @@
 # AI-HANDOFF – Villagers: Repurposed (modid `villagerplus`, Jar `villagers-repurposed-<version>.jar`)
 
+## Continuation — 2026-11-26
+
+- Baseline `1613fbf`: Java 25 `./gradlew clean build` passed, including `verifyJarRefs` over 651 classes. All 33 distinct requested groups passed (4,670 checks). The `constructioncontinuation` bundle passed 37 groups / 3,910 checks, including 26 requested groups. The seven separate results were `smithanvil` 33, `deepstrand` 17, `railmetro` 103, `roadroute` 732, `equipment` 141, `workblocks` 67 and `chestscan` 21. The past equipment fixture failure did not recur in this run.
+- A fresh seed 4242 run with 100 forced chunks exceeded the 30-second RCON timeout during initial chunk generation, before any sprint. The driver now allows 120 seconds by default via `VP_RCON_TIMEOUT`. A local delayed-response test verified the configurable timeout and a fresh seed 4242 restart reached tick sprints. Aborted startup attempts are excluded from natural-run counts. Existing worlds were retained.
+- Strict audit stays at 17 implemented / 30 partial / 15 unverified. The natural-build check requires three fresh runs on the same revision and separate reporting of civic completion, mine cadence and stand rescues. No client or full-modpack verification.
+
 ## Verification update — 2026-11-25
 
 Strict classification remains **17 implemented / 30 partial / 15 unverified (62 total)**. No requirement is promoted. The code and synchronized handoff/audit are published together in the current main revision. The already published 0.11.2 playtest below is still built from its older pinned source commit and does not include this continuation's mine fixes.

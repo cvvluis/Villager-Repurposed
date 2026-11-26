@@ -1,5 +1,9 @@
 # Master Prompt Audit
 
+## Verification update — 2026-11-26
+
+Main at `1613fbf` passed the Java 25 clean build, release JAR reference check, and all 33 requested headless groups (4,670 checks). G05's previously failing `equipment` group passed 141 checks in this run, with `smithanvil` 33 and `stockpolicy` 64 also passing. The natural toolshed and repair cycle still needs observation. The strict count remains 17 implemented, 30 partial and 15 unverified.
+
 ## Verification update — 2026-11-24
 
 Strict classification remains **17 implemented / 30 partial / 15 unverified (62 total)**. No requirement is promoted. Code is published on main; this documentation branch intentionally retains its older code. Current evidence below supersedes the historical notes.
