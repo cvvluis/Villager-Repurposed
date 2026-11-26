@@ -191,7 +191,7 @@ The phases group related IDs, they do not replace any of them. An ID becomes `im
 
 ## Integration Boundary
 
-`Compat.java` and **`CompatChecks`** (headless **12 PASS**) report optional mod namespaces; the run uses a flat vanilla world without CTOV. Farmer's Delight, Chef's Delight, More Villagers, Fresh Animations/EMF/ETF, Serene Seasons, Towns and Towers and Village Taverns are not installed. The complete master prompt is not finished: **13 of 62** items implemented as a core, **49** partially open.
+`Compat.java` and **`CompatChecks`** (headless **12 PASS**) report optional mod namespaces; the run uses a flat vanilla world without CTOV. Farmer's Delight, Chef's Delight, More Villagers, Fresh Animations/EMF/ETF, Serene Seasons, Towns and Towers and Village Taverns are not installed. The complete master prompt is not finished: **16 of 62** items implemented, **31 partial**, **15 unverified**.
 
 
 
