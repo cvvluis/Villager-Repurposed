@@ -2,6 +2,8 @@
 
 ## Continuation — 2026-11-26
 
+The 0.11.4 playtest is published from `81cdc04` as a prerelease. The downloaded jar is byte-for-byte identical to the jar used for the packaged server smoke (3,955,549 bytes, SHA-256 `aa3e15126552a8a9b9d9c89e15bda71fd2db73ed7bc232036a9d2b04151f2885`). The downloaded artifact passed the 652-class reference check. [Release](https://github.com/cvvluis/Villager-Repurposed/releases/tag/v0.11.4) · [Actions run](https://github.com/cvvluis/Villager-Repurposed/actions/runs/45792231784)
+
 - Baseline `1613fbf`: Java 25 `./gradlew clean build` passed, including `verifyJarRefs` over 651 classes. All 33 distinct requested groups passed (4,670 checks). The `constructioncontinuation` bundle passed 37 groups / 3,910 checks, including 26 requested groups. The seven separate results were `smithanvil` 33, `deepstrand` 17, `railmetro` 103, `roadroute` 732, `equipment` 141, `workblocks` 67 and `chestscan` 21. The past equipment fixture failure did not recur in this run.
 - A fresh seed 4242 run with 100 forced chunks exceeded the 30-second RCON timeout during initial chunk generation, before any sprint. The driver now allows 120 seconds by default via `VP_RCON_TIMEOUT`. A local delayed-response test verified the configurable timeout and a fresh seed 4242 restart reached tick sprints. Aborted startup attempts are excluded from natural-run counts. Existing worlds were retained.
 - Strict audit stays at 17 implemented / 30 partial / 15 unverified. The natural-build check requires three fresh runs on the same revision and separate reporting of civic completion, mine cadence and stand rescues. No client or full-modpack verification.
@@ -63,6 +65,8 @@ Build gaps in the table cover granary and storage cursors, including active repa
 The integrated workbench revision passed another Java 25 clean build and 652-class jar reference check. The in-world `constructioncontinuation` bundle passed all 37 groups (3,916 checks), and `buildingrelocation` passed 17. The strict audit classification remains unchanged.
 
 The 0.11.4 release candidate's local packaged jar booted a separate Fabric Loader 0.20.1 / Minecraft 26.2 server with Fabric API, detected a vanilla taiga village and completed 2,400 sprint ticks with 49 forced chunks. The server saved and stopped normally. This verifies a headless packaged-jar startup and village tick smoke, with no game client or full modpack.
+
+The isolated workbench-plus-stair-input variant passed `buildhaul` (52), but only one civic project finished in its three fresh seed 4242 runs (storage at tick 54,022). The three granaries ended at 321/437, 326/433 and 375/441. The bench-only variant finished two of three, so the stair-input variant stayed isolated. In the bench-only stalled run, mining went from section 17 at tick 7,754 to the next section at tick 72,591 even though helpers attempted to traverse the tunnel. The saved communal chest had no cobblestone and the storage plan still requested glass. Continue with the actual mine approach and material availability in a copy, then reproduce any correction in fresh worlds.
 
 ### D05 caravan journey reproduction
 
