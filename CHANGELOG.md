@@ -4,6 +4,7 @@ Versions below target Fabric, Minecraft 26.2 and Java 25. The artifact is named 
 
 ## Unreleased
 
+- **Field builders bring paid fences and gates to the field.** The farmer collects the requested stock and delivers it through the construction cargo system. Work resumes from the saved field cursor.
 - **Dev-server coverage for road gravel supply.** An active road task triggers an eight-gravel quarry batch, and the road builder withdraws and places paid gravel from village stock. The check tracks the consumed source blocks and flint.
 
 ## 0.11.4 (playtest)

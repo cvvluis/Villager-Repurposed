@@ -14,6 +14,10 @@ The 0.11.4 playtest is published from `81cdc04` as a prerelease. The downloaded 
 - An unchanged continuation of a copied stalled 0.11.4 seed 4242 world (four sprints of 2,400 ticks, n=1) produced nine further mine sections and advanced the granary from 319 to 409 of 437. Storage remained at 160/266 with four full glass blocks wanted. The mine could resume in this copy, while its earlier long gap remains unexplained.
 - A separate fresh mine diagnostic (ten sprints of 2,400 ticks, n=1) produced ten sections by tick 6,748. Working-window samples included 48 stone-help samples with a nonnegative lease and two primary-job samples at lease zero. No sampled primary job interrupted a positive lease. The instrumentation was removed, and the sample does not establish the cause of the longer stalls.
 
+### Starter field supply (J01)
+
+Five of the nine fresh seed 4242 worlds in the reference, rescue and workbench samples started a 41-step field. All five saved at step 9 with the perimeter outstanding, and the workbench sample's field remained there over a 9,600-sprint-tick continuation. The saved Builder field path could craft fences and gates in public stock but could only pay placements out of its project stock. The farmer now uses the existing physical freight and reservation system for the requested perimeter, with the normal work dispatcher continuing marked cargo. A fixture reproduced the missing public withdrawal, then verified withdrawal, delivery and completion after payment with no remaining project or duplicate fence. The clean Java 25 build and the 37-group construction bundle (3,926 checks, including `buildhaul` 47) passed. The `farmexpand` and `foodchain` fixtures passed 179 and 17 checks. Natural completion and delivery of a harvest to the food store remain open.
+
 ### Natural reference at 1613fbf
 
 Three fresh CTOV taiga worlds used seed 4242, the same 100 forced chunks and 30 sprints of 2,400 ticks. There was no player, fixture setup or item grant. The final game tick includes ordinary ticks between sprints. Final unfinished cursors and stock came from read-only inspection of the saved worlds.

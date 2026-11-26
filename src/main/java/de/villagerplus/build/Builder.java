@@ -1356,14 +1356,8 @@ public final class Builder {
 					}
 				}
 			}
-			// The field owner turns public planks and sticks into the fence and gate the open step asks for (loaded recipes,
-			// real chest inventory); without this the compact starter plan waited for a craftsman nobody sends.
-			if (!helper && d.planType.equals(Blueprints.FARM) && !d.wanted.isEmpty()
-				&& de.villagerplus.job.Workshop.tick(c)) {
-				d.planProgress = c.now();
-				ref.dirty();
-				return true;
-			}
+			if (!helper && d.planType.equals(Blueprints.FARM) && preparedSteps != null && !d.wanted.isEmpty()
+				&& supplyFarmPerimeter(c, ref, preparedSteps, box, siteStock, cargoManifest)) return true;
 			boolean result = d.planType.equals(Blueprints.WALL) ? continueWall(c, ref, box)
 				: continuePlan(c, ref, box, siteStock, cargoManifest, preparedSteps, standSlot, helper);
 			if (!helper && d.hasPlan() && preparedSteps != null && !d.planType.equals(Blueprints.FARM)) {
@@ -2278,7 +2272,8 @@ public final class Builder {
 		VillageData data = ref.data();
 		migrateLegacyProjects(c, ref, data);
 		VillageData.BuildProject project = data.buildProject(origin).orElse(null);
-		if (!supportsConstructionHaul(project)) return false;
+		if (project == null || !project.active()
+			|| (!Blueprints.FARM.equals(project.type()) && !supportsConstructionHaul(project))) return false;
 		Container stock = siteStock(project);
 		List<String> manifest = new ArrayList<>(de.villagerplus.job.BuildHaul.manifest(c, origin, project.cargoManifest()));
 		loadProjectView(ref, data, project);
@@ -4314,6 +4309,31 @@ public final class Builder {
 		LOGGER.info("Villagers: Repurposed: Bauplan {} baut ohne Baustellengeruest weiter (Geruest ist im Dorf nicht herstellbar: kein Vorrat, kein Bambus/Schnur)",
 			ref.data().planType);
 		return waived;
+	}
+
+	/** The field owner crafts the perimeter in town and carries it to the field's paid placement stock. */
+	private static boolean supplyFarmPerimeter(Ctx c, VillageRef ref, List<Step> steps, Container publicStock,
+			Container siteStock, List<String> cargoManifest) {
+		VillageData d = ref.data();
+		BlockPos origin = d.planOrigin.orElseThrow();
+		if (updateWanted(c, ref, d.planType, steps, publicStock, siteStock, cargoManifest, origin, d.planStep, false)) {
+			return false;
+		}
+		Direction dir = Direction.from2DDataValue(d.planDir);
+		BlockPos stand = workStand(c, origin, dir, steps, villageGroundY(c.level(), ref.bell()) - 12);
+		try {
+			if (stand != null && de.villagerplus.job.BuildHaul.tick(c, origin, stand, List.copyOf(d.wanted), true, siteStock)) {
+				return true;
+			}
+		} finally {
+			List<String> updated = de.villagerplus.job.BuildHaul.manifest(c, origin, cargoManifest);
+			cargoManifest.clear();
+			cargoManifest.addAll(updated);
+		}
+		if (!de.villagerplus.job.Workshop.tick(c)) return false;
+		d.planProgress = c.now();
+		ref.dirty();
+		return true;
 	}
 
 	/** Keep project-local demand equal to its remaining plan/setup need after site stock and marked cargo. */

@@ -428,7 +428,34 @@ public final class BuildHaulChecks {
 				&& JobUtil.count(worker.getInventory(), BuildHaul::isMarkedCargo) == 1
 				&& !de.villagerplus.world.LoadedColumns.ready(level, unloadedOrigin),
 				"an unavailable cargo destination keeps ownership of the work attempt and preserves its reserved log without a chunk load");
-			return 6;
+			worker.getInventory().clearContent();
+			data.buildProjects.clear();
+			data.putBuildProject(new VillageData.BuildProject("farm", origin, 0, 1, 10, Optional.empty(), c.now(),
+				Optional.of(worker.getUUID()), 0L, List.of("minecraft:spruce_fence#1"), VillageData.ProjectHaul.empty(),
+				Optional.empty(), Optional.empty(), Optional.empty(), false, false));
+			cachedSteps.put(origin.asLong(), List.of(
+				de.villagerplus.build.Step.block(origin.below(), Blocks.STONE),
+				de.villagerplus.build.Step.block(origin, Blocks.SPRUCE_FENCE)));
+			Container chest = ref.chest(level);
+			chest.setItem(1, new ItemStack(Items.SPRUCE_FENCE, 1));
+			worker.setPos(source.getX() + 1.5, source.getY(), source.getZ() + 0.5);
+			JobState farmJob = new JobState();
+			Ctx farm = new Ctx(level, worker, farmJob, c.mem(), ref, c.now());
+			check(de.villagerplus.build.Builder.tick(farm, false) && chest.getItem(1).isEmpty()
+				&& JobUtil.count(worker.getInventory(), BuildHaul::isMarkedCargo) == 1
+				&& data.buildProject(origin).orElseThrow().step() == 1,
+				"the field owner withdraws a real fence from public stock for its saved open perimeter step");
+			worker.setPos(origin.getX() + 0.5, origin.getY(), origin.getZ() + 5.5);
+			check(JobManager.continueConstructionHaul(farm) && worker.getInventory().isEmpty()
+				&& data.buildProject(origin).orElseThrow().siteStock().stream().anyMatch(stack -> stack.is(Items.SPRUCE_FENCE))
+				&& level.getBlockState(origin).isAir(),
+				"the ordinary dispatcher delivers the field owner's reserved fence before planting or building");
+			int completedFields = data.farms;
+			check(de.villagerplus.build.Builder.tick(farm, false) && level.getBlockState(origin).is(Blocks.SPRUCE_FENCE)
+				&& data.buildProject(origin).isEmpty() && data.farms == completedFields + 1
+				&& worker.getInventory().isEmpty() && chest.getItem(1).isEmpty(),
+				"the final paid fence completes the field without leaving a duplicate in storage or inventory");
+			return 9;
 		} catch (ReflectiveOperationException failure) {
 			throw new IllegalStateException("cargo continuation step fixture unavailable", failure);
 		} finally {
