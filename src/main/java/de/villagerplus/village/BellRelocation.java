@@ -249,7 +249,7 @@ public final class BellRelocation {
 	private static ConstructionSite shiftConstruction(ConstructionSite site, BlockPos delta) {
 		List<ConstructionSite.TemporaryBlock> temps = site.temporary().stream()
 			.map(t -> new ConstructionSite.TemporaryBlock(t.pos().offset(delta), t.workbench())).toList();
-		return new ConstructionSite(site.origin().offset(delta), temps, site.phaseEnds(), site.prepared(), site.paletteIds());
+		return new ConstructionSite(site.origin().offset(delta), temps, site.phaseEnds(), site.prepared(), site.paletteIds(), site.scaffoldingWaived());
 	}
 
 	private static List<Long> shiftLongPositions(List<Long> encoded, BlockPos delta) {

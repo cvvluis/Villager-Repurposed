@@ -24,9 +24,11 @@ import net.minecraft.world.level.block.ScaffoldingBlock;
 import net.minecraft.world.level.block.entity.HopperBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 /** Persistent opt-in marker and cleanup record for the phased construction flow. */
-public record ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, List<Integer> phaseEnds, boolean prepared, List<String> paletteIds) {
+public record ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, List<Integer> phaseEnds, boolean prepared,
+		List<String> paletteIds, boolean scaffoldingWaived) {
 	public static final Codec<TemporaryBlock> TEMP_CODEC = RecordCodecBuilder.create(i -> i.group(
 		BlockPos.CODEC.fieldOf("pos").forGetter(TemporaryBlock::pos),
 		Codec.BOOL.fieldOf("workbench").forGetter(TemporaryBlock::workbench)
@@ -36,7 +38,8 @@ public record ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, 
 		TEMP_CODEC.listOf().optionalFieldOf("temporary", List.of()).forGetter(ConstructionSite::temporary),
 		Codec.INT.listOf().optionalFieldOf("phase_ends", List.of()).forGetter(ConstructionSite::phaseEnds),
 		Codec.BOOL.optionalFieldOf("prepared", false).forGetter(ConstructionSite::prepared),
-		Codec.STRING.listOf().optionalFieldOf("palette", List.of()).forGetter(ConstructionSite::paletteIds)
+		Codec.STRING.listOf().optionalFieldOf("palette", List.of()).forGetter(ConstructionSite::paletteIds),
+		Codec.BOOL.optionalFieldOf("scaffolding_waived", false).forGetter(ConstructionSite::scaffoldingWaived)
 	).apply(i, ConstructionSite::new));
 
 	public record TemporaryBlock(BlockPos pos, boolean workbench) {}
@@ -50,6 +53,25 @@ public record ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, 
 	public ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary) { this(origin, temporary, List.of(), false, List.of()); }
 	public ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, List<Integer> phaseEnds) { this(origin, temporary, phaseEnds, false, List.of()); }
 	public ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, List<Integer> phaseEnds, boolean prepared) { this(origin, temporary, phaseEnds, prepared, List.of()); }
+	public ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, List<Integer> phaseEnds, boolean prepared, List<String> paletteIds) {
+		this(origin, temporary, phaseEnds, prepared, paletteIds, false);
+	}
+
+	ConstructionSite waiveScaffolding() {
+		return new ConstructionSite(origin, temporary, phaseEnds, prepared, paletteIds, true);
+	}
+
+	boolean needsSetup() {
+		return !prepared || (!hasWorkbench() && (!phaseEnds.isEmpty() || scaffoldingWaived));
+	}
+
+	private boolean needsScaffolding() {
+		return !prepared && !scaffoldingWaived;
+	}
+
+	private ConstructionSite withSetup(List<TemporaryBlock> blocks, boolean ready) {
+		return new ConstructionSite(origin, blocks, phaseEnds, ready, paletteIds, scaffoldingWaived);
+	}
 
 	/** Reorder an Architect plan into semantic phases, retaining deterministic order within each phase. */
 	public static List<Step> order(List<Step> input, BlockPos origin, Architect.Design design, Palette palette) {
@@ -100,7 +122,7 @@ public record ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, 
 		return result;
 	}
 
-	/** Place free temporary scenery in air only, then persist every position for restart-safe cleanup. */
+	/** Place paid temporary equipment in air only, then persist every position for restart-safe cleanup. */
 	public static ConstructionSite prepare(ServerLevel level, ConstructionSite site, List<Step> steps, BlockPos origin, Direction facing, Container materials) {
 		return prepare(level, site, steps, origin, facing, materials, null);
 	}
@@ -108,56 +130,32 @@ public record ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, 
 	/** Runs the paid worksite setup with its active builder so staged blocks show the same work feedback as the plan. */
 	public static ConstructionSite prepare(ServerLevel level, ConstructionSite site, List<Step> steps, BlockPos origin,
 			Direction facing, Container materials, Ctx worker) {
-		if (site.prepared()) return site;
-		List<Step> footprint = steps.stream().filter(s -> !s.free() && s.pos().getY() >= origin.getY() - 1 && s.pos().getY() <= origin.getY() + 8).toList();
-		if (footprint.isEmpty()) return new ConstructionSite(site.origin(), site.temporary(), site.phaseEnds(), true, site.paletteIds());
-		int minX = footprint.stream().mapToInt(s -> s.pos().getX()).min().orElse(origin.getX()) - 1;
-		int maxX = footprint.stream().mapToInt(s -> s.pos().getX()).max().orElse(origin.getX()) + 1;
-		int minZ = footprint.stream().mapToInt(s -> s.pos().getZ()).min().orElse(origin.getZ()) - 1;
-		int maxZ = footprint.stream().mapToInt(s -> s.pos().getZ()).max().orElse(origin.getZ()) + 1;
+		if (!site.needsSetup()) return site;
 		List<TemporaryBlock> placed = new ArrayList<>();
-		int frontExtent = footprint.stream().mapToInt(s -> (s.pos().getX() - origin.getX()) * facing.getStepX()
-			+ (s.pos().getZ() - origin.getZ()) * facing.getStepZ()).max().orElse(1);
-		BlockPos preferredBench = origin.relative(facing, frontExtent + 2);
-		List<TemporaryBlock> targets = new ArrayList<>();
-		for (int[] corner : new int[][] {{minX,minZ},{minX,maxZ},{maxX,minZ},{maxX,maxZ}}) {
-			for (int dy = 0; dy < 2; dy++) targets.add(new TemporaryBlock(new BlockPos(corner[0], origin.getY() + dy, corner[1]), false));
-		}
-
 		// Keep still-owned temporary blocks across a retry/restart; forget only blocks that no longer match.
 		for (TemporaryBlock previous : site.temporary()) {
 			if (!de.villagerplus.world.LoadedColumns.ready(level, previous.pos()) || ownsTemporary(level, previous)) placed.add(previous);
 		}
-		BlockPos bench = findWorkbenchPosition(level, preferredBench, facing, steps, placed, targets);
-		if (bench != null) targets.add(new TemporaryBlock(bench, true));
+		List<TemporaryBlock> targets = setupTargets(level, site, steps, origin, facing, placed);
 		for (TemporaryBlock target : targets) {
 			if (containsTemporary(placed, target)) continue;
+			if (site.prepared() && target.workbench() && worker != null
+				&& worker.v().position().distanceToSqr(Vec3.atBottomCenterOf(target.pos())) > 36.0) continue;
 			place(level, materials, target.pos(), target.workbench(), placed, worker);
 		}
-		ConstructionSite staged = new ConstructionSite(site.origin(), List.copyOf(placed), site.phaseEnds(), false, site.paletteIds());
-		boolean ready = bench != null && missingSetupMaterials(level, staged, steps, origin, facing, materials).isEmpty();
-		return new ConstructionSite(site.origin(), staged.temporary(), site.phaseEnds(), ready, site.paletteIds());
+		ConstructionSite staged = site.withSetup(placed, site.prepared());
+		// With no safe bench position, finish any scaffold work and retry the table
+		// opportunistically. Retrofitting never pauses an already active site.
+		boolean benchReady = targets.stream().noneMatch(TemporaryBlock::workbench) || staged.hasWorkbench();
+		boolean ready = site.prepared() || (benchReady && missingSetupMaterials(level, staged, steps, origin, facing, materials).isEmpty());
+		return staged.withSetup(staged.temporary(), ready);
 	}
 
 	/** Remaining real inventory request needed to finish an interrupted scaffold/workbench preparation. */
 	public static Map<Item, Integer> missingSetupMaterials(ServerLevel level, ConstructionSite site, List<Step> steps,
 			BlockPos origin, Direction facing, Container materials) {
-		if (site == null || site.prepared()) return Map.of();
-		List<Step> footprint = steps.stream().filter(s -> !s.free() && s.pos().getY() >= origin.getY() - 1 && s.pos().getY() <= origin.getY() + 8).toList();
-		if (footprint.isEmpty()) return Map.of();
-		int minX = footprint.stream().mapToInt(s -> s.pos().getX()).min().orElse(origin.getX()) - 1;
-		int maxX = footprint.stream().mapToInt(s -> s.pos().getX()).max().orElse(origin.getX()) + 1;
-		int minZ = footprint.stream().mapToInt(s -> s.pos().getZ()).min().orElse(origin.getZ()) - 1;
-		int maxZ = footprint.stream().mapToInt(s -> s.pos().getZ()).max().orElse(origin.getZ()) + 1;
-		int frontExtent = footprint.stream().mapToInt(s -> (s.pos().getX() - origin.getX()) * facing.getStepX()
-			+ (s.pos().getZ() - origin.getZ()) * facing.getStepZ()).max().orElse(1);
-		BlockPos preferredBench = origin.relative(facing, frontExtent + 2);
-		List<TemporaryBlock> targets = new ArrayList<>();
-		for (int[] corner : new int[][] {{minX,minZ},{minX,maxZ},{maxX,minZ},{maxX,maxZ}}) {
-			for (int dy = 0; dy < 2; dy++) targets.add(new TemporaryBlock(new BlockPos(corner[0], origin.getY() + dy, corner[1]), false));
-		}
-		BlockPos bench = findWorkbenchPosition(level, preferredBench, facing, steps, site.temporary(), targets);
-		if (bench != null) targets.add(new TemporaryBlock(bench, true));
+		if (site == null || !site.needsSetup()) return Map.of();
+		List<TemporaryBlock> targets = setupTargets(level, site, steps, origin, facing, site.temporary());
 
 		int scaffoldNeed = 0;
 		int workbenchNeed = 0;
@@ -169,6 +167,29 @@ public record ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, 
 		addMissing(missing, Items.SCAFFOLDING, scaffoldNeed, count(materials, Items.SCAFFOLDING));
 		addMissing(missing, Items.CRAFTING_TABLE, workbenchNeed, count(materials, Items.CRAFTING_TABLE));
 		return Collections.unmodifiableMap(missing);
+	}
+
+	private static List<TemporaryBlock> setupTargets(ServerLevel level, ConstructionSite site, List<Step> steps,
+			BlockPos origin, Direction facing, List<TemporaryBlock> existing) {
+		List<Step> footprint = steps.stream().filter(s -> !s.free() && s.pos().getY() >= origin.getY() - 1 && s.pos().getY() <= origin.getY() + 8).toList();
+		if (footprint.isEmpty()) return List.of();
+		int frontExtent = footprint.stream().mapToInt(s -> (s.pos().getX() - origin.getX()) * facing.getStepX()
+			+ (s.pos().getZ() - origin.getZ()) * facing.getStepZ()).max().orElse(1);
+		BlockPos preferredBench = origin.relative(facing, frontExtent + 2);
+		List<TemporaryBlock> targets = new ArrayList<>();
+		if (site.needsScaffolding()) {
+			int minX = footprint.stream().mapToInt(s -> s.pos().getX()).min().orElse(origin.getX()) - 1;
+			int maxX = footprint.stream().mapToInt(s -> s.pos().getX()).max().orElse(origin.getX()) + 1;
+			int minZ = footprint.stream().mapToInt(s -> s.pos().getZ()).min().orElse(origin.getZ()) - 1;
+			int maxZ = footprint.stream().mapToInt(s -> s.pos().getZ()).max().orElse(origin.getZ()) + 1;
+			for (int[] corner : new int[][] {{minX,minZ},{minX,maxZ},{maxX,minZ},{maxX,maxZ}}) {
+				for (int dy = 0; dy < 2; dy++) targets.add(new TemporaryBlock(new BlockPos(corner[0], origin.getY() + dy, corner[1]), false));
+			}
+		}
+		BlockPos bench = findWorkbenchPosition(level, preferredBench, facing, steps, existing, targets);
+		if (bench != null) targets.add(new TemporaryBlock(bench, true));
+
+		return targets;
 	}
 
 	/** Move the workbench a few blocks around an obstruction without replacing terrain or a planned building block. */
@@ -190,11 +211,25 @@ public record ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, 
 				candidates.add(preferred.relative(facing, radius).relative(counterClockwise, side));
 			}
 		}
-		for (BlockPos candidate : candidates) {
-			if (overlapsPlannedBlock(candidate, steps) || scaffoldTargets.stream().anyMatch(temp -> temp.pos().equals(candidate))) continue;
-			if (canPlace(level, candidate, true)) return candidate;
+		for (BlockPos column : candidates) {
+			for (int dy : new int[] {0, -1, 1}) {
+				BlockPos candidate = column.above(dy);
+				if (overlapsPlannedBlock(candidate, steps) || reservedForScaffold(candidate, scaffoldTargets)
+					|| !canPlace(level, candidate, true)) continue;
+				for (Direction side : Direction.Plane.HORIZONTAL) {
+					BlockPos stand = candidate.relative(side);
+					if (overlapsPlannedBlock(stand, steps) || reservedForScaffold(stand, scaffoldTargets)) continue;
+					Vec3 safe = JobUtil.safeSpot(level, Vec3.atBottomCenterOf(stand));
+					if (safe != null && BlockPos.containing(safe).equals(stand)
+						&& level.getFluidState(stand).isEmpty() && level.getFluidState(stand.above()).isEmpty()) return candidate;
+				}
+			}
 		}
 		return null;
+	}
+
+	private static boolean reservedForScaffold(BlockPos pos, List<TemporaryBlock> scaffoldTargets) {
+		return scaffoldTargets.stream().anyMatch(temp -> temp.pos().equals(pos) || temp.pos().equals(pos.above()));
 	}
 
 	private static boolean overlapsPlannedBlock(BlockPos candidate, List<Step> steps) {
@@ -247,6 +282,7 @@ public record ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, 
 
 	private static boolean canPlace(ServerLevel level, BlockPos pos, boolean workbench) {
 		if (!de.villagerplus.world.LoadedColumns.ready(level, pos) || !level.getBlockState(pos).isAir() || occupied(level, pos)) return false;
+		if (workbench && !level.getBlockState(pos.below()).isFaceSturdy(level, pos.below(), Direction.UP)) return false;
 		BlockState state = workbench ? Blocks.CRAFTING_TABLE.defaultBlockState() : Blocks.SCAFFOLDING.defaultBlockState()
 			.setValue(ScaffoldingBlock.DISTANCE, 0);
 		return state.canSurvive(level, pos);
@@ -318,7 +354,7 @@ public record ConstructionSite(BlockPos origin, List<TemporaryBlock> temporary, 
 				}
 			}
 		}
-		return new ConstructionSite(site.origin(), List.copyOf(remaining), site.phaseEnds(), site.prepared(), site.paletteIds());
+		return site.withSetup(remaining, site.prepared());
 	}
 
 	private static boolean occupied(ServerLevel level, BlockPos pos) {

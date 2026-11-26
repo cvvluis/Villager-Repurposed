@@ -215,6 +215,42 @@ public final class ConstructionSiteChecks {
 				&& itemCount(prepStock, Items.CRAFTING_TABLE) == 1,
 				"resumed setup abort returns all nine paid worksite blocks once and removes only owned blocks"); passed++;
 
+			BlockPos benchStand = movedBench.east();
+			data.wanted.clear();
+			data.wanted.addAll(List.of("minecraft:scaffolding#8", "minecraft:crafting_table#1"));
+			ref.bellEntity().setAttached(VillagerPlus.CONSTRUCTION,
+				new ConstructionSite(blockedOrigin, List.of(), ends, false, palette.ids()));
+			SimpleContainer benchStock = new SimpleContainer(2);
+			Builder.waiveStalledScaffolding(ref, benchStock);
+			ConstructionSite waived = ref.bellEntity().getAttached(VillagerPlus.CONSTRUCTION);
+			var waivedSaved = ref.bellEntity().saveWithFullMetadata(level.registryAccess());
+			BlockEntity waivedReloaded = BlockEntity.loadStatic(ref.bell(), level.getBlockState(ref.bell()), waivedSaved, level.registryAccess());
+			check(waived.scaffoldingWaived() && !waived.prepared() && waived.equals(waivedReloaded.getAttached(VillagerPlus.CONSTRUCTION))
+				&& data.wanted.equals(List.of("minecraft:crafting_table#1"))
+				&& ConstructionSite.missingSetupMaterials(level, waived, blockedFootprint,
+					blockedOrigin, Direction.EAST, benchStock).equals(Map.of(Items.CRAFTING_TABLE, 1)),
+				"the stalled scaffold waiver survives reload and still requests exactly one real table"); passed++;
+			ConstructionSite unpaid = ConstructionSite.prepare(level, waived, blockedFootprint, blockedOrigin, Direction.EAST, benchStock);
+			check(!unpaid.prepared() && unpaid.temporary().isEmpty() && level.getBlockState(movedBench).isAir(),
+				"a waived site with a safe position waits for its paid table"); passed++;
+			benchStock.setItem(0, new ItemStack(Items.CRAFTING_TABLE));
+			ConstructionSite paid = ConstructionSite.prepare(level, unpaid, blockedFootprint, blockedOrigin, Direction.EAST, benchStock);
+			check(paid.prepared() && paid.scaffoldingWaived() && paid.temporary().equals(List.of(new ConstructionSite.TemporaryBlock(movedBench, true)))
+				&& itemCount(benchStock, Items.CRAFTING_TABLE) == 0 && level.getBlockState(movedBench).is(Blocks.CRAFTING_TABLE)
+				&& level.getBlockState(preferredBench).is(Blocks.DIAMOND_BLOCK) && level.getBlockState(benchStand).isAir(),
+				"the waived site pays one supported table beside a clear stand and preserves the obstruction"); passed++;
+			ConstructionSite.cleanup(level, paid, benchStock);
+			ConstructionSite legacy = new ConstructionSite(blockedOrigin, List.of(), ends, true, palette.ids());
+			ConstructionSite distant = ConstructionSite.prepare(level, legacy, blockedFootprint, blockedOrigin, Direction.EAST, benchStock, builderContext);
+			check(legacy.equals(distant) && itemCount(benchStock, Items.CRAFTING_TABLE) == 1,
+				"an active site never pays or places its retrofit table from a distant builder"); passed++;
+			setupBuilder.teleportTo(benchStand.getX() + .5, benchStand.getY(), benchStand.getZ() + .5);
+			ConstructionSite retrofit = ConstructionSite.prepare(level, legacy, blockedFootprint, blockedOrigin, Direction.EAST, benchStock, builderContext);
+			check(retrofit.prepared() && retrofit.phaseEnds().equals(ends) && retrofit.hasWorkbench() && retrofit.scaffoldCount() == 0
+				&& itemCount(benchStock, Items.CRAFTING_TABLE) == 0,
+				"an already prepared phased site can add its missing paid table without repeating scaffold work"); passed++;
+			ConstructionSite.cleanup(level, retrofit, benchStock);
+
 			BlockPos cancelOrigin = origin.offset(12, 0, 12);
 			BlockPos scaffold = cancelOrigin;
 			BlockPos bench = cancelOrigin.east();
@@ -295,6 +331,10 @@ public final class ConstructionSiteChecks {
 			for (int dy = 0; dy < 2; dy++) targets.add(origin.offset(corner[0], dy, corner[1]));
 		}
 		targets.add(origin.east(2));
+		targets.add(origin.east(3));
+		targets.add(origin.east(3).above());
+		targets.add(origin.east(4));
+		targets.add(origin.east(4).above());
 		return targets;
 	}
 
@@ -302,6 +342,8 @@ public final class ConstructionSiteChecks {
 		List<BlockPos> supports = new ArrayList<>();
 		for (int[] corner : new int[][] {{-1, -1}, {-1, 1}, {1, -1}, {1, 1}}) supports.add(origin.offset(corner[0], -1, corner[1]));
 		supports.add(origin.east(2).below());
+		supports.add(origin.east(3).below());
+		supports.add(origin.east(4).below());
 		return supports;
 	}
 

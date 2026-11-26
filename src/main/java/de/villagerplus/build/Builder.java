@@ -1222,6 +1222,20 @@ public final class Builder {
 					if (!helper && (!siteReady || !cargoManifest.isEmpty())) {
 						BlockPos deliveryStand = workStand(c, origin, dir, preparedSteps, villageGroundY(c.level(), ref.bell()) - 12);
 						if (deliveryStand != null) {
+							if (!siteReady && c.v().position().distanceToSqr(net.minecraft.world.phys.Vec3.atBottomCenterOf(deliveryStand)) <= 36.0
+								&& JobUtil.count(siteStock, stack -> stack.is(Items.CRAFTING_TABLE)) > 0) {
+								ConstructionSite site = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.CONSTRUCTION, null);
+								if (site != null && site.origin().equals(origin) && site.prepared() && site.needsSetup()) {
+									ConstructionSite retrofitted = ConstructionSite.prepare(c.level(), site, preparedSteps, origin, dir, siteStock, c);
+									if (retrofitted.hasWorkbench()) {
+										ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.CONSTRUCTION, retrofitted);
+										d.planProgress = c.now();
+										updateWanted(c, ref, d.planType, preparedSteps, box, siteStock, cargoManifest, origin, d.planStep, false);
+										c.setActivity("stellt die Werkbank an der Baustelle auf");
+										return true;
+									}
+								}
+							}
 							List<String> priorManifest = List.copyOf(cargoManifest);
 							boolean hauled;
 							try {
@@ -4012,15 +4026,14 @@ public final class Builder {
 	 * @param stalled true when the plan has made no material progress for a long time: locally craftable tag items
 	 *                (a door, a bed) then no longer keep an unobtainable palette in place, because nobody delivers them.
 	 */
-	/** After a long stall, drop the site-scaffolding request and mark the site prepared so building can start without it. */
-	private static void waiveStalledScaffolding(VillageRef ref, Container box) {
+	/** After a long stall, drop the site-scaffolding request and retain ordinary workbench setup. */
+	static void waiveStalledScaffolding(VillageRef ref, Container box) {
 		VillageData d = ref.data();
 		boolean wantsScaffolding = PlanSupplyOrder.shortages(d.wanted).containsKey(Items.SCAFFOLDING)
 			&& JobUtil.count(box, stack -> stack.is(Items.SCAFFOLDING)) == 0;
 		ConstructionSite site = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.CONSTRUCTION, null);
-		if (!wantsScaffolding || site == null || site.prepared()) return;
-		ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.CONSTRUCTION,
-			new ConstructionSite(site.origin(), site.temporary(), site.phaseEnds(), true, site.paletteIds()));
+		if (!wantsScaffolding || site == null || site.prepared() || site.scaffoldingWaived()) return;
+		ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.CONSTRUCTION, site.waiveScaffolding());
 		d.wanted.removeIf(row -> PlanSupplyOrder.shortages(List.of(row)).containsKey(Items.SCAFFOLDING));
 		ref.dirty();
 		LOGGER.info("Villagers: Repurposed: Bauplan {} baut ohne Baustellengeruest weiter (Geruest blieb nach langem Stillstand aus)", d.planType);
@@ -4289,14 +4302,13 @@ public final class Builder {
 	 */
 	private static ConstructionSite waiveUncraftableScaffolding(Ctx c, VillageRef ref, BlockPos origin,
 			ConstructionSite construction, Container publicStock) {
-		if (construction == null || !construction.origin().equals(origin) || construction.prepared()
+		if (construction == null || !construction.origin().equals(origin) || construction.prepared() || construction.scaffoldingWaived()
 			|| publicStock == null || c == null || !SCAFFOLDING_JUDGED.add(origin.asLong())) return construction;
 		if (JobUtil.count(publicStock, stack -> stack.is(Items.SCAFFOLDING)) > 0
 			|| de.villagerplus.job.RecipeCrafting.canCraftCraftingOutput(c, publicStock, stack -> stack.is(Items.SCAFFOLDING), 64)) {
 			return construction;
 		}
-		ConstructionSite waived = new ConstructionSite(construction.origin(), construction.temporary(), construction.phaseEnds(),
-			true, construction.paletteIds());
+		ConstructionSite waived = construction.waiveScaffolding();
 		ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.CONSTRUCTION, waived);
 		ref.dirty();
 		LOGGER.info("Villagers: Repurposed: Bauplan {} baut ohne Baustellengeruest weiter (Geruest ist im Dorf nicht herstellbar: kein Vorrat, kein Bambus/Schnur)",
@@ -4320,7 +4332,7 @@ public final class Builder {
 		}
 		ConstructionSite construction = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.CONSTRUCTION, null);
 		construction = waiveUncraftableScaffolding(c, ref, origin, construction, publicStock);
-		if (construction != null && construction.origin().equals(origin) && !construction.prepared()) {
+		if (construction != null && construction.origin().equals(origin) && construction.needsSetup()) {
 			Map<Item, Integer> setup = ConstructionSite.missingSetupMaterials(c.level(), construction, steps, origin,
 				Direction.from2DDataValue(d.planDir), empty);
 			for (Map.Entry<Item, Integer> entry : setup.entrySet()) {
@@ -5132,7 +5144,7 @@ public final class Builder {
 			palette = paletteForPlan(level, origin, palette, biomeAt(level, origin), d.planVariant);
 			if (savedSite != null && savedSite.origin().equals(origin) && !savedSite.paletteIds().equals(palette.ids())) {
 				ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.CONSTRUCTION,
-					new ConstructionSite(savedSite.origin(), savedSite.temporary(), savedSite.phaseEnds(), savedSite.prepared(), palette.ids()));
+					new ConstructionSite(savedSite.origin(), savedSite.temporary(), savedSite.phaseEnds(), savedSite.prepared(), palette.ids(), savedSite.scaffoldingWaived()));
 				ref.dirty();
 			}
 			Architect.Design planDesign = architect(d.planType) ? designForPlan(d.planType, d.planVariant) : null;
@@ -5156,7 +5168,7 @@ public final class Builder {
 				if (compactStorage(planDesign) && site != null && site.origin().equals(origin) && !site.phaseEnds().isEmpty()) {
 					List<Integer> phaseEnds = ConstructionSite.phaseEnds(steps, origin, planDesign, palette);
 					if (!phaseEnds.equals(site.phaseEnds())) {
-						site = new ConstructionSite(site.origin(), site.temporary(), phaseEnds, site.prepared(), site.paletteIds());
+						site = new ConstructionSite(site.origin(), site.temporary(), phaseEnds, site.prepared(), site.paletteIds(), site.scaffoldingWaived());
 						ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.CONSTRUCTION, site);
 						ref.dirty();
 					}
@@ -5457,7 +5469,8 @@ public final class Builder {
 			return true;
 		}
 		ConstructionSite construction = ref.bellEntity().getAttachedOrElse(de.villagerplus.VillagerPlus.CONSTRUCTION, null);
-		if (!helper && construction != null && construction.origin().equals(origin) && d.planStep == 0) {
+		if (!helper && construction != null && construction.origin().equals(origin)
+			&& (d.planStep == 0 || construction.prepared()) && construction.needsSetup()) {
 			ConstructionSite prepared = ConstructionSite.prepare(level, construction, steps, origin, dir, siteStock, c);
 			if (!prepared.equals(construction)) {
 				ref.bellEntity().setAttached(de.villagerplus.VillagerPlus.CONSTRUCTION, prepared);
