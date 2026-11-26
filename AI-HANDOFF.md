@@ -60,6 +60,8 @@ The clean Java 25 build, jar reference check and 26 `constructionsite` checks pa
 
 Build gaps in the table cover granary and storage cursors, including active repairs. Two of three built a granary by tick 72,000. The prior rescue-only sample completed one storage building by that horizon and one by the end of the sprints. The stalled third run still had both placed benches, four spruce stairs in granary transit, and open demands for stairs/stone and storage glass. Its farm's open tail was 8,700 working ticks, and its longest mine gap was 16,237 estimated working ticks. The bench fix removes one cause of missing on-site crafting. Long waits remain and the same-seed sample does not establish reliable natural completion. A guarded stair-input comparison is still separate.
 
+The integrated workbench revision passed another Java 25 clean build and 652-class jar reference check. The in-world `constructioncontinuation` bundle passed all 37 groups (3,916 checks), and `buildingrelocation` passed 17. The strict audit classification remains unchanged.
+
 ### D05 caravan journey reproduction
 
 - `caravanjourney1` timed out after 3,500 ticks on main (`1613fbf`, fresh allowlisted fixture, seed 8675309). Road cursor 83, zero lane samples, trader waiting for two idle donkeys outside the three-block resume radius.
